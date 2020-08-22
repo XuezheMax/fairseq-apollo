@@ -42,7 +42,7 @@ class MilestoneScheduler(FairseqLRScheduler):
                             help='warmup the learning rate linearly for the first N updates')
         parser.add_argument('--warmup-init-lr', default=-1, type=float, metavar='LR',
                             help='initial learning rate during warmup phase; default is args.lr')
-        parser.add_argument('--lr-decay-rate', default=0.1, type=int, metavar='DR')
+        parser.add_argument('--lr-decay-rate', default=0.1, type=float, metavar='DR')
         parser.add_argument('--milestones', type=int, nargs='+', default=None, help='Decrease learning rate at these updates.')
 
     def step(self, epoch, val_loss=None):
