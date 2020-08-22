@@ -25,7 +25,10 @@ class MilestoneScheduler(FairseqLRScheduler):
                 args.warmup_init_lr = 0
 
         # linearly warmup for the first args.warmup_updates
-        self.lr_step = (warmup_end_lr - args.warmup_init_lr) / args.warmup_updates
+        if args.warmup_updates > 0:
+            self.lr_step = (warmup_end_lr - args.warmup_init_lr) / args.warmup_updates
+        else:
+            self.lr_step = 0
 
         # Then, decay by gamma every step_size updates
         self.gamma = args.lr_decay_rate
