@@ -18,10 +18,6 @@ class FairseqApollo(FairseqOptimizer):
                             help='beta for Apollo optimizer')
         parser.add_argument('--apollo-eps', type=float, default=1e-8, metavar='D',
                             help='epsilon for Apollo optimizer')
-        parser.add_argument('--apollo-warmup-updates', type=int, default=100, metavar='W',
-                            help='warmup updates for Apollo optimizer')
-        parser.add_argument('--apollo-init-lr', type=float, default=0.01, metavar='IL',
-                            help='initial learning rate for warmup for Apollo optimizer')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
 
@@ -37,8 +33,6 @@ class FairseqApollo(FairseqOptimizer):
             'rho': self.args.lr[0],
             'beta': self.args.apollo_beta,
             'eps': self.args.apollo_eps,
-            'warmup': self.args.apollo_warmup_updates,
-            'init_lr': self.args.apollo_init_lr,
             'weight_decay': self.args.weight_decay,
         }
 
@@ -58,7 +52,7 @@ class Apollo(Optimizer):
             weight_decay (float, optional): weight decay coefficient (default: 0)
         """
 
-    def __init__(self, params, rho=1.0, beta=0.9, eps=1e-8, warmup=100, init_lr=0.01, weight_decay=0):
+    def __init__(self, params, rho=1.0, beta=0.9, eps=1e-8, weight_decay=0):
         if not 0.0 < rho:
             raise ValueError("Invalid rho value: {}".format(rho))
         if not 0.0 <= eps:
@@ -67,14 +61,9 @@ class Apollo(Optimizer):
             raise ValueError("Invalid beta parameter at index 0: {}".format(beta))
         if not 0.0 <= weight_decay:
             raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
-        if not 0.0 <= warmup:
-            raise ValueError("Invalid warmup updates: {}".format(warmup))
-        if not 0.0 <= init_lr <= 1.0:
-            raise ValueError("Invalid initial learning rate: {}".format(init_lr))
 
         lr = rho
-        defaults = dict(lr=lr, beta=beta, eps=eps, warmup=warmup,
-                        init_lr=init_lr, base_lr=lr, weight_decay=weight_decay)
+        defaults = dict(lr=lr, beta=beta, eps=eps, weight_decay=weight_decay)
         super(Apollo, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -110,10 +99,7 @@ class Apollo(Optimizer):
                     state['update'] = torch.zeros_like(p, memory_format=torch.preserve_format)
 
                 # Calculate current lr
-                if state['step'] < group['warmup']:
-                    curr_lr = (group['base_lr'] - group['init_lr']) * state['step'] / group['warmup'] + group['init_lr']
-                else:
-                    curr_lr = group['lr']
+                curr_lr = group['lr']
 
                 # Perform optimization step
                 grad = p.grad
