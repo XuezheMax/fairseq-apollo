@@ -56,7 +56,7 @@ class StepScheduler(FairseqLRScheduler):
 
     def step_update(self, num_updates):
         """Update the learning rate after each update."""
-        if num_updates < self.args.warmup_updates:
+        if num_updates <= self.args.warmup_updates:
             self.lr = self.args.warmup_init_lr + num_updates*self.lr_step
         elif num_updates > 0 and num_updates % self.step_size == 0:
             self.lr = self.lr * self.gamma
