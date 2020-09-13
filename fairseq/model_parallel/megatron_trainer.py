@@ -51,7 +51,7 @@ class MegatronTrainer(Trainer):
     def is_data_parallel_master(self):
         return get_model_parallel_src_rank() == 0
 
-    def clip_grad_norm(self, clip_norm):
+    def clip_grad_norm(self, clip_norm, clip_mode):
         def _aggregate_model_parallel_grad_norm(total_norm):
             total_norm = total_norm ** 2
             distributed_utils.all_reduce(total_norm, group=get_model_parallel_group())
@@ -60,4 +60,5 @@ class MegatronTrainer(Trainer):
         return self.optimizer.clip_grad_norm(
             clip_norm,
             aggregate_norm_fn=_aggregate_model_parallel_grad_norm,
+            mode=clip_mode
         )

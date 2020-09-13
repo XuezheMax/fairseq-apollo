@@ -284,7 +284,15 @@ def multi_tensor_total_norm(grads, chunk_size=2048*32) -> torch.Tensor:
     return total_norm
 
 
-def clip_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Tensor:
+def clip_grad_norm_(params, max_norm, aggregate_norm_fn=None, mode='total'):
+    assert mode in ['total', 'each']
+    if mode == 'total':
+        return clip_total_grad_norm_(params, max_norm, aggregate_norm_fn=aggregate_norm_fn)
+    else:
+        return clip_param_grad_norm_(params, max_norm)
+
+
+def clip_total_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Tensor:
     if isinstance(params, torch.Tensor):
         params = [params]
     params = list(params)
@@ -319,6 +327,31 @@ def clip_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Tensor:
         for g in grads:
             g.mul_(clip_coef)
     return total_norm
+
+
+def clip_param_grad_norm_(params, max_norm) -> torch.Tensor:
+    if isinstance(params, torch.Tensor):
+        params = [params]
+    params = list(params)
+    grads = [p.grad.detach() for p in filter(lambda p: p.grad is not None, params)]
+    if len(grads) == 0:
+        if len(params) > 0:
+            return params[0].new_tensor(0.)
+        else:
+            return torch.tensor(0.)
+
+    if max_norm > 0:
+        max_norm = float(max_norm)
+
+    grad_norms = []
+    for grad in grads:
+        grad_norm = torch.norm(grad, p=2, dtype=torch.float32)
+        grad_norms.append(grad_norm)
+        if max_norm > 0:
+            clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
+            grad.mul_(clip_coef)
+
+    return torch.max(torch.stack(grad_norms))
 
 
 def fill_with_neg_inf(t):

@@ -514,7 +514,7 @@ class Trainer(object):
 
             with torch.autograd.profiler.record_function("clip-grads"):
                 # clip grads
-                grad_norm = self.clip_grad_norm(self.args.clip_norm)
+                grad_norm = self.clip_grad_norm(self.args.clip_norm, self.args.clip_mode)
 
             # check that grad norms are consistent across workers
             if (
@@ -736,8 +736,8 @@ class Trainer(object):
             self.quantizer.step_update(self._num_updates)
         metrics.log_scalar("num_updates", self._num_updates, weight=0, priority=200)
 
-    def clip_grad_norm(self, clip_norm):
-        return self.optimizer.clip_grad_norm(clip_norm, aggregate_norm_fn=None)
+    def clip_grad_norm(self, clip_norm, clip_mode):
+        return self.optimizer.clip_grad_norm(clip_norm, aggregate_norm_fn=None, mode=clip_mode)
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:

@@ -130,10 +130,10 @@ class _FP16OptimizerMixin(object):
             for p32 in self.fp32_params:
                 p32.grad.data.mul_(c)
 
-    def clip_grad_norm(self, max_norm, aggregate_norm_fn=None):
+    def clip_grad_norm(self, max_norm, aggregate_norm_fn=None, mode='total'):
         """Clips gradient norm and updates dynamic loss scaler."""
         self._sync_fp16_grads_to_fp32()
-        grad_norm = utils.clip_grad_norm_(self.fp32_params, max_norm, aggregate_norm_fn)
+        grad_norm = utils.clip_grad_norm_(self.fp32_params, max_norm, aggregate_norm_fn, mode)
 
         # detect overflow and adjust loss scale
         if self.scaler is not None:
