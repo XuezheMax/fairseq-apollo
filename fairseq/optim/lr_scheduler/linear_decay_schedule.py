@@ -1,9 +1,9 @@
 from . import FairseqLRScheduler, register_lr_scheduler
 
 
-@register_lr_scheduler('step')
-class StepScheduler(FairseqLRScheduler):
-    """Decays the learning rate of each parameter group by gamma every step_size updates.
+@register_lr_scheduler('linear_decay')
+class LinearDecaySchedule(FairseqLRScheduler):
+    """Decay the LR on a linear schedule.
     """
 
     def __init__(self, args, optimizer):
@@ -26,13 +26,13 @@ class StepScheduler(FairseqLRScheduler):
 
         # linearly warmup for the first args.warmup_updates
         if args.warmup_updates > 0:
-            self.lr_step = (warmup_end_lr - args.warmup_init_lr) / args.warmup_updates
+            self.warmup_factor = (warmup_end_lr - args.warmup_init_lr) / args.warmup_updates
         else:
-            self.lr_step = 0
+            self.warmup_factor = 0
 
-        # Then, decay by gamma every step_size updates
-        self.gamma = args.lr_decay_rate
-        self.step_size = args.lr_decay_steps
+        self.end_learning_rate = args.end_learning_rate
+        self.total_num_update = args.total_num_update
+        self.lr_factor = (warmup_end_lr - self.end_learning_rate) / (self.total_num_update - args.warmup_updates)
 
         # initial learning rate
         self.lr = args.warmup_init_lr
@@ -41,12 +41,12 @@ class StepScheduler(FairseqLRScheduler):
     @staticmethod
     def add_args(parser):
         """Add arguments to the parser for this LR scheduler."""
-        parser.add_argument('--warmup-updates', default=1000, type=int, metavar='N',
+        parser.add_argument('--warmup-updates', default=0, type=int, metavar='N',
                             help='warmup the learning rate linearly for the first N updates')
         parser.add_argument('--warmup-init-lr', default=-1, type=float, metavar='LR',
                             help='initial learning rate during warmup phase; default is args.lr')
-        parser.add_argument('--lr-decay-rate', default=0.1, type=float, metavar='DR')
-        parser.add_argument('--lr-decay-steps', default=10000, type=int, metavar='DS')
+        parser.add_argument('--end-learning-rate', default=0.0, type=float)
+        parser.add_argument('--total-num-update', default=1000000, type=int)
 
     def step(self, epoch, val_loss=None):
         """Update the learning rate at the end of the given epoch."""
@@ -57,9 +57,12 @@ class StepScheduler(FairseqLRScheduler):
     def step_update(self, num_updates):
         """Update the learning rate after each update."""
         if num_updates <= self.args.warmup_updates:
-            self.lr = self.args.warmup_init_lr + num_updates * self.lr_step
-        elif num_updates > 0 and num_updates % self.step_size == 0:
-            self.lr = self.lr * self.gamma
+            self.lr = self.args.warmup_init_lr + num_updates * self.warmup_factor
+        elif num_updates >= self.total_num_update:
+            self.lr = self.end_learning_rate
+        else:
+            warmup = self.args.warmup_updates
+            self.lr = self.lr_factor * (num_updates - warmup) + self.end_learning_rate
 
         self.optimizer.set_lr(self.lr)
         return self.lr
