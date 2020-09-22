@@ -61,8 +61,7 @@ class LinearDecaySchedule(FairseqLRScheduler):
         elif num_updates >= self.total_num_update:
             self.lr = self.end_learning_rate
         else:
-            warmup = self.args.warmup_updates
-            self.lr = self.lr_factor * (num_updates - warmup) + self.end_learning_rate
+            self.lr = self.lr_factor * (self.total_num_update - num_updates) + self.end_learning_rate
 
         self.optimizer.set_lr(self.lr)
         return self.lr
