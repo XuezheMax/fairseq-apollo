@@ -16,7 +16,7 @@ class FairseqApollo(FairseqOptimizer):
         """Add optimizer-specific arguments to the parser."""
         parser.add_argument('--apollo-beta', default='0.9', type=float, metavar='B',
                             help='beta for Apollo optimizer')
-        parser.add_argument('--apollo-eps', type=float, default=1e-8, metavar='D',
+        parser.add_argument('--apollo-eps', type=float, default=1e-4, metavar='D',
                             help='epsilon for Apollo optimizer')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
@@ -49,7 +49,7 @@ class Apollo(Optimizer):
             beta (float, optional): coefficient used for computing
                 running averages of gradient (default: 0.9)
             eps (float, optional): term added to the denominator to improve
-                numerical stability (default: 1e-8)
+                numerical stability (default: 1e-4)
             warmup (int, optional): number of warmup steps (default: 0)
             init_lr (float, optional): initial learning rate for warmup (default: 0.01)
             weight_decay (float, optional): weight decay coefficient (default: 0)
@@ -57,7 +57,7 @@ class Apollo(Optimizer):
                 ``'L2'`` | ``'decoupled'`` | ``'stable'`` (default: 'L2')
         """
 
-    def __init__(self, params, lr=1.0, beta=0.9, eps=1e-8, weight_decay=0, weight_decay_type='L2'):
+    def __init__(self, params, lr=1.0, beta=0.9, eps=1e-4, weight_decay=0, weight_decay_type='L2'):
         if not 0.0 < lr:
             raise ValueError("Invalid learning rate value: {}".format(lr))
         if not 0.0 <= eps:
