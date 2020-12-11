@@ -19,7 +19,7 @@ class FairseqApollo(FairseqOptimizer):
                             help='beta for Apollo optimizer')
         parser.add_argument('--apollo-eps', type=float, default=1e-4, metavar='D',
                             help='epsilon for Apollo optimizer')
-        parser.add_argument('--rebound', choices=['constant', 'belief'], default='constant',
+        parser.add_argument('--apollo-rebound', choices=['constant', 'belief'], default='constant',
                             help='type of recified bound of diagonal hessian')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
@@ -38,7 +38,7 @@ class FairseqApollo(FairseqOptimizer):
             'lr': self.args.lr[0],
             'beta': self.args.apollo_beta,
             'eps': self.args.apollo_eps,
-            'rebound': self.args.rebound,
+            'rebound': self.args.apollo_rebound,
             'weight_decay': self.args.weight_decay,
             'weight_decay_type': self.args.weight_decay_type,
         }
