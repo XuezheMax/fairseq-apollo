@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch.optim.optimizer import Optimizer
 
@@ -18,9 +19,11 @@ class FairseqApollo(FairseqOptimizer):
                             help='beta for Apollo optimizer')
         parser.add_argument('--apollo-eps', type=float, default=1e-4, metavar='D',
                             help='epsilon for Apollo optimizer')
+        parser.add_argument('--rebound', choices=['constant', 'belief'], default='constant',
+                            help='type of recified bound of diagonal hessian')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
-        parser.add_argument('--weight-decay-type', choices=['L2', 'decoupled', 'stable'], default='L2',
+        parser.add_argument('--weight-decay-type', choices=['L2', 'decoupled', 'stable'], default=None,
                             help='type of weight decay')
 
     @property
@@ -35,6 +38,7 @@ class FairseqApollo(FairseqOptimizer):
             'lr': self.args.lr[0],
             'beta': self.args.apollo_beta,
             'eps': self.args.apollo_eps,
+            'rebound': self.args.rebound,
             'weight_decay': self.args.weight_decay,
             'weight_decay_type': self.args.weight_decay_type,
         }
@@ -45,32 +49,36 @@ class Apollo(Optimizer):
         Arguments:
             params (iterable): iterable of parameters to optimize or dicts defining
                 parameter groups
-            lr (float, optional): learning rate (default: 1.0)
+            lr (float, required): learning rate
             beta (float, optional): coefficient used for computing
                 running averages of gradient (default: 0.9)
             eps (float, optional): term added to the denominator to improve
                 numerical stability (default: 1e-4)
-            warmup (int, optional): number of warmup steps (default: 0)
-            init_lr (float, optional): initial learning rate for warmup (default: 0.01)
+            rebound (str, optional): recified bound for diagonal hessian:
+                ``'constant'`` | ``'belief'`` (default: None)
             weight_decay (float, optional): weight decay coefficient (default: 0)
             weight_decay_type (str, optional): type of weight decay:
-                ``'L2'`` | ``'decoupled'`` | ``'stable'`` (default: 'L2')
+                ``'L2'`` | ``'decoupled'`` | ``'stable'`` (default: None)
         """
 
-    def __init__(self, params, lr=1.0, beta=0.9, eps=1e-4, weight_decay=0, weight_decay_type='L2'):
+    def __init__(self, params, lr, beta=0.9, eps=1e-4, rebound='constant', weight_decay=0, weight_decay_type=None):
         if not 0.0 < lr:
             raise ValueError("Invalid learning rate value: {}".format(lr))
         if not 0.0 <= eps:
             raise ValueError("Invalid epsilon value: {}".format(eps))
         if not 0.0 <= beta < 1.0:
             raise ValueError("Invalid beta parameter at index 0: {}".format(beta))
+        if rebound not in ['constant', 'belief']:
+            raise ValueError("Invalid recitifed bound: {}".format(rebound))
         if not 0.0 <= weight_decay:
             raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
+        if weight_decay_type is None:
+            weight_decay_type = 'L2' if rebound == 'constant' else 'decoupled'
         if weight_decay_type not in ['L2', 'decoupled', 'stable']:
             raise ValueError("Invalid weight decay type: {}".format(weight_decay_type))
 
-        defaults = dict(lr=lr, beta=beta, eps=eps, weight_decay=weight_decay,
-                        weight_decay_type=weight_decay_type)
+        defaults = dict(lr=lr, beta=beta, eps=eps, rebound=rebound,
+                        weight_decay=weight_decay, weight_decay_type=weight_decay_type)
         super(Apollo, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -126,8 +134,14 @@ class Apollo(Optimizer):
                 bias_correction = 1 - beta ** state['step']
                 alpha = (1 - beta) / bias_correction
 
-                # Update the running average grad
+                # calc the diff grad
                 delta_grad = grad - exp_avg_grad
+                if group['rebound'] == 'belief':
+                    rebound = delta_grad.norm(p=np.inf)
+                else:
+                    rebound = 1.0
+
+                # Update the running average grad
                 exp_avg_grad.add_(delta_grad, alpha=alpha)
 
                 denom = d_p.norm(p=4).add(group['eps'])
@@ -139,7 +153,11 @@ class Apollo(Optimizer):
                 B.addcmul_(v_sq, delta)
 
                 # calc direction of parameter updates
-                denom = B.abs().clamp_(min=1)
+                if group['rebound'] == 'belief':
+                    denom = torch.max(B.abs(), rebound).add_(group['eps'] / alpha)
+                else:
+                    denom = B.abs().clamp_(min=rebound)
+
                 d_p.copy_(exp_avg_grad.div(denom))
 
                 # Perform step weight decay
