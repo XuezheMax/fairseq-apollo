@@ -38,6 +38,13 @@ class MilestoneScheduler(FairseqLRScheduler):
         self.lr = args.warmup_init_lr
         self.optimizer.set_lr(self.lr)
 
+    def state_dict(self):
+        return {'lr': self.lr}
+
+    def load_state_dict(self, state_dict):
+        if 'lr' in state_dict:
+            self.lr = state_dict['lr']
+
     @staticmethod
     def add_args(parser):
         """Add arguments to the parser for this LR scheduler."""

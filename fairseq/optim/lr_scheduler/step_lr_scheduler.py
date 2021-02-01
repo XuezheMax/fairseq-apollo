@@ -48,6 +48,13 @@ class StepScheduler(FairseqLRScheduler):
         parser.add_argument('--lr-decay-rate', default=0.1, type=float, metavar='DR')
         parser.add_argument('--lr-decay-steps', default=10000, type=int, metavar='DS')
 
+    def state_dict(self):
+        return {'lr': self.lr}
+
+    def load_state_dict(self, state_dict):
+        if 'lr' in state_dict:
+            self.lr = state_dict['lr']
+
     def step(self, epoch, val_loss=None):
         """Update the learning rate at the end of the given epoch."""
         super().step(epoch, val_loss)

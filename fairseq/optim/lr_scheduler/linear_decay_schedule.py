@@ -48,6 +48,13 @@ class LinearDecaySchedule(FairseqLRScheduler):
         parser.add_argument('--end-learning-rate', default=0.0, type=float)
         parser.add_argument('--total-num-update', default=1000000, type=int)
 
+    def state_dict(self):
+        return {'lr': self.lr}
+
+    def load_state_dict(self, state_dict):
+        if 'lr' in state_dict:
+            self.lr = state_dict['lr']
+
     def step(self, epoch, val_loss=None):
         """Update the learning rate at the end of the given epoch."""
         super().step(epoch, val_loss)
