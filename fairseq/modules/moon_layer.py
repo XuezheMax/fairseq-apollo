@@ -255,6 +255,7 @@ class MoonDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
+        x = self.activation_fn(x)
         x = self.dropout_module(x)
         x = self.self_attn_layer_norm(residual + x)
 
