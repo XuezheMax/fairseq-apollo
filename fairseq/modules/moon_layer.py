@@ -93,9 +93,9 @@ class MoonEncoderLayer(nn.Module):
 
         residual = x
         x, _ = self.self_attn(query=x, key=x, value=x, key_padding_mask=encoder_padding_mask, attn_mask=attn_mask)
-        x = self.activation_fn(x)
+        x = self.activation_fn(x + residual)
         x = self.dropout_module(x)
-        x = self.self_attn_layer_norm(residual + x)
+        x = self.self_attn_layer_norm(x)
 
         #residual = x
         #x = self.activation_fn(self.fc1(x))
@@ -255,9 +255,9 @@ class MoonDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
-        x = self.activation_fn(x)
+        x = self.activation_fn(x + residual)
         x = self.dropout_module(x)
-        x = self.self_attn_layer_norm(residual + x)
+        x = self.self_attn_layer_norm(x)
 
         residual = x
         if prev_attn_state is not None:
@@ -281,9 +281,9 @@ class MoonDecoderLayer(nn.Module):
             need_weights=need_attn or (not self.training and self.need_attn),
             need_head_weights=need_head_weights,
         )
-        x = self.activation_fn(x)
+        x = self.activation_fn(x + residual)
         x = self.dropout_module(x)
-        x = self.encoder_attn_layer_norm(residual + x)
+        x = self.encoder_attn_layer_norm(x)
 
         #residual = x
         #x = self.activation_fn(self.fc1(x))
