@@ -44,12 +44,12 @@ class MoonEncoderLayer(nn.Module):
         if activation_dropout_p == 0:
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
-        #self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
+        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
 
-        #self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
-        #self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
 
-        #self.final_layer_norm = LayerNorm(self.embed_dim)
+        self.final_layer_norm = LayerNorm(self.embed_dim)
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
@@ -93,16 +93,15 @@ class MoonEncoderLayer(nn.Module):
 
         residual = x
         x, _ = self.self_attn(query=x, key=x, value=x, key_padding_mask=encoder_padding_mask, attn_mask=attn_mask)
-        x = self.activation_fn(x)
         x = self.dropout_module(x)
         x = self.self_attn_layer_norm(residual + x)
 
-        #residual = x
-        #x = self.activation_fn(self.fc1(x))
-        #x = self.activation_dropout_module(x)
-        #x = self.fc2(x)
-        #x = self.dropout_module(x)
-        #x = self.final_layer_norm(residual + x)
+        residual = x
+        x = self.activation_fn(self.fc1(x))
+        x = self.activation_dropout_module(x)
+        x = self.fc2(x)
+        x = self.dropout_module(x)
+        x = self.final_layer_norm(residual + x)
         return x
 
 
@@ -142,15 +141,15 @@ class MoonDecoderLayer(nn.Module):
         if activation_dropout_p == 0:
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
-        #self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
+        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
 
         self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
         self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        #self.fc1 = self.build_fc1(self.embed_dim, args.decoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
-        #self.fc2 = self.build_fc2(args.decoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc1 = self.build_fc1(self.embed_dim, args.decoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc2 = self.build_fc2(args.decoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
 
-        #self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         self.need_attn = True
         self.onnx_trace = False
@@ -255,7 +254,6 @@ class MoonDecoderLayer(nn.Module):
             need_weights=False,
             attn_mask=self_attn_mask,
         )
-        x = self.activation_fn(x)
         x = self.dropout_module(x)
         x = self.self_attn_layer_norm(residual + x)
 
@@ -281,16 +279,15 @@ class MoonDecoderLayer(nn.Module):
             need_weights=need_attn or (not self.training and self.need_attn),
             need_head_weights=need_head_weights,
         )
-        # x = self.activation_fn(x)
         x = self.dropout_module(x)
         x = self.encoder_attn_layer_norm(residual + x)
 
-        #residual = x
-        #x = self.activation_fn(self.fc1(x))
-        #x = self.activation_dropout_module(x)
-        #x = self.fc2(x)
-        #x = self.dropout_module(x)
-        #x = self.final_layer_norm(residual + x)
+        residual = x
+        x = self.activation_fn(self.fc1(x))
+        x = self.activation_dropout_module(x)
+        x = self.fc2(x)
+        x = self.dropout_module(x)
+        x = self.final_layer_norm(residual + x)
 
         if self.onnx_trace and incremental_state is not None:
             saved_state = self.self_attn._get_input_buffer(incremental_state)
