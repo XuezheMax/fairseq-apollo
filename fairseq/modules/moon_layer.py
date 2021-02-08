@@ -41,7 +41,8 @@ class BottleNeck(nn.Module):
         x = self.layer_norm1(self.bot_fc1(x))
         x = self.act_fn(x)
 
-        x = self.layer_norm2(self.bot_conv(x))
+        x = self.bot_conv(x.transpose(1, 2))
+        x = self.layer_norm2(x.transpose(1, 2))
         x = self.act_fn(x)
 
         x = self.bot_fc2(x)
