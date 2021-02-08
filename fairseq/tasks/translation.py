@@ -10,6 +10,7 @@ import logging
 import os
 
 import numpy as np
+import torch
 
 from fairseq import metrics, options, utils
 from fairseq.data import (
@@ -314,8 +315,14 @@ class TranslationTask(FairseqTask):
 
             counts, totals = [], []
             for i in range(EVAL_BLEU_ORDER):
-                counts.append(sum_logs('_bleu_counts_' + str(i)))
-                totals.append(sum_logs('_bleu_totals_' + str(i)))
+                count = sum_logs('_bleu_counts_' + str(i))
+                total = sum_logs('_bleu_totals_' + str(i))
+                if isinstance(count, torch.Tensor):
+                    count = count.cpu()
+                if isinstance(total, torch.Tensor):
+                    total = total.cpu()
+                counts.append(count)
+                totals.append(total)
 
             if max(totals) > 0:
                 # log counts as numpy arrays -- log_scalar will sum them correctly
