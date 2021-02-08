@@ -14,6 +14,40 @@ from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
 
 
+class BottleNeck(nn.Module):
+    def __init__(self, input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size):
+        super(BottleNeck, self).__init__()
+
+        self.act_fn = utils.get_activation_fn(activation=activation_fn)
+
+        self.bot_fc1 = self.build_fc1(input_dim, hid_dim, quant_noise, quant_noise_block_size)
+        self.layer_norm1 = LayerNorm(hid_dim)
+
+        self.bot_conv = self.build_conv(hid_dim, quant_noise, quant_noise_block_size)
+        self.layer_norm2 = LayerNorm(hid_dim)
+
+        self.bot_fc2 = self.build_fc2(hid_dim, input_dim, quant_noise, quant_noise_block_size)
+
+    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_conv(self, channels, quant_noise, quant_noise_block_size):
+        return nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+
+    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def forward(self, x):
+        x = self.layer_norm1(self.bot_fc1(x))
+        x = self.act_fn(x)
+
+        x = self.layer_norm2(self.bot_conv(x))
+        x = self.act_fn(x)
+
+        x = self.bot_fc2(x)
+        return x
+
+
 class MoonEncoderLayer(nn.Module):
     """Encoder layer block.
 
@@ -33,29 +67,19 @@ class MoonEncoderLayer(nn.Module):
         super().__init__()
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
+
         self.embed_dim = args.encoder_embed_dim
 
         self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
+        activation_fn = getattr(args, "activation_fn", "relu")
+
+        self.bot = self.build_bottleneck(self.embed_dim, args.encoder_bot_embed_dim, activation_fn,
+                                         self.quant_noise, self.quant_noise_block_size)
+
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
-        activation_dropout_p = getattr(args, "activation_dropout", 0)
-        if activation_dropout_p == 0:
-            # for backwards compatibility with models that use args.relu_dropout
-            activation_dropout_p = getattr(args, "relu_dropout", 0)
-        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
-
-        self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
-        self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
-
         self.final_layer_norm = LayerNorm(self.embed_dim)
-
-    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
-
-    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def build_self_attention(self, embed_dim, args):
         return MultiheadAttention(
@@ -66,6 +90,9 @@ class MoonEncoderLayer(nn.Module):
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
+
+    def build_bottleneck(self, input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size):
+        return BottleNeck(input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size)
 
     def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
         """
@@ -97,9 +124,7 @@ class MoonEncoderLayer(nn.Module):
         x = self.self_attn_layer_norm(residual + x)
 
         residual = x
-        x = self.activation_fn(self.fc1(x))
-        x = self.activation_dropout_module(x)
-        x = self.fc2(x)
+        x = self.bot(x)
         x = self.dropout_module(x)
         x = self.final_layer_norm(residual + x)
         return x

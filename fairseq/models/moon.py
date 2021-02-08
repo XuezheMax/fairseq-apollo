@@ -67,13 +67,11 @@ class MoonModel(FairseqEncoderDecoderModel):
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
-        parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
-                            help='dropout probability after activation in FFN.')
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
-        parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
+        parser.add_argument('--encoder-bot-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
@@ -85,7 +83,7 @@ class MoonModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+        parser.add_argument('--decoder-bot-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
