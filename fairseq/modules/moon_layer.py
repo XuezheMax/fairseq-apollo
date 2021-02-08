@@ -15,16 +15,16 @@ from torch import Tensor
 
 
 class BottleNeck(nn.Module):
-    def __init__(self, input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size):
+    def __init__(self, input_dim, hid_dim, activation_fn, dropout_p,
+                 quant_noise, quant_noise_block_size):
         super(BottleNeck, self).__init__()
 
         self.act_fn = utils.get_activation_fn(activation=activation_fn)
+        self.dropout_module = FairseqDropout(float(dropout_p), module_name=self.__class__.__name__)
 
         self.bot_fc1 = self.build_fc1(input_dim, hid_dim, quant_noise, quant_noise_block_size)
-        self.layer_norm1 = LayerNorm(hid_dim)
 
         self.bot_conv = self.build_conv(hid_dim, quant_noise, quant_noise_block_size)
-        self.layer_norm2 = LayerNorm(hid_dim)
 
         self.bot_fc2 = self.build_fc2(hid_dim, input_dim, quant_noise, quant_noise_block_size)
 
@@ -38,12 +38,12 @@ class BottleNeck(nn.Module):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def forward(self, x):
-        x = self.layer_norm1(self.bot_fc1(x))
-        x = self.act_fn(x)
+        x = self.act_fn(self.bot_fc1(x))
+        x = self.dropout_module(x)
 
         x = self.bot_conv(x.transpose(1, 2))
-        x = self.layer_norm2(x.transpose(1, 2))
-        x = self.act_fn(x)
+        x = self.act_fn(x.transpose(1, 2))
+        x = self.dropout_module(x)
 
         x = self.bot_fc2(x)
         return x
@@ -75,8 +75,12 @@ class MoonEncoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         activation_fn = getattr(args, "activation_fn", "relu")
+        activation_dropout_p = getattr(args, "activation_dropout", 0)
+        if activation_dropout_p == 0:
+            # for backwards compatibility with models that use args.relu_dropout
+            activation_dropout_p = getattr(args, "relu_dropout", 0)
         self.bot = self.build_bottleneck(self.embed_dim, args.encoder_bot_embed_dim, activation_fn,
-                                         self.quant_noise, self.quant_noise_block_size)
+                                         activation_dropout_p, self.quant_noise, self.quant_noise_block_size)
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.final_layer_norm = LayerNorm(self.embed_dim)
@@ -91,8 +95,8 @@ class MoonEncoderLayer(nn.Module):
             qn_block_size=self.quant_noise_block_size,
         )
 
-    def build_bottleneck(self, input_dim, hid_dim, activation_fn, q_noise, qn_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, q_noise, qn_block_size)
+    def build_bottleneck(self, input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size):
+        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size)
 
     def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
         """
