@@ -74,7 +74,6 @@ class MoonEncoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         activation_fn = getattr(args, "activation_fn", "relu")
-
         self.bot = self.build_bottleneck(self.embed_dim, args.encoder_bot_embed_dim, activation_fn,
                                          self.quant_noise, self.quant_noise_block_size)
 
@@ -91,8 +90,8 @@ class MoonEncoderLayer(nn.Module):
             qn_block_size=self.quant_noise_block_size,
         )
 
-    def build_bottleneck(self, input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, quant_noise, quant_noise_block_size)
+    def build_bottleneck(self, input_dim, hid_dim, activation_fn, q_noise, qn_block_size):
+        return BottleNeck(input_dim, hid_dim, activation_fn, q_noise, qn_block_size)
 
     def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
         """
@@ -160,30 +159,21 @@ class MoonDecoderLayer(nn.Module):
         export = getattr(args, "char_inputs", False)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
-        activation_dropout_p = getattr(args, "activation_dropout", 0)
-        if activation_dropout_p == 0:
-            # for backwards compatibility with models that use args.relu_dropout
-            activation_dropout_p = getattr(args, "relu_dropout", 0)
-        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
-
         self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
         self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        self.fc1 = self.build_fc1(self.embed_dim, args.decoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
-        self.fc2 = self.build_fc2(args.decoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
+        activation_fn = getattr(args, "activation_fn", "relu")
+        self.bot = self.build_bottleneck(self.embed_dim, args.decoder_bot_embed_dim, activation_fn,
+                                         self.quant_noise, self.quant_noise_block_size)
 
+        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         self.need_attn = True
         self.onnx_trace = False
 
-    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
-
-    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
+    def build_bottleneck(self, input_dim, hid_dim, activation_fn, q_noise, qn_block_size):
+        return BottleNeck(input_dim, hid_dim, activation_fn, q_noise, qn_block_size)
 
     def build_self_attention(self, embed_dim, args, add_bias_kv=False, add_zero_attn=False):
         return MultiheadAttention(
@@ -308,9 +298,7 @@ class MoonDecoderLayer(nn.Module):
         x = self.encoder_attn_layer_norm(residual + x)
 
         residual = x
-        x = self.activation_fn(self.fc1(x))
-        x = self.activation_dropout_module(x)
-        x = self.fc2(x)
+        x = self.bot(x)
         x = self.dropout_module(x)
         x = self.final_layer_norm(residual + x)
 
