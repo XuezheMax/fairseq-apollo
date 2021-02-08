@@ -72,7 +72,7 @@ class MoonModel(FairseqEncoderDecoderModel):
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
         parser.add_argument('--encoder-bot-embed-dim', type=int, metavar='N',
-                            help='encoder embedding dimension for FFN')
+                            help='encoder embedding dimension for BOT')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
@@ -84,7 +84,7 @@ class MoonModel(FairseqEncoderDecoderModel):
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
         parser.add_argument('--decoder-bot-embed-dim', type=int, metavar='N',
-                            help='decoder embedding dimension for FFN')
+                            help='decoder embedding dimension for BOT')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
         parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
@@ -735,14 +735,14 @@ class MoonDecoder(FairseqIncrementalDecoder):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
+    args.encoder_bot_embed_dim = getattr(args, "encoder_bot_embed_dim", 512)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
 
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
-    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim)
+    args.decoder_bot_embed_dim = getattr(args, "decoder_bot_embed_dim", args.encoder_bot_embed_dim)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
