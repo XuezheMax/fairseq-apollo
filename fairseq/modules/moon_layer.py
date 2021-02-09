@@ -36,10 +36,7 @@ class BottleNeck(nn.Module):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def build_conv(self, channels, quant_noise, quant_noise_block_size):
-        if self.shift:
-            return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
-        else:
-            return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
+        return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
 
     def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
