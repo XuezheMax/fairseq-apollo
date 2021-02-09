@@ -251,7 +251,7 @@ class MoonEncoder(FairseqEncoder):
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
         self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
-                              args.quant_noise_pq, args.quant_noise_pq_block_size)
+                              args.quant_noise_pq, args.quant_noise_pq_block_size, shift=False)
         self.bot_layer_norm = LayerNorm(embed_dim)
 
         if self.encoder_layerdrop > 0.0:
@@ -487,7 +487,7 @@ class MoonDecoder(FairseqIncrementalDecoder):
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
         self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
-                              args.quant_noise_pq, args.quant_noise_pq_block_size)
+                              args.quant_noise_pq, args.quant_noise_pq_block_size, shift=True)
         self.bot_layer_norm = LayerNorm(embed_dim)
 
         self.cross_self_attention = getattr(args, "cross_self_attention", False)

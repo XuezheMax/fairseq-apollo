@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import LayerNorm, MultiheadAttention
 from fairseq.modules.quant_noise import quant_noise
@@ -16,8 +17,11 @@ from torch import Tensor
 
 class BottleNeck(nn.Module):
     def __init__(self, input_dim, hid_dim, activation_fn, dropout_p,
-                 quant_noise, quant_noise_block_size):
+                 quant_noise, quant_noise_block_size, shift=False):
         super(BottleNeck, self).__init__()
+
+        self.shift = shift
+        self.shift_padding = [2, 0] if shift else [1, 1]
 
         self.act_fn = utils.get_activation_fn(activation=activation_fn)
         self.dropout_module = FairseqDropout(float(dropout_p), module_name=self.__class__.__name__)
@@ -32,7 +36,10 @@ class BottleNeck(nn.Module):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def build_conv(self, channels, quant_noise, quant_noise_block_size):
-        return nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        if self.shift:
+            return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
+        else:
+            return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
 
     def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
@@ -41,7 +48,7 @@ class BottleNeck(nn.Module):
         x = self.act_fn(self.bot_fc1(x))
         x = self.dropout_module(x)
 
-        x = self.bot_conv(x.transpose(1, 2))
+        x = self.bot_conv(F.pad(x.transpose(1, 2), self.shift_padding))
         x = self.act_fn(x.transpose(1, 2))
         x = self.dropout_module(x)
 
@@ -96,7 +103,8 @@ class MoonEncoderLayer(nn.Module):
         )
 
     def build_bottleneck(self, input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size)
+        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p,
+                          q_noise, qn_block_size, shift=False)
 
     def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
         """
@@ -182,7 +190,8 @@ class MoonDecoderLayer(nn.Module):
         self.onnx_trace = False
 
     def build_bottleneck(self, input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size)
+        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p,
+                          q_noise, qn_block_size, shift=True)
 
     def build_self_attention(self, embed_dim, args, add_bias_kv=False, add_zero_attn=False):
         return MultiheadAttention(
