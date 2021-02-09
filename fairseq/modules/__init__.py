@@ -33,7 +33,7 @@ from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
-from .moon_layer import MoonDecoderLayer, MoonEncoderLayer
+from .moon_layer import MoonDecoderLayer, MoonEncoderLayer, BottleNeck
 from .vggblock import VGGBlock
 
 __all__ = [
@@ -72,6 +72,7 @@ __all__ = [
     'TransformerEncoderLayer',
     'MoonDecoderLayer',
     'MoonEncoderLayer',
+    'BottleNeck',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',

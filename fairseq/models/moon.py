@@ -24,6 +24,7 @@ from fairseq.modules import (
     LayerNorm,
     PositionalEmbedding,
     SinusoidalPositionalEmbedding,
+    BottleNeck,
     MoonDecoderLayer,
     MoonEncoderLayer,
 )
@@ -244,6 +245,15 @@ class MoonEncoder(FairseqEncoder):
         else:
             self.quant_noise = None
 
+        activation_fn = getattr(args, "activation_fn", "relu")
+        activation_dropout_p = getattr(args, "activation_dropout", 0)
+        if activation_dropout_p == 0:
+            # for backwards compatibility with models that use args.relu_dropout
+            activation_dropout_p = getattr(args, "relu_dropout", 0)
+        self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
+                              args.quant_noise_pq, args.quant_noise_pq_block_size)
+        self.bot_layer_norm = LayerNorm(embed_dim)
+
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
         else:
@@ -265,6 +275,11 @@ class MoonEncoder(FairseqEncoder):
         x = self.dropout_module(x)
         if self.quant_noise is not None:
             x = self.quant_noise(x)
+
+        residual = x
+        x = self.bot(x)
+        x = self.dropout_module(x)
+        x = self.bot_layer_norm(residual + x)
         return x, embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
@@ -466,6 +481,15 @@ class MoonDecoder(FairseqIncrementalDecoder):
         else:
             self.layernorm_embedding = None
 
+        activation_fn = getattr(args, "activation_fn", "relu")
+        activation_dropout_p = getattr(args, "activation_dropout", 0)
+        if activation_dropout_p == 0:
+            # for backwards compatibility with models that use args.relu_dropout
+            activation_dropout_p = getattr(args, "relu_dropout", 0)
+        self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
+                              args.quant_noise_pq, args.quant_noise_pq_block_size)
+        self.bot_layer_norm = LayerNorm(embed_dim)
+
         self.cross_self_attention = getattr(args, "cross_self_attention", False)
 
         if self.decoder_layerdrop > 0.0:
@@ -623,6 +647,11 @@ class MoonDecoder(FairseqIncrementalDecoder):
             x = self.layernorm_embedding(x)
 
         x = self.dropout_module(x)
+
+        residual = x
+        x = self.bot(x)
+        x = self.dropout_module(x)
+        x = self.bot_layer_norm(residual + x)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
