@@ -42,6 +42,7 @@ class LinearMultiheadAttention(nn.Module):
     ):
         super().__init__()
         self.embed_dim = embed_dim
+        self.scaling_emb = self.embed_dim ** -0.5
         self.proj_len = proj_length
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
@@ -52,7 +53,7 @@ class LinearMultiheadAttention(nn.Module):
 
         self.head_dim = embed_dim // num_heads
         assert (self.head_dim * num_heads == self.embed_dim), "embed_dim must be divisible by num_heads"
-        self.scaling = self.head_dim ** -0.5
+        self.scaling_h = self.head_dim ** -0.5
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
@@ -132,8 +133,8 @@ class LinearMultiheadAttention(nn.Module):
             value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # B x N x L -> B x L x N
-        pk = self.e_proj(key).transpose(1, 2)
-        pv = self.f_proj(value).transpose(1, 2)
+        pk = self.e_proj(key * self.scaling_emb).transpose(1, 2)
+        pv = self.f_proj(value * self.scaling_emb).transpose(1, 2)
         # B x L x D
         new_key = torch.bmm(pk, key)
         new_value = torch.bmm(pv, value)
@@ -284,7 +285,7 @@ class LinearMultiheadAttention(nn.Module):
             q = self.q_proj(query)
             k = self.k_proj(key)
             v = self.v_proj(value)
-        q *= self.scaling
+        q *= self.scaling_h
 
         if self.bias_k is not None:
             assert self.bias_v is not None
