@@ -35,7 +35,7 @@ DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
 
-@register_model("Luna")
+@register_model("luna")
 class LunaModel(FairseqEncoderDecoderModel):
     """
 
