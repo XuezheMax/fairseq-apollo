@@ -170,9 +170,9 @@ class LinearMultiheadAttention(nn.Module):
                 assert value is None
                 return key, value
             else:
-                return self._compute_kv(query, query, key_padding_mask)
+                return self._compute_kv(key, key, key_padding_mask)
         else:
-            return self._compute_kv(query, query, key_padding_mask)
+            return self._compute_kv(key, value, key_padding_mask)
 
     def forward(
         self,
