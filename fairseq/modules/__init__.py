@@ -24,6 +24,7 @@ from .learned_positional_embedding import LearnedPositionalEmbedding
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
+from .linear_multihead_attention import LinearMultiheadAttention
 from .positional_embedding import PositionalEmbedding
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
@@ -33,6 +34,7 @@ from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
+from .luna_layer import LunaEncoderLayer, LunaDecoderLayer
 from .moon_layer import MoonDecoderLayer, MoonEncoderLayer, BottleNeck
 from .vggblock import VGGBlock
 
@@ -62,6 +64,7 @@ __all__ = [
     'LightweightConv',
     'LinearizedConvolution',
     'MultiheadAttention',
+    'LinearMultiheadAttention',
     'PositionalEmbedding',
     'SamePad',
     'ScalarBias',
@@ -70,6 +73,8 @@ __all__ = [
     'TransformerSentenceEncoder',
     'TransformerDecoderLayer',
     'TransformerEncoderLayer',
+    'LunaEncoderLayer',
+    'LunaDecoderLayer',
     'MoonDecoderLayer',
     'MoonEncoderLayer',
     'BottleNeck',
