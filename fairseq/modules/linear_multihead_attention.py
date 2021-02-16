@@ -42,11 +42,12 @@ class LinearMultiheadAttention(nn.Module):
     ):
         super().__init__()
         self.embed_dim = embed_dim
-        self.scaling_emb = self.embed_dim ** -0.5
         self.proj_len = proj_length
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+        self.scaling_k = self.kdim ** -0.5
+        self.scaling_v = self.vdim ** -0.5
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -133,8 +134,8 @@ class LinearMultiheadAttention(nn.Module):
             value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # B x N x L -> B x L x N
-        pk = self.e_proj(key * self.scaling_emb).transpose(1, 2)
-        pv = self.f_proj(value * self.scaling_emb).transpose(1, 2)
+        pk = self.e_proj(key * self.scaling_k).transpose(1, 2)
+        pv = self.f_proj(value * self.scaling_v).transpose(1, 2)
         # B x L x D
         new_key = torch.bmm(pk, key)
         new_value = torch.bmm(pv, value)
