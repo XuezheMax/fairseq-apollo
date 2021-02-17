@@ -65,9 +65,6 @@ class LinearMultiheadAttention(nn.Module):
         self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        # self.e_proj = quant_noise(nn.Linear(self.kdim, self.kdim, bias=bias), q_noise, qn_block_size)
-        # self.f_proj = quant_noise(nn.Linear(self.vdim, self.vdim, bias=bias), q_noise, qn_block_size)
-
         self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
         self.f_proj = quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
 
@@ -98,8 +95,6 @@ class LinearMultiheadAttention(nn.Module):
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.q_proj.weight)
 
-        # nn.init.orthogonal_(self.e_proj.weight)
-        # nn.init.orthogonal_(self.f_proj.weight)
         nn.init.xavier_uniform_(self.e_proj.weight)
         nn.init.xavier_uniform_(self.f_proj.weight)
         if self.e_proj.bias is not None:
@@ -202,10 +197,7 @@ class LinearMultiheadAttention(nn.Module):
         if attn_mask is not None:
             raise NotImplementedError('Causal attention has not implemented.')
 
-        key, value = self.compute_kv(query, key, value,
-                                     key_padding_mask,
-                                     incremental_state,
-                                     static_kv, attn_mask)
+        key, value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
         key_padding_mask = None
 
         if (
