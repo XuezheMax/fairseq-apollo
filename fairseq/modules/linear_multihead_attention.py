@@ -12,6 +12,7 @@ from torch import Tensor, nn
 from torch.nn import Parameter
 
 from fairseq import utils
+from fairseq.modules import LayerNorm
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.quant_noise import quant_noise
@@ -67,6 +68,8 @@ class LinearMultiheadAttention(nn.Module):
 
         self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
         self.f_proj = quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
+        self.e_layer_norm = LayerNorm(self.kdim)
+        self.f_layer_norm = LayerNorm(self.vdim)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -115,11 +118,12 @@ class LinearMultiheadAttention(nn.Module):
             value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # B x N x L -> B x L x N
-        pk = self.e_proj(key * self.scaling_k).transpose(1, 2)
-        pv = self.f_proj(value * self.scaling_v).transpose(1, 2)
+        pk = F.relu(self.e_proj(key * self.scaling_k)).transpose(1, 2)
+        pv = F.relu(self.f_proj(value * self.scaling_v)).transpose(1, 2)
         # B x L x D
-        new_key = torch.bmm(pk, key)
-        new_value = torch.bmm(pv, value)
+        new_key = self.e_layer_norm(torch.bmm(pk, key))
+        new_value = self.f_layer_norm(torch.bmm(pv, value))
+
         # L x B x D
         return new_key.transpose(0, 1), new_value.transpose(0, 1)
 
