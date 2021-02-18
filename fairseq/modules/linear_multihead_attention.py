@@ -33,6 +33,7 @@ class LinearMultiheadAttention(nn.Module):
         kdim=None,
         vdim=None,
         dropout=0.0,
+        attention_dropout=0.0,
         bias=True,
         self_attention=False,
         encoder_decoder_attention=False,
@@ -50,6 +51,7 @@ class LinearMultiheadAttention(nn.Module):
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.attention_dropout_module = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
         assert (self.head_dim * num_heads == self.embed_dim), "embed_dim must be divisible by num_heads"
@@ -120,12 +122,14 @@ class LinearMultiheadAttention(nn.Module):
         # B x N x L -> B x L x N
         pk = F.relu(self.e_proj(key * self.scaling_k)).transpose(1, 2)
         pv = F.relu(self.f_proj(value * self.scaling_v)).transpose(1, 2)
-        # B x L x D
-        new_key = self.e_layer_norm(torch.bmm(pk, key))
-        new_value = self.f_layer_norm(torch.bmm(pv, value))
+        # B x L x D -> L x B x D
+        key = torch.bmm(pk, key).transpose(0, 1)
+        value = torch.bmm(pv, value).transpose(0, 1)
+        # apply dropout and layer normalization
+        key = self.e_layer_norm(self.dropout_module(key))
+        value = self.f_layer_norm(self.dropout_module(value))
 
-        # L x B x D
-        return new_key.transpose(0, 1), new_value.transpose(0, 1)
+        return key, value
 
     def compute_kv(self,
         query,
@@ -225,10 +229,10 @@ class LinearMultiheadAttention(nn.Module):
                 None,
                 None,
                 False,
-                self.dropout_module.p,
+                self.attention_dropout_module.p,
                 self.out_proj.weight,
                 self.out_proj.bias,
-                self.training or self.dropout_module.apply_during_inference,
+                self.training or self.attention_dropout_module.apply_during_inference,
                 key_padding_mask,
                 need_weights,
                 attn_mask,
@@ -354,7 +358,7 @@ class LinearMultiheadAttention(nn.Module):
 
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = attn_weights_float.type_as(attn_weights)
-        attn_probs = self.dropout_module(attn_weights)
+        attn_probs = self.attention_dropout_module(attn_weights)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
