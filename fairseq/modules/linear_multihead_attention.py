@@ -121,13 +121,9 @@ class LinearMultiheadAttention(nn.Module):
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.q_proj.weight)
 
-        self._init_positional_weight(self.e_proj.weight)
-        if self.e_proj.bias is not None:
-            nn.init.constant_(self.e_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.e_proj.weight)
         if self.f_proj is not None:
-            self._init_positional_weight(self.f_proj.weight)
-            if self.f_proj.bias is not None:
-                nn.init.constant_(self.f_proj.bias, 0.)
+            nn.init.xavier_uniform_(self.f_proj.weight)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
