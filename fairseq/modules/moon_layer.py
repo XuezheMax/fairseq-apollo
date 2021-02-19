@@ -47,7 +47,7 @@ class MoonEncoderLayer(nn.Module):
         self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
         self.ffn_layer_norm = LayerNorm(self.embed_dim)
 
-        self.self_attn = self.build_self_attention(self.embed_dim, self.proj_len, args)
+        self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
