@@ -30,10 +30,12 @@ class LinearMultiheadAttention(nn.Module):
         embed_dim,
         num_heads,
         proj_length,
-        kvdim=None,
+        kdim=None,
+        vdim=None,
         dropout=0.0,
         attention_dropout=0.0,
         bias=True,
+        kv_same=True,
         self_attention=False,
         encoder_decoder_attention=False,
         q_noise=0.0,
@@ -42,9 +44,15 @@ class LinearMultiheadAttention(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.proj_len = proj_length
-        self.kvdim = kvdim if kvdim is not None else embed_dim
-        self.qkv_same_dim = self.kvdim == embed_dim
-        self.scaling_kv = self.kvdim ** -0.5
+        self.kdim = kdim if kdim is not None else embed_dim
+        self.vdim = vdim if vdim is not None else embed_dim
+        if self_attention or encoder_decoder_attention:
+            assert kv_same, "self attention and encoder-decoder attention requires the same key and value"
+
+        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+        self.kv_same = kv_same
+        self.scaling_k = self.kdim ** -0.5
+        self.scaling_v = None if self.kv_same else self.vdim ** -0.5
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -65,8 +73,10 @@ class LinearMultiheadAttention(nn.Module):
         self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.len_proj = quant_noise(nn.Linear(self.kvdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.len_layer_norm = LayerNorm(self.kvdim)
+        self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
+        self.e_layer_norm = LayerNorm(self.kdim)
+        self.f_proj = None if self.kv_same else quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
+        self.f_layer_norm = None if self.kv_same else LayerNorm(self.vdim)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -95,27 +105,27 @@ class LinearMultiheadAttention(nn.Module):
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.q_proj.weight)
 
-        nn.init.xavier_uniform_(self.len_proj.weight)
+        nn.init.xavier_uniform_(self.e_proj.weight)
+        if self.f_proj is not None:
+            nn.init.xavier_uniform_(self.f_proj.weight)
+
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
     def _compute_kv(self, key, value, key_padding_mask):
-        kv_same = key.data_ptr() == value.data_ptr()
-        # TODO
-        assert kv_same
-        if kv_same:
+        if self.kv_same:
             # B x N x D
             kv = key.transpose(0, 1)
             if key_padding_mask is not None:
                 kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
             # B x N x L -> B x L x N
-            pkv = F.relu(self.len_proj(kv * self.scaling_kv)).transpose(1, 2)
+            pkv = F.relu(self.e_proj(kv * self.scaling_k)).transpose(1, 2)
             # B x L x D -> L x B x D
             kv = torch.bmm(pkv, kv).transpose(0, 1)
             # apply dropout and layer normalization
-            kv = self.len_layer_norm(self.dropout_module(kv))
+            kv = self.e_layer_norm(self.dropout_module(kv))
             return kv, kv
         else:
             # B x N x D
@@ -126,14 +136,14 @@ class LinearMultiheadAttention(nn.Module):
                 value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
             # B x N x L -> B x L x N
-            pk = F.relu(self.len_proj(key * self.scaling_kv)).transpose(1, 2)
-            pv = F.relu(self.len_proj(value * self.scaling_kv)).transpose(1, 2)
+            pk = F.relu(self.e_proj(key * self.scaling_k)).transpose(1, 2)
+            pv = F.relu(self.f_proj(value * self.scaling_v)).transpose(1, 2)
             # B x L x D -> L x B x D
             key = torch.bmm(pk, key).transpose(0, 1)
             value = torch.bmm(pv, value).transpose(0, 1)
             # apply dropout and layer normalization
-            key = self.len_layer_norm(self.dropout_module(key))
-            value = self.len_layer_norm(self.dropout_module(value))
+            key = self.e_layer_norm(self.dropout_module(key))
+            value = self.f_layer_norm(self.dropout_module(value))
 
             return key, value
 
