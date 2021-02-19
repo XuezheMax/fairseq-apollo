@@ -24,7 +24,6 @@ from fairseq.modules import (
     LayerNorm,
     PositionalEmbedding,
     SinusoidalPositionalEmbedding,
-    BottleNeck,
     MoonDecoderLayer,
     MoonEncoderLayer,
 )
@@ -41,14 +40,14 @@ class MoonModel(FairseqEncoderDecoderModel):
     """
 
     Args:
-        encoder (MoonEncoder): the encoder
-        decoder (MoonDecoder): the decoder
+        encoder (LunaEncoder): the encoder
+        decoder (LunaDecoder): the decoder
 
-    The Transformer model provides the following named architectures and
+    The Luna model provides the following named architectures and
     command-line arguments:
 
     .. argparse::
-        :ref: fairseq.models.transformer_parser
+        :ref: fairseq.models.luna_parser
         :prog:
     """
 
@@ -69,25 +68,27 @@ class MoonModel(FairseqEncoderDecoderModel):
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
-                            help='dropout probability after activation in BOT.')
+                            help='dropout probability after activation in FFN.')
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
-        parser.add_argument('--encoder-bot-embed-dim', type=int, metavar='N',
-                            help='encoder embedding dimension for BOT')
+        parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
+                            help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
+        parser.add_argument('--encoder-projected-length', type=int, metavar='N',
+                            help='projected length of encoder as key')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-bot-embed-dim', type=int, metavar='N',
-                            help='decoder embedding dimension for BOT')
+        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+                            help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
         parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
@@ -97,6 +98,8 @@ class MoonModel(FairseqEncoderDecoderModel):
         parser.add_argument('--decoder-output-dim', type=int, metavar='N',
                             help='decoder output dimension (extra linear layer '
                                  'if different from decoder embed dim')
+        parser.add_argument('--decoder-projected-length', type=int, metavar='N',
+                            help='projected length of decoder as key')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -113,8 +116,6 @@ class MoonModel(FairseqEncoderDecoderModel):
                             help='add layernorm to embedding')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
-        parser.add_argument('--cross-self-attention', default=False, action='store_true',
-                            help='perform cross+self-attention')
         # args for "Reducing Transformer Depth on Demand with Structured Dropout" (Fan et al., 2019)
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
@@ -193,11 +194,54 @@ class MoonModel(FairseqEncoderDecoderModel):
     def build_decoder(cls, args, tgt_dict, embed_tokens):
         return MoonDecoder(args, tgt_dict, embed_tokens)
 
+    # TorchScript doesn't support optional arguments with variable length (**kwargs).
+    # Current workaround is to add union of all arguments in child classes.
+    def forward(
+        self,
+        src_tokens,
+        src_lengths,
+        prev_output_tokens,
+        return_all_hiddens: bool = True,
+        features_only: bool = False,
+        alignment_layer: Optional[int] = None,
+        alignment_heads: Optional[int] = None,
+    ):
+        """
+        Run the forward pass for an encoder-decoder model.
+
+        Copied from the base class, but without ``**kwargs``,
+        which are not supported by TorchScript.
+        """
+        encoder_out = self.encoder(src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens)
+        decoder_out = self.decoder(
+            prev_output_tokens,
+            encoder_out=encoder_out,
+            features_only=features_only,
+            alignment_layer=alignment_layer,
+            alignment_heads=alignment_heads,
+            src_lengths=src_lengths,
+            return_all_hiddens=return_all_hiddens,
+        )
+        return decoder_out
+
+    # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
+    # I rewrite the get_normalized_probs from Base Class to call the
+    # helper function in the Base Class.
+    @torch.jit.export
+    def get_normalized_probs(
+        self,
+        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
+        log_probs: bool,
+        sample: Optional[Dict[str, Tensor]] = None,
+    ):
+        """Get normalized probabilities (or log probs) from a net's output."""
+        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+
 
 class MoonEncoder(FairseqEncoder):
     """
-    Moon encoder consisting of *args.encoder_layers* layers.
-    Each layer is a :class:`MoonEncoderLayer`.
+    Moon encoder consisting of *args.encoder_layers* layers. Each layer
+    is a :class:`LunaEncoderLayer`.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
@@ -245,20 +289,10 @@ class MoonEncoder(FairseqEncoder):
         else:
             self.quant_noise = None
 
-        # activation_fn = getattr(args, "activation_fn", "relu")
-        # activation_dropout_p = getattr(args, "activation_dropout", 0)
-        # if activation_dropout_p == 0:
-        #     # for backwards compatibility with models that use args.relu_dropout
-        #     activation_dropout_p = getattr(args, "relu_dropout", 0)
-        # self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
-        #                       args.quant_noise_pq, args.quant_noise_pq_block_size, shift=False)
-        # self.bot_layer_norm = LayerNorm(embed_dim)
-
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
         else:
             self.layers = nn.ModuleList([])
-
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
@@ -275,11 +309,6 @@ class MoonEncoder(FairseqEncoder):
         x = self.dropout_module(x)
         if self.quant_noise is not None:
             x = self.quant_noise(x)
-
-        # residual = x
-        # x = self.bot(x)
-        # x = self.dropout_module(x)
-        # x = self.bot_layer_norm(residual + x)
         return x, embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
@@ -320,6 +349,9 @@ class MoonEncoder(FairseqEncoder):
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
+
+        if encoder_padding_mask is not None:
+            x = x.masked_fill(encoder_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
         return EncoderOut(
             encoder_out=x,  # T x B x C
@@ -400,16 +432,18 @@ class MoonEncoder(FairseqEncoder):
             if weights_key in state_dict:
                 print("deleting {0}".format(weights_key))
                 del state_dict[weights_key]
-            state_dict["{}.embed_positions._float_tensor".format(name)] = torch.FloatTensor(1)
-
+            state_dict[
+                "{}.embed_positions._float_tensor".format(name)
+            ] = torch.FloatTensor(1)
         for i in range(self.num_layers):
             # update layer norms
-            self.layers[i].upgrade_state_dict_named(state_dict, "{}.layers.{}".format(name, i))
+            self.layers[i].upgrade_state_dict_named(
+                state_dict, "{}.layers.{}".format(name, i)
+            )
 
         version_key = "{}.version".format(name)
         if utils.item(state_dict.get(version_key, torch.Tensor([1]))[0]) < 2:
             # earlier checkpoints did not normalize after the stack of layers
-            self.layer_norm = None
             self.normalize = False
             state_dict[version_key] = torch.Tensor([1])
         return state_dict
@@ -417,15 +451,13 @@ class MoonEncoder(FairseqEncoder):
 
 class MoonDecoder(FairseqIncrementalDecoder):
     """
-    Transformer decoder consisting of *args.decoder_layers* layers. Each layer
-    is a :class:`TransformerDecoderLayer`.
+    Luna decoder consisting of *args.decoder_layers* layers. Each layer
+    is a :class:`LunaDecoderLayer`.
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
         dictionary (~fairseq.data.Dictionary): decoding dictionary
         embed_tokens (torch.nn.Embedding): output embedding
-        no_encoder_attn (bool, optional): whether to attend to encoder outputs
-            (default: False).
     """
 
     def __init__(self, args, dictionary, embed_tokens):
@@ -481,29 +513,21 @@ class MoonDecoder(FairseqIncrementalDecoder):
         else:
             self.layernorm_embedding = None
 
-        # activation_fn = getattr(args, "activation_fn", "relu")
-        # activation_dropout_p = getattr(args, "activation_dropout", 0)
-        # if activation_dropout_p == 0:
-        #     # for backwards compatibility with models that use args.relu_dropout
-        #     activation_dropout_p = getattr(args, "relu_dropout", 0)
-        # self.bot = BottleNeck(embed_dim, args.encoder_bot_embed_dim, activation_fn, activation_dropout_p,
-        #                       args.quant_noise_pq, args.quant_noise_pq_block_size, shift=True)
-        # self.bot_layer_norm = LayerNorm(embed_dim)
-
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
-
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
         else:
             self.layers = nn.ModuleList([])
-
-        self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
+        self.layers.extend(
+            [
+                self.build_decoder_layer(args)
+                for _ in range(args.decoder_layers)
+            ]
+        )
         self.num_layers = len(self.layers)
 
         self.project_out_dim = (
             Linear(embed_dim, self.output_embed_dim, bias=False)
-            if embed_dim != self.output_embed_dim and not args.tie_adaptive_weights
-            else None
+            if embed_dim != self.output_embed_dim and not args.tie_adaptive_weights else None
         )
 
         self.adaptive_softmax = None
@@ -526,13 +550,19 @@ class MoonDecoder(FairseqIncrementalDecoder):
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
-            self.output_projection = nn.Linear(self.output_embed_dim, len(dictionary), bias=False)
-            nn.init.normal_(self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5)
+            self.output_projection = nn.Linear(
+                self.output_embed_dim, len(dictionary), bias=False
+            )
+            nn.init.normal_(
+                self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
+            )
 
     def build_decoder_layer(self, args):
         return MoonDecoderLayer(args)
 
-    def forward(self, prev_output_tokens,
+    def forward(
+        self,
+        prev_output_tokens,
         encoder_out: Optional[EncoderOut] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
@@ -568,7 +598,9 @@ class MoonDecoder(FairseqIncrementalDecoder):
             x = self.output_layer(x)
         return x, extra
 
-    def extract_features(self, prev_output_tokens,
+    def extract_features(
+        self,
+        prev_output_tokens,
         encoder_out: Optional[EncoderOut] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         full_context_alignment: bool = False,
@@ -590,7 +622,9 @@ class MoonDecoder(FairseqIncrementalDecoder):
     this function is made to be used in the subclass instead.
     """
 
-    def extract_features_scriptable(self, prev_output_tokens,
+    def extract_features_scriptable(
+        self,
+        prev_output_tokens,
         encoder_out: Optional[EncoderOut] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         full_context_alignment: bool = False,
@@ -621,7 +655,9 @@ class MoonDecoder(FairseqIncrementalDecoder):
 
         # embed positions
         positions = (
-            self.embed_positions(prev_output_tokens, incremental_state=incremental_state)
+            self.embed_positions(
+                prev_output_tokens, incremental_state=incremental_state
+            )
             if self.embed_positions is not None
             else None
         )
@@ -648,16 +684,11 @@ class MoonDecoder(FairseqIncrementalDecoder):
 
         x = self.dropout_module(x)
 
-        # residual = x
-        # x = self.bot(x)
-        # x = self.dropout_module(x)
-        # x = self.bot_layer_norm(residual + x)
-
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
         self_attn_padding_mask: Optional[Tensor] = None
-        if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
+        if prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # decoder layers
@@ -715,8 +746,14 @@ class MoonDecoder(FairseqIncrementalDecoder):
     def buffered_future_mask(self, tensor):
         dim = tensor.size(0)
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
-        if self._future_mask.size(0) == 0 or (not self._future_mask.device == tensor.device) or self._future_mask.size(0) < dim:
-            self._future_mask = torch.triu(utils.fill_with_neg_inf(torch.zeros([dim, dim])), 1)
+        if (
+            self._future_mask.size(0) == 0
+            or (not self._future_mask.device == tensor.device)
+            or self._future_mask.size(0) < dim
+        ):
+            self._future_mask = torch.triu(
+                utils.fill_with_neg_inf(torch.zeros([dim, dim])), 1
+            )
         self._future_mask = self._future_mask.to(tensor)
         return self._future_mask[:dim, :dim]
 
@@ -726,7 +763,9 @@ class MoonDecoder(FairseqIncrementalDecoder):
             weights_key = "{}.embed_positions.weights".format(name)
             if weights_key in state_dict:
                 del state_dict[weights_key]
-            state_dict["{}.embed_positions._float_tensor".format(name)] = torch.FloatTensor(1)
+            state_dict[
+                "{}.embed_positions._float_tensor".format(name)
+            ] = torch.FloatTensor(1)
 
         if f"{name}.output_projection.weight" not in state_dict:
             if self.share_input_output_embed:
@@ -734,7 +773,9 @@ class MoonDecoder(FairseqIncrementalDecoder):
             else:
                 embed_out_key = f"{name}.embed_out"
             if embed_out_key in state_dict:
-                state_dict[f"{name}.output_projection.weight"] = state_dict[embed_out_key]
+                state_dict[f"{name}.output_projection.weight"] = state_dict[
+                    embed_out_key
+                ]
                 if not self.share_input_output_embed:
                     del state_dict[embed_out_key]
 
@@ -749,54 +790,18 @@ class MoonDecoder(FairseqIncrementalDecoder):
                 for m in ("weight", "bias"):
                     k = "{}.layers.{}.layer_norms.{}.{}".format(name, i, old, m)
                     if k in state_dict:
-                        state_dict["{}.layers.{}.{}.{}".format(name, i, new, m)] = state_dict[k]
+                        state_dict[
+                            "{}.layers.{}.{}.{}".format(name, i, new, m)
+                        ] = state_dict[k]
                         del state_dict[k]
 
         version_key = "{}.version".format(name)
         if utils.item(state_dict.get(version_key, torch.Tensor([1]))[0]) <= 2:
             # earlier checkpoints did not normalize after the stack of layers
-            self.layer_norm = None
             self.normalize = False
             state_dict[version_key] = torch.Tensor([1])
 
         return state_dict
-
-
-@register_model_architecture("moon", "moon")
-def base_architecture(args):
-    args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
-    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_bot_embed_dim = getattr(args, "encoder_bot_embed_dim", 512)
-    args.encoder_layers = getattr(args, "encoder_layers", 6)
-    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
-    args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
-    args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
-
-    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
-    args.decoder_bot_embed_dim = getattr(args, "decoder_bot_embed_dim", args.encoder_bot_embed_dim)
-    args.decoder_layers = getattr(args, "decoder_layers", 6)
-    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
-    args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
-
-    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
-    args.activation_dropout = getattr(args, "activation_dropout", 0.0)
-    args.activation_fn = getattr(args, "activation_fn", "relu")
-    args.dropout = getattr(args, "dropout", 0.1)
-    args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
-    args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
-
-    args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
-    args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
-    args.no_token_positional_embeddings = getattr(args, "no_token_positional_embeddings", False)
-    args.adaptive_input = getattr(args, "adaptive_input", False)
-    args.cross_self_attention = getattr(args, "cross_self_attention", False)
-
-    args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
-
-    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
-    args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
-    args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
@@ -812,3 +817,44 @@ def Linear(in_features, out_features, bias=True):
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
+
+
+@register_model_architecture("moon", "moon")
+def base_architecture(args):
+    args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
+    args.encoder_layers = getattr(args, "encoder_layers", 6)
+    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_projected_length = getattr(args, 'encoder_projected_length', 32)
+    args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
+    args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
+
+    args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim)
+    args.decoder_layers = getattr(args, "decoder_layers", 6)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    args.decoder_projected_length = getattr(args, 'decoder_projected_length', 32)
+    args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
+    args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
+
+    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.0)
+    args.activation_fn = getattr(args, "activation_fn", "relu")
+    args.dropout = getattr(args, "dropout", 0.1)
+    args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
+    args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
+
+    args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
+    args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
+    args.no_token_positional_embeddings = getattr( args, "no_token_positional_embeddings", False)
+    args.adaptive_input = getattr(args, "adaptive_input", False)
+
+    args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
+    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
+
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
+    args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
+    args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
+

@@ -15,44 +15,6 @@ from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
 
 
-class BottleNeck(nn.Module):
-    def __init__(self, input_dim, hid_dim, activation_fn, dropout_p,
-                 quant_noise, quant_noise_block_size, shift=False):
-        super(BottleNeck, self).__init__()
-
-        self.shift = shift
-        self.shift_padding = [2, 0] if shift else [1, 1]
-
-        self.act_fn = utils.get_activation_fn(activation=activation_fn)
-        self.dropout_module = FairseqDropout(float(dropout_p), module_name=self.__class__.__name__)
-
-        self.bot_fc1 = self.build_fc1(input_dim, hid_dim, quant_noise, quant_noise_block_size)
-
-        self.bot_conv = self.build_conv(hid_dim, quant_noise, quant_noise_block_size)
-
-        self.bot_fc2 = self.build_fc2(hid_dim, input_dim, quant_noise, quant_noise_block_size)
-
-    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
-
-    def build_conv(self, channels, quant_noise, quant_noise_block_size):
-        return nn.Conv1d(channels, channels, kernel_size=3, padding=0)
-
-    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
-        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
-
-    def forward(self, x):
-        x = self.act_fn(self.bot_fc1(x))
-        x = self.dropout_module(x)
-
-        x = self.bot_conv(F.pad(x.transpose(1, 2), self.shift_padding))
-        x = self.act_fn(x.transpose(1, 2))
-        x = self.dropout_module(x)
-
-        x = self.bot_fc2(x)
-        return x
-
-
 class MoonEncoderLayer(nn.Module):
     """Encoder layer block.
 
@@ -74,34 +36,45 @@ class MoonEncoderLayer(nn.Module):
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
 
         self.embed_dim = args.encoder_embed_dim
+        self.scaling = self.embed_dim ** -0.5
+        self.proj_len = args.encoder_projected_length
+        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
-        self.self_attn = self.build_self_attention(self.embed_dim, args)
+        self.len_proj = self.build_len_proj(self.embed_dim, self.proj_len, self.quant_noise, self.quant_noise_block_size)
+        self.len_layer_norm = LayerNorm(self.embed_dim)
+
+        self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.ffn_layer_norm = LayerNorm(self.embed_dim)
+
+        self.self_attn = self.build_self_attention(self.embed_dim, self.proj_len, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
 
-        activation_fn = getattr(args, "activation_fn", "relu")
+        self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
         if activation_dropout_p == 0:
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
-        self.bot = self.build_bottleneck(self.embed_dim, args.encoder_bot_embed_dim, activation_fn,
-                                         activation_dropout_p, self.quant_noise, self.quant_noise_block_size)
+        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
 
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.final_layer_norm = LayerNorm(self.embed_dim)
+    def build_len_proj(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim, bias=True), q_noise, qn_block_size)
+
+    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
+
+    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def build_self_attention(self, embed_dim, args):
         return MultiheadAttention(
             embed_dim,
             args.encoder_attention_heads,
             dropout=args.attention_dropout,
-            self_attention=True,
+            self_attention=False,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
-
-    def build_bottleneck(self, input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p,
-                          q_noise, qn_block_size, shift=False)
 
     def upgrade_state_dict_named(self, state_dict, name):
         """
@@ -117,39 +90,47 @@ class MoonEncoderLayer(nn.Module):
                     state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
                     del state_dict[k]
 
-    def forward(self, x, encoder_padding_mask, attn_mask: Optional[Tensor] = None):
+    def forward(self, x, encoder_padding_mask):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
             encoder_padding_mask (ByteTensor): binary ByteTensor of shape
                 `(batch, seq_len)` where padding elements are indicated by ``1``.
-            attn_mask (ByteTensor): binary tensor of shape `(tgt_len, src_len)`,
-                where `tgt_len` is the length of output and `src_len` is the
-                length of input, though here both are equal to `seq_len`.
-                `attn_mask[tgt_i, src_j] = 1` means that when calculating the
-                embedding for `tgt_i`, we exclude (mask out) `src_j`. This is
-                useful for strided self-attention.
 
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        # anything in original attn_mask = 1, becomes -1e8
-        # anything in original attn_mask = 0, becomes 0
-        # Note that we cannot use -inf here, because at some edge cases,
-        # the attention weight (before softmax) for some padded element in query
-        # will become -inf, which results in NaN in model parameters
-        if attn_mask is not None:
-            attn_mask = attn_mask.masked_fill(attn_mask.to(torch.bool), -1e8)
 
-        residual = x
-        x, _ = self.self_attn(query=x, key=x, value=x, key_padding_mask=encoder_padding_mask, attn_mask=attn_mask)
-        x = self.dropout_module(x)
-        x = self.self_attn_layer_norm(residual + x)
+        query = x
+        # N x B x D -> B x N x D
+        x = x.transpose(0, 1)
+        if encoder_padding_mask is not None:
+            x = x.masked_fill(encoder_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
+        # B x N x L -> B x L x N
+        pkv = F.relu(self.len_proj(x * self.scaling)).transpose(1, 2)
+        # B x L x D -> L x B x D
+        x = torch.bmm(pkv, x).transpose(0, 1)
+        # apply dropout and layer normalization
+        x = self.len_layer_norm(self.dropout_module(x))
+
+        # L x B x D
         residual = x
-        x = self.bot(x)
+        # L x B x D'
+        x = self.activation_fn(self.fc1(x))
+        x = self.activation_dropout_module(x)
+        # L x B x D
+        x = self.fc2(x)
         x = self.dropout_module(x)
-        x = self.final_layer_norm(residual + x)
+        x = residual + x
+        x = self.ffn_layer_norm(x)
+
+        # N x B x D
+        x, _ = self.self_attn(query=query, key=x, value=x, key_padding_mask=None)
+        x = self.dropout_module(x)
+        x = query + x
+        x = self.self_attn_layer_norm(x)
+
         return x
 
 
@@ -166,43 +147,56 @@ class MoonDecoderLayer(nn.Module):
 
     Args:
         args (argparse.Namespace): parsed command-line arguments
+        no_encoder_attn (bool, optional): whether to attend to encoder outputs
+            (default: False).
     """
 
     def __init__(self, args, add_bias_kv=False, add_zero_attn=False):
         super().__init__()
-        self.embed_dim = args.decoder_embed_dim
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
 
-        self.cross_self_attention = getattr(args, "cross_self_attention", False)
-        self.self_attn = self.build_self_attention(self.embed_dim, args, add_bias_kv=add_bias_kv, add_zero_attn=add_zero_attn)
+        self.embed_dim = args.decoder_embed_dim
+        self.scaling = self.embed_dim ** -0.5
+        self.encoder_proj_len = args.encoder_projected_length
+        self.decoder_proj_len = args.decoder_projected_length
+        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         # use layerNorm rather than FusedLayerNorm for exporting.
         # char_inputs can be used to determint this.
         # TODO  remove this once we update apex with the fix
         export = getattr(args, "char_inputs", False)
+        self.self_attn = self.build_self_attention(self.embed_dim, args, add_bias_kv=add_bias_kv, add_zero_attn=add_zero_attn)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+
+        self.len_proj = self.build_len_proj(self.embed_dim, self.encoder_proj_len, self.quant_noise, self.quant_noise_block_size)
+        self.len_layer_norm = LayerNorm(self.embed_dim)
+
+        self.fc1 = self.build_fc1(self.embed_dim, args.decoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.fc2 = self.build_fc2(args.decoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
+        self.ffn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
         self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        activation_fn = getattr(args, "activation_fn", "relu")
+        self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
         if activation_dropout_p == 0:
             # for backwards compatibility with models that use args.relu_dropout
             activation_dropout_p = getattr(args, "relu_dropout", 0)
-        self.bot = self.build_bottleneck(self.embed_dim, args.decoder_bot_embed_dim, activation_fn,
-                                         activation_dropout_p, self.quant_noise, self.quant_noise_block_size)
-
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.activation_dropout_module = FairseqDropout(float(activation_dropout_p), module_name=self.__class__.__name__)
 
         self.need_attn = True
         self.onnx_trace = False
 
-    def build_bottleneck(self, input_dim, hid_dim, activation_fn, activation_dropout_p, q_noise, qn_block_size):
-        return BottleNeck(input_dim, hid_dim, activation_fn, activation_dropout_p,
-                          q_noise, qn_block_size, shift=True)
+    def build_len_proj(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim, bias=True), q_noise, qn_block_size)
+
+    def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
+
+    def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
+        return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
 
     def build_self_attention(self, embed_dim, args, add_bias_kv=False, add_zero_attn=False):
         return MultiheadAttention(
@@ -211,7 +205,7 @@ class MoonDecoderLayer(nn.Module):
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
-            self_attention=not getattr(args, "cross_self_attention", False),
+            self_attention=True,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
@@ -231,7 +225,9 @@ class MoonDecoderLayer(nn.Module):
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
-    def forward(self, x,
+    def forward(
+        self,
+        x,
         encoder_out: Optional[torch.Tensor] = None,
         encoder_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
@@ -255,9 +251,33 @@ class MoonDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
+
+        # compute key and value from Encoder output for cross-attention
+        # N x B x D -> B x N x D
+        encoder_out = encoder_out.transpose(0, 1)
+        # B x N x L -> B x L x N
+        pkv = F.relu(self.len_proj(encoder_out * self.scaling)).transpose(1, 2)
+        # B x L x D -> L x B x D
+        encoder_out = torch.bmm(pkv, encoder_out).transpose(0, 1)
+        # apply dropout and layer normalization
+        encoder_out = self.len_layer_norm(self.dropout_module(encoder_out))
+
+        # L x B x D
+        residual = encoder_out
+        # L x B x D'
+        encoder_out = self.activation_fn(self.fc1(encoder_out))
+        encoder_out = self.activation_dropout_module(encoder_out)
+        # L x B x D
+        encoder_out = self.fc2(encoder_out)
+        encoder_out = self.dropout_module(encoder_out)
+        encoder_out = residual + encoder_out
+        encoder_out = self.ffn_layer_norm(encoder_out)
+
+        # compute Decoder self-attention
         if need_head_weights:
             need_attn = True
 
+        # N x B x D
         residual = x
         if prev_self_attn_state is not None:
             prev_key, prev_value = prev_self_attn_state[:2]
@@ -271,35 +291,18 @@ class MoonDecoderLayer(nn.Module):
             self.self_attn._set_input_buffer(incremental_state, saved_state)
         _self_attn_input_buffer = self.self_attn._get_input_buffer(incremental_state)
 
-        if self.cross_self_attention and not (
-            incremental_state is not None
-            and _self_attn_input_buffer is not None
-            and "prev_key" in _self_attn_input_buffer
-        ):
-            if self_attn_mask is not None:
-                assert encoder_out is not None
-                self_attn_mask = torch.cat((x.new_zeros(x.size(0), encoder_out.size(0)), self_attn_mask), dim=1)
-            if self_attn_padding_mask is not None:
-                if encoder_padding_mask is None:
-                    assert encoder_out is not None
-                    encoder_padding_mask = self_attn_padding_mask.new_zeros(encoder_out.size(1), encoder_out.size(0))
-                self_attn_padding_mask = torch.cat((encoder_padding_mask, self_attn_padding_mask), dim=1)
-            assert encoder_out is not None
-            y = torch.cat((encoder_out, x), dim=0)
-        else:
-            y = x
-
         x, attn = self.self_attn(
             query=x,
-            key=y,
-            value=y,
+            key=x,
+            value=x,
             key_padding_mask=self_attn_padding_mask,
             incremental_state=incremental_state,
             need_weights=False,
             attn_mask=self_attn_mask,
         )
         x = self.dropout_module(x)
-        x = self.self_attn_layer_norm(residual + x)
+        x = residual + x
+        x = self.self_attn_layer_norm(x)
 
         residual = x
         if prev_attn_state is not None:
@@ -317,19 +320,14 @@ class MoonDecoderLayer(nn.Module):
             query=x,
             key=encoder_out,
             value=encoder_out,
-            key_padding_mask=encoder_padding_mask,
             incremental_state=incremental_state,
             static_kv=True,
             need_weights=need_attn or (not self.training and self.need_attn),
             need_head_weights=need_head_weights,
         )
         x = self.dropout_module(x)
-        x = self.encoder_attn_layer_norm(residual + x)
-
-        residual = x
-        x = self.bot(x)
-        x = self.dropout_module(x)
-        x = self.final_layer_norm(residual + x)
+        x = residual + x
+        x = self.encoder_attn_layer_norm(x)
 
         if self.onnx_trace and incremental_state is not None:
             saved_state = self.self_attn._get_input_buffer(incremental_state)
