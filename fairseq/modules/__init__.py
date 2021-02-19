@@ -35,7 +35,7 @@ from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .luna_layer import LunaEncoderLayer, LunaDecoderLayer
-from .moon_layer import MoonDecoderLayer, MoonEncoderLayer, BottleNeck
+from .moon_layer import MoonDecoderLayer, MoonEncoderLayer
 from .vggblock import VGGBlock
 
 __all__ = [
@@ -77,7 +77,6 @@ __all__ = [
     'LunaDecoderLayer',
     'MoonDecoderLayer',
     'MoonEncoderLayer',
-    'BottleNeck',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',
