@@ -91,6 +91,24 @@ class LinearMultiheadAttention(nn.Module):
         self.tpu = True
         raise NotImplementedError('TPU for linear attention not implemented')
 
+    def _get_sinusoidal_positional_embedding(self, length: int, embedding_dim: int):
+        half_dim = embedding_dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
+        emb = torch.arange(length, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(length, -1)
+        if embedding_dim % 2 == 1:
+            emb = torch.cat([emb, torch.zeros(length, 1)], dim=1)
+        return emb
+
+    def _init_positional_weight(self, weight):
+        embed_dim, length = weight.size()
+        pos_emb = self._get_sinusoidal_positional_embedding(length, embed_dim)
+        rotation = torch.zeros(embed_dim, embed_dim)
+        nn.init.orthogonal_(rotation)
+        with torch.no_grad():
+            weight.copy_(torch.mm(pos_emb, rotation).t())
+
     def reset_parameters(self):
         if self.qkv_same_dim:
             # Empirically observed the convergence to be much better with
@@ -103,9 +121,13 @@ class LinearMultiheadAttention(nn.Module):
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.q_proj.weight)
 
-        nn.init.xavier_uniform_(self.e_proj.weight)
+        self._init_positional_weight(self.e_proj.weight)
+        if self.e_proj.bias is not None:
+            nn.init.constant_(self.e_proj.bias, 0.)
         if self.f_proj is not None:
-            nn.init.xavier_uniform_(self.f_proj.weight)
+            self._init_positional_weight(self.f_proj.weight)
+            if self.f_proj.bias is not None:
+                nn.init.constant_(self.f_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
