@@ -50,15 +50,14 @@ class LinearMultiheadAttention(nn.Module):
 
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
         self.kv_same = kv_same
-        self.scaling_k = self.kdim ** -0.5
-        self.scaling_v = None if self.kv_same else self.vdim ** -0.5
+        self.pre_proj = self.kdim != self.embed_dim
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
         assert (self.head_dim * num_heads == self.embed_dim), "embed_dim must be divisible by num_heads"
-        self.scaling_h = self.head_dim ** -0.5
+        self.scaling = self.head_dim ** -0.5
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
@@ -67,14 +66,29 @@ class LinearMultiheadAttention(nn.Module):
             "Self-attention requires query, key and " "value to be of the same size"
         )
 
-        self.k_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.e_layer_norm = LayerNorm(self.kdim)
-        self.f_proj = None if self.kv_same else quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.f_layer_norm = None if self.kv_same else LayerNorm(self.vdim)
+        self.prek_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size) if self.pre_proj else None
+        self.prev_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size) if self.pre_proj and not self.kv_same else None
+
+        self.e_weight = Parameter(torch.Tensor(1, self.num_heads, self.proj_len, self.head_dim))
+        self.e_bias = Parameter(torch.Tensor(1, self.num_heads, self.proj_len, 1))
+        self.e_out = quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
+        self.e_layer_norm = LayerNorm(self.embed_dim)
+
+        self.f_weight = None if self.kv_same else Parameter(torch.Tensor(1, self.num_heads, self.proj_len, self.head_dim))
+        self.f_bias = None if self.kv_same else Parameter(torch.Tensor(1, self.num_heads, self.proj_len, 1))
+        self.f_out = None if self.kv_same else quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
+        self.f_layer_norm = None if self.kv_same else LayerNorm(self.embed_dim)
+
+        assert self.prek_proj is None
+        assert self.prev_proj is None
+        assert self.f_weight is None
+        assert self.f_bias is None
+        assert self.f_out is None
+        assert self.f_layer_norm is None
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -91,39 +105,37 @@ class LinearMultiheadAttention(nn.Module):
         self.tpu = True
         raise NotImplementedError('TPU for linear attention not implemented')
 
-    def _get_sinusoidal_positional_embedding(self, length: int, embedding_dim: int):
-        half_dim = embedding_dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
-        emb = torch.arange(length, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(length, -1)
-        if embedding_dim % 2 == 1:
-            emb = torch.cat([emb, torch.zeros(length, 1)], dim=1)
-        return emb
+    def _init_parameters(self):
+        std = math.sqrt(3.0 / float(self.head_dim + self.proj_len))
+        nn.init.uniform_(self.e_weight, -std, std)
+        if self.f_weight is not None:
+            nn.init.uniform_(self.f_weight, -std, std)
 
-    def _init_positional_weight(self, weight):
-        embed_dim, length = weight.size()
-        pos_emb = self._get_sinusoidal_positional_embedding(length, embed_dim)
-        rotation = torch.zeros(embed_dim, embed_dim)
-        nn.init.orthogonal_(rotation)
-        with torch.no_grad():
-            weight.copy_(torch.mm(pos_emb, rotation).t())
+        std = math.sqrt(1.0 / float(self.proj_len))
+        nn.init.uniform_(self.e_bias, -std, std)
+        if self.f_bias is not None:
+            nn.init.uniform_(self.f_bias, -std, std)
 
     def reset_parameters(self):
-        if self.qkv_same_dim:
-            # Empirically observed the convergence to be much better with
-            # the scaled initialization
-            nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.q_proj.weight, gain=1 / math.sqrt(2))
-        else:
-            nn.init.xavier_uniform_(self.k_proj.weight)
-            nn.init.xavier_uniform_(self.v_proj.weight)
-            nn.init.xavier_uniform_(self.q_proj.weight)
+        # Empirically observed the convergence to be much better with the scaled initialization
+        gain = 1 / math.sqrt(2) if self.qkv_same_dim else 1.0
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        if self.prek_proj is not None:
+            nn.init.xavier_uniform_(self.prek_proj.weight, gain=gain)
+        if self.prev_proj is not None:
+            nn.init.xavier_uniform_(self.prev_proj.weight, gain=gain)
 
-        nn.init.xavier_uniform_(self.e_proj.weight)
-        if self.f_proj is not None:
-            nn.init.xavier_uniform_(self.f_proj.weight)
+        self._init_parameters()
+
+        nn.init.xavier_uniform_(self.e_out.weight)
+        if self.e_out.bias is not None:
+            nn.init.constant_(self.e_out.bias, 0.)
+        if self.f_out is not None:
+            nn.init.xavier_uniform_(self.f_out.weight)
+            if self.f_out.bias is not None:
+                nn.init.constant_(self.f_out.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -131,32 +143,58 @@ class LinearMultiheadAttention(nn.Module):
 
     def _compute_kv(self, key, value, key_padding_mask):
         if self.kv_same:
-            # B x N x D
-            kv = key.transpose(0, 1)
+            # N x B x D
+            kv = key
+            if self.prek_proj is not None:
+                kv = self.prek_proj(kv)
             if key_padding_mask is not None:
-                kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+                kv = kv.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
-            # B x N x L -> B x L x N
-            pkv = F.relu(self.e_proj(kv * self.scaling_k)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            kv = torch.bmm(pkv, kv).transpose(0, 1)
+            # N x B x D -> N x B x H x K
+            len, bsz, dim = kv.size()
+            kv = kv.view(len, bsz, self.num_heads, self.head_dim)
+            # N x B x H x K -> B x H x K x N
+            kv = kv.permute(1, 2, 3, 0)
+            # B x H x L x N
+            pkv = F.relu(torch.matmul(self.e_weight, kv) + self.e_bias)
+            # B x H x L x K
+            kv = torch.matmul(pkv * self.scaling, kv.transpose(2, 3))
+            # L x B x H x K
+            kv = kv.permute(2, 0, 1, 3).contiguous()
+            # L x B x H x K -> L x B x D
+            kv = kv.view(self.proj_len, bsz, dim)
             kv = self.e_layer_norm(kv)
             return kv, kv
         else:
-            # B x N x D
-            key = key.transpose(0, 1)
-            value = value.transpose(0, 1)
+            # N x B x D
+            if self.prek_proj is not None:
+                key = self.prek_proj(key)
+            if self.prev_proj is not None:
+                value = self.prev_proj(value)
             if key_padding_mask is not None:
-                key = key.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
-                value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+                key = key.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
+                value = value.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
-            # B x N x L -> B x L x N
-            pk = F.relu(self.e_proj(key * self.scaling_k)).transpose(1, 2)
-            pv = F.relu(self.f_proj(value * self.scaling_v)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            key = torch.bmm(pk, key).transpose(0, 1)
+            # N x B x D -> N x B x H x K
+            len, bsz, dim = key.size()
+            key = key.view(len, bsz, self.num_heads, self.head_dim)
+            value = value.view(len, bsz, self.num_heads, self.head_dim)
+            # N x B x H x K -> B x H x K x N
+            key = key.permute(1, 2, 3, 0)
+            value = value.permute(1, 2, 3, 0)
+            # B x H x L x N
+            pk = F.relu(torch.matmul(self.e_weight, key) + self.e_bias)
+            pv = F.relu(torch.matmul(self.f_weight, value) + self.f_bias)
+            # B x H x L x K
+            key = torch.matmul(pk * self.scaling, key.transpose(2, 3))
+            value = torch.matmul(pv * self.scaling, value.transpose(2, 3))
+            # L x B x H x K
+            key = key.permute(2, 0, 1, 3).contiguous()
+            value = value.permute(2, 0, 1, 3).contiguous()
+            # L x B x H x K -> L x B x D
+            key = key.view(self.proj_len, bsz, dim)
             key = self.e_layer_norm(key)
-            value = torch.bmm(pv, value).transpose(0, 1)
+            value = value.view(self.proj_len, bsz, dim)
             value = self.f_layer_norm(value)
 
             return key, value
@@ -303,7 +341,7 @@ class LinearMultiheadAttention(nn.Module):
             k = self.k_proj(key)
             v = self.v_proj(value)
 
-        q *= self.scaling_h
+        q *= self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if k is not None:
