@@ -81,13 +81,6 @@ class LinearMultiheadAttention(nn.Module):
         self.f_out = None if self.kv_same else quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
         self.f_layer_norm = None if self.kv_same else LayerNorm(self.embed_dim)
 
-        assert self.prek_proj is None
-        assert self.prev_proj is None
-        assert self.f_weight is None
-        assert self.f_bias is None
-        assert self.f_out is None
-        assert self.f_layer_norm is None
-
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.reset_parameters()
@@ -140,6 +133,8 @@ class LinearMultiheadAttention(nn.Module):
             kv = key
             if self.prek_proj is not None:
                 kv = self.prek_proj(kv)
+            if key_padding_mask is not None:
+                kv = kv.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = kv.size()
@@ -147,10 +142,7 @@ class LinearMultiheadAttention(nn.Module):
             # N x B x H x K -> B x H x K x N
             kv = kv.permute(1, 2, 3, 0)
             # B x H x L x N
-            pkv = torch.matmul(self.e_weight, kv * self.scaling)
-            if key_padding_mask is not None:
-                pkv = pkv.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
-            pkv = utils.softmax(pkv, dim=-1, onnx_trace=self.onnx_trace)
+            pkv = F.relu(torch.matmul(self.e_weight, kv * self.scaling))
             # B x H x L x K
             kv = torch.matmul(pkv, kv.transpose(2, 3))
             # L x B x H x K
@@ -165,6 +157,9 @@ class LinearMultiheadAttention(nn.Module):
                 key = self.prek_proj(key)
             if self.prev_proj is not None:
                 value = self.prev_proj(value)
+            if key_padding_mask is not None:
+                key = key.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
+                value = value.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = key.size()
@@ -174,13 +169,8 @@ class LinearMultiheadAttention(nn.Module):
             key = key.permute(1, 2, 3, 0)
             value = value.permute(1, 2, 3, 0)
             # B x H x L x N
-            pk = torch.matmul(self.e_weight, key * self.scaling)
-            pv = torch.matmul(self.f_weight, value * self.scaling)
-            if key_padding_mask is not None:
-                pk = pk.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
-                pv = pv.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
-            pk = utils.softmax(pk, dim=-1, onnx_trace=self.onnx_trace)
-            pv = utils.softmax(pv, dim=-1, onnx_trace=self.onnx_trace)
+            pk = F.relu(torch.matmul(self.e_weight, key * self.scaling))
+            pv = F.relu(torch.matmul(self.f_weight, value * self.scaling))
             # B x H x L x K
             key = torch.matmul(pk, key.transpose(2, 3))
             value = torch.matmul(pv, value.transpose(2, 3))
