@@ -51,7 +51,6 @@ class LinearMultiheadAttention(nn.Module):
 
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
         self.kv_same = kv_same
-        self.pre_proj = self.kdim != self.embed_dim
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -72,8 +71,8 @@ class LinearMultiheadAttention(nn.Module):
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.prek_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size) if self.pre_proj else None
-        self.prev_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size) if self.pre_proj and not self.kv_same else None
+        self.prek_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.prev_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size) if not self.kv_same else None
 
         self.e_weight = Parameter(torch.Tensor(1, self.num_heads, self.proj_len, self.head_dim))
         self.e_out = quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
@@ -110,10 +109,10 @@ class LinearMultiheadAttention(nn.Module):
         nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
-        if self.prek_proj is not None:
-            nn.init.xavier_uniform_(self.prek_proj.weight, gain=gain)
+
+        nn.init.xavier_uniform_(self.prek_proj.weight)
         if self.prev_proj is not None:
-            nn.init.xavier_uniform_(self.prev_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.prev_proj.weight)
 
         self._init_parameters()
 
@@ -132,9 +131,7 @@ class LinearMultiheadAttention(nn.Module):
     def _compute_kv(self, key, value, key_padding_mask):
         if self.kv_same:
             # N x B x D
-            kv = key
-            if self.prek_proj is not None:
-                kv = self.prek_proj(kv)
+            kv = self.prek_proj(key)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = kv.size()
@@ -160,10 +157,8 @@ class LinearMultiheadAttention(nn.Module):
             return kv, kv
         else:
             # N x B x D
-            if self.prek_proj is not None:
-                key = self.prek_proj(key)
-            if self.prev_proj is not None:
-                value = self.prev_proj(value)
+            key = self.prek_proj(key)
+            value = self.prev_proj(value)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = key.size()
