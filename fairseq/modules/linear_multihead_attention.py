@@ -163,7 +163,7 @@ class LinearMultiheadAttention(nn.Module):
             kv = kv.permute(2, 0, 1, 3).contiguous()
             # L x B x H x K -> L x B x D
             kv = kv.view(self.proj_len, bsz, dim)
-            kv = self.e_layer_norm(kv)
+            kv = self.e_layer_norm(self.e_out(kv))
             return kv, kv
         else:
             # N x B x D
@@ -193,9 +193,9 @@ class LinearMultiheadAttention(nn.Module):
             value = value.permute(2, 0, 1, 3).contiguous()
             # L x B x H x K -> L x B x D
             key = key.view(self.proj_len, bsz, dim)
-            key = self.e_layer_norm(key)
+            key = self.e_layer_norm(self.e_out(key))
             value = value.view(self.proj_len, bsz, dim)
-            value = self.f_layer_norm(value)
+            value = self.f_layer_norm(self.f_out(value))
 
             return key, value
 
