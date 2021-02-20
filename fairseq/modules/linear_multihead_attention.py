@@ -97,7 +97,7 @@ class LinearMultiheadAttention(nn.Module):
         raise NotImplementedError('TPU for linear attention not implemented')
 
     def _init_parameters(self):
-        std = math.sqrt(3.0 / float(self.head_dim + self.proj_len))
+        std = math.sqrt(3.0 / float(self.embed_dim + self.proj_len))
         nn.init.uniform_(self.e_weight, -std, std)
         if self.f_weight is not None:
             nn.init.uniform_(self.f_weight, -std, std)
@@ -148,8 +148,11 @@ class LinearMultiheadAttention(nn.Module):
             # L x B x H x K
             kv = kv.permute(2, 0, 1, 3).contiguous()
             # L x B x H x K -> L x B x D
-            kv = kv.view(self.proj_len, bsz, dim)
-            kv = self.e_layer_norm(self.e_out(kv))
+            kv = self.e_out(kv.view(self.proj_len, bsz, dim))
+            # L x B x D -> L x B x H x K
+            kv = kv.view(self.proj_len, bsz, self.num_heads, self.head_dim) + self.e_weight.permute(2, 0, 1, 3)
+            # L x B x H x K -> L x B x D
+            kv = self.e_layer_norm(kv.view(self.proj_len, bsz, dim))
             return kv, kv
         else:
             # N x B x D
@@ -178,10 +181,14 @@ class LinearMultiheadAttention(nn.Module):
             key = key.permute(2, 0, 1, 3).contiguous()
             value = value.permute(2, 0, 1, 3).contiguous()
             # L x B x H x K -> L x B x D
-            key = key.view(self.proj_len, bsz, dim)
-            key = self.e_layer_norm(self.e_out(key))
-            value = value.view(self.proj_len, bsz, dim)
-            value = self.f_layer_norm(self.f_out(value))
+            key = self.e_out(key.view(self.proj_len, bsz, dim))
+            value = self.f_out(value.view(self.proj_len, bsz, dim))
+            # L x B x D -> L x B x H x K
+            key = key.view(self.proj_len, bsz, self.num_heads, self.head_dim) + self.e_weight.permute(2, 0, 1, 3)
+            value = value.view(self.proj_len, bsz, self.num_heads, self.head_dim) + self.f_weight.permute(2, 0, 1, 3)
+            # L x B x H x K -> L x B x D
+            key = self.e_layer_norm(key.view(self.proj_len, bsz, dim))
+            value = self.f_layer_norm(value.view(self.proj_len, bsz, dim))
 
             return key, value
 
