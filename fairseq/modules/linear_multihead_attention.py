@@ -74,12 +74,10 @@ class LinearMultiheadAttention(nn.Module):
         self.prev_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size) if self.pre_proj and not self.kv_same else None
 
         self.e_weight = Parameter(torch.Tensor(1, self.num_heads, self.proj_len, self.head_dim))
-        self.e_bias = Parameter(torch.Tensor(1, self.num_heads, self.proj_len, 1))
         self.e_out = quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
         self.e_layer_norm = LayerNorm(self.embed_dim)
 
         self.f_weight = None if self.kv_same else Parameter(torch.Tensor(1, self.num_heads, self.proj_len, self.head_dim))
-        self.f_bias = None if self.kv_same else Parameter(torch.Tensor(1, self.num_heads, self.proj_len, 1))
         self.f_out = None if self.kv_same else quant_noise(nn.Linear(self.embed_dim, self.embed_dim, bias=bias), q_noise, qn_block_size)
         self.f_layer_norm = None if self.kv_same else LayerNorm(self.embed_dim)
 
@@ -110,11 +108,6 @@ class LinearMultiheadAttention(nn.Module):
         nn.init.uniform_(self.e_weight, -std, std)
         if self.f_weight is not None:
             nn.init.uniform_(self.f_weight, -std, std)
-
-        std = math.sqrt(1.0 / float(self.proj_len))
-        nn.init.uniform_(self.e_bias, -std, std)
-        if self.f_bias is not None:
-            nn.init.uniform_(self.f_bias, -std, std)
 
     def reset_parameters(self):
         # Empirically observed the convergence to be much better with the scaled initialization
@@ -147,8 +140,6 @@ class LinearMultiheadAttention(nn.Module):
             kv = key
             if self.prek_proj is not None:
                 kv = self.prek_proj(kv)
-            if key_padding_mask is not None:
-                kv = kv.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = kv.size()
@@ -156,9 +147,12 @@ class LinearMultiheadAttention(nn.Module):
             # N x B x H x K -> B x H x K x N
             kv = kv.permute(1, 2, 3, 0)
             # B x H x L x N
-            pkv = F.relu(torch.matmul(self.e_weight, kv) + self.e_bias)
+            pkv = torch.matmul(self.e_weight, kv * self.scaling)
+            if key_padding_mask is not None:
+                pkv = pkv.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+            pkv = utils.softmax(pkv, dim=-1, onnx_trace=self.onnx_trace)
             # B x H x L x K
-            kv = torch.matmul(pkv * self.scaling, kv.transpose(2, 3))
+            kv = torch.matmul(pkv, kv.transpose(2, 3))
             # L x B x H x K
             kv = kv.permute(2, 0, 1, 3).contiguous()
             # L x B x H x K -> L x B x D
@@ -171,9 +165,6 @@ class LinearMultiheadAttention(nn.Module):
                 key = self.prek_proj(key)
             if self.prev_proj is not None:
                 value = self.prev_proj(value)
-            if key_padding_mask is not None:
-                key = key.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
-                value = value.masked_fill(key_padding_mask.transpose(0, 1).unsqueeze(2).to(torch.bool), 0)
 
             # N x B x D -> N x B x H x K
             len, bsz, dim = key.size()
@@ -183,11 +174,16 @@ class LinearMultiheadAttention(nn.Module):
             key = key.permute(1, 2, 3, 0)
             value = value.permute(1, 2, 3, 0)
             # B x H x L x N
-            pk = F.relu(torch.matmul(self.e_weight, key) + self.e_bias)
-            pv = F.relu(torch.matmul(self.f_weight, value) + self.f_bias)
+            pk = torch.matmul(self.e_weight, key * self.scaling)
+            pv = torch.matmul(self.f_weight, value * self.scaling)
+            if key_padding_mask is not None:
+                pk = pk.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+                pv = pv.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+            pk = utils.softmax(pk, dim=-1, onnx_trace=self.onnx_trace)
+            pv = utils.softmax(pv, dim=-1, onnx_trace=self.onnx_trace)
             # B x H x L x K
-            key = torch.matmul(pk * self.scaling, key.transpose(2, 3))
-            value = torch.matmul(pv * self.scaling, value.transpose(2, 3))
+            key = torch.matmul(pk, key.transpose(2, 3))
+            value = torch.matmul(pv, value.transpose(2, 3))
             # L x B x H x K
             key = key.permute(2, 0, 1, 3).contiguous()
             value = value.permute(2, 0, 1, 3).contiguous()
