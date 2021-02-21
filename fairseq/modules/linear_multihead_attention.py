@@ -65,9 +65,9 @@ class LinearMultiheadAttention(nn.Module):
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        # self.e_layer_norm = LayerNorm(self.kdim)
+        self.e_layer_norm = LayerNorm(self.kdim)
         self.f_proj = quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        # self.f_layer_norm = LayerNorm(self.vdim)
+        self.f_layer_norm = LayerNorm(self.vdim)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -134,9 +134,9 @@ class LinearMultiheadAttention(nn.Module):
         pv = F.relu(self.f_proj(value * self.scaling)).transpose(1, 2)
         # B x L x D -> L x B x D
         key = torch.bmm(pk, key).transpose(0, 1)
-        # key = self.e_layer_norm(key)
+        key = self.e_layer_norm(key)
         value = torch.bmm(pv, value).transpose(0, 1)
-        # value = self.f_layer_norm(value)
+        value = self.f_layer_norm(value)
         return key, value
 
     def compute_qkv(self,
