@@ -113,14 +113,19 @@ class LinearMultiheadAttention(nn.Module):
 
     def _compute_kv(self, key, key_padding_mask):
         # B x N x D
-        kv = key.transpose(0, 1)
+        if self.qkv_same_dim:
+            k = self.k_proj(key).transpose(0, 1)
+            v = self.v_proj(key).transpose(0, 1)
+        else:
+            k = key.transpose(0, 1)
+            v = k
         if key_padding_mask is not None:
-            kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+            v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # B x N x L -> B x L x N
-        pkv = F.relu(self.e_proj(kv * self.scaling)).transpose(1, 2)
+        pkv = F.relu(self.e_proj(k * self.scaling)).transpose(1, 2)
         # B x L x D -> L x B x D
-        kv = torch.bmm(pkv, kv).transpose(0, 1)
+        kv = torch.bmm(pkv, v).transpose(0, 1)
         kv = self.e_layer_norm(kv)
         return kv
 
