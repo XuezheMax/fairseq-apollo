@@ -33,7 +33,6 @@ class LinearMultiheadAttention(nn.Module):
         vdim=None,
         dropout=0.0,
         bias=True,
-        kv_same=True,
         self_attention=False,
         encoder_decoder_attention=False,
         q_noise=0.0,
@@ -44,11 +43,8 @@ class LinearMultiheadAttention(nn.Module):
         self.proj_len = proj_length
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        if self_attention or encoder_decoder_attention:
-            assert kv_same, "self attention and encoder-decoder attention requires the same key and value"
 
         self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-        self.kv_same = kv_same
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -69,9 +65,9 @@ class LinearMultiheadAttention(nn.Module):
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.e_layer_norm = LayerNorm(self.kdim)
-        self.f_proj = None if self.kv_same else quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.f_layer_norm = None if self.kv_same else LayerNorm(self.vdim)
+        # self.e_layer_norm = LayerNorm(self.kdim)
+        self.f_proj = quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
+        # self.f_layer_norm = LayerNorm(self.vdim)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -119,77 +115,57 @@ class LinearMultiheadAttention(nn.Module):
             nn.init.xavier_uniform_(self.q_proj.weight)
 
         nn.init.xavier_uniform_(self.e_proj.weight)
-        if self.f_proj is not None:
-            nn.init.xavier_uniform_(self.f_proj.weight)
+        nn.init.xavier_uniform_(self.f_proj.weight)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
     def _compute_kv(self, key, value, key_padding_mask):
-        if self.kv_same:
-            # B x N x D
-            kv = key.transpose(0, 1)
-            if key_padding_mask is not None:
-                kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+        # B x N x D
+        key = key.transpose(0, 1)
+        value = value.transpose(0, 1)
+        if key_padding_mask is not None:
+            key = key.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+            value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
-            # B x N x L -> B x L x N
-            pkv = F.relu(self.e_proj(kv)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            kv = torch.bmm(pkv, kv).transpose(0, 1)
-            kv = self.e_layer_norm(kv)
-            return kv, kv
-        else:
-            # B x N x D
-            key = key.transpose(0, 1)
-            value = value.transpose(0, 1)
-            if key_padding_mask is not None:
-                key = key.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
-                value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+        # B x N x L -> B x L x N
+        pk = F.relu(self.e_proj(key * self.scaling)).transpose(1, 2)
+        pv = F.relu(self.f_proj(value * self.scaling)).transpose(1, 2)
+        # B x L x D -> L x B x D
+        key = torch.bmm(pk, key).transpose(0, 1)
+        # key = self.e_layer_norm(key)
+        value = torch.bmm(pv, value).transpose(0, 1)
+        # value = self.f_layer_norm(value)
+        return key, value
 
-            # B x N x L -> B x L x N
-            pk = F.relu(self.e_proj(key)).transpose(1, 2)
-            pv = F.relu(self.f_proj(value)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            key = torch.bmm(pk, key).transpose(0, 1)
-            key = self.e_layer_norm(key)
-            value = torch.bmm(pv, value).transpose(0, 1)
-            value = self.f_layer_norm(value)
-            return key, value
-
-    def compute_kv(self,
+    def compute_qkv(self,
         query,
         key: Optional[Tensor],
         value: Optional[Tensor],
-        key_padding_mask: Optional[Tensor] = None,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_kv: bool = False,
-        attn_mask: Optional[Tensor] = None,
-    ) -> Tuple[Tensor, Tensor]:
-
-        if (
-            not self.onnx_trace
-            and not self.tpu  # don't use PyTorch version on TPUs
-            and incremental_state is None
-            and not static_kv
-            # A workaround for quantization to work. Otherwise JIT compilation
-            # treats bias in linear module as method.
-            and not torch.jit.is_scripting()
-        ):
-            assert key is not None and value is not None
-            return self._compute_kv(key, value, key_padding_mask)
+        key_padding_mask: Optional[Tensor] = None
+    ) -> Tuple[Tensor, Tensor, Tensor]:
 
         if self.self_attention:
-            return self._compute_kv(query, query, key_padding_mask)
+            k = self.k_proj(query)
+            v = self.v_proj(query)
+            k, v = self._compute_kv(k, v, key_padding_mask)
         elif self.encoder_decoder_attention:
             # encoder-decoder attention
             if key is None:
                 assert value is None
-                return key, value
+                k = v = None
             else:
-                return self._compute_kv(key, key, key_padding_mask)
+                k = self.k_proj(key)
+                v = self.v_proj(key)
+                k, v = self._compute_kv(k, v, key_padding_mask)
         else:
-            return self._compute_kv(key, value, key_padding_mask)
+            k = self.k_proj(key)
+            v = self.v_proj(value)
+            k, v = self._compute_kv(k, v, key_padding_mask)
+
+        q = self.q_proj(query)
+        return q, k, v
 
     def forward(
         self,
@@ -230,43 +206,6 @@ class LinearMultiheadAttention(nn.Module):
         if attn_mask is not None:
             raise NotImplementedError('Causal attention has not implemented.')
 
-        key, value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
-        key_padding_mask = None
-
-        if (
-            not self.onnx_trace
-            and not self.tpu  # don't use PyTorch version on TPUs
-            and incremental_state is None
-            and not static_kv
-            # A workaround for quantization to work. Otherwise JIT compilation
-            # treats bias in linear module as method.
-            and not torch.jit.is_scripting()
-        ):
-            assert key is not None and value is not None
-            return F.multi_head_attention_forward(
-                query,
-                key,
-                value,
-                self.embed_dim,
-                self.num_heads,
-                torch.empty([0]),
-                torch.cat((self.q_proj.bias, self.k_proj.bias, self.v_proj.bias)),
-                None,
-                None,
-                False,
-                self.dropout_module.p,
-                self.out_proj.weight,
-                self.out_proj.bias,
-                self.training or self.dropout_module.apply_during_inference,
-                key_padding_mask,
-                need_weights,
-                attn_mask,
-                use_separate_proj_weight=True,
-                q_proj_weight=self.q_proj.weight,
-                k_proj_weight=self.k_proj.weight,
-                v_proj_weight=self.v_proj.weight,
-            )
-
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if saved_state is not None and "prev_key" in saved_state:
@@ -278,25 +217,8 @@ class LinearMultiheadAttention(nn.Module):
         else:
             saved_state = None
 
-        if self.self_attention:
-            q = self.q_proj(query)
-            k = self.k_proj(query)
-            v = self.v_proj(query)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            q = self.q_proj(query)
-            if key is None:
-                assert value is None
-                k = v = None
-            else:
-                k = self.k_proj(key)
-                v = self.v_proj(key)
-
-        else:
-            assert key is not None and value is not None
-            q = self.q_proj(query)
-            k = self.k_proj(key)
-            v = self.v_proj(value)
+        q, k, v = self.compute_qkv(query, key, value, key_padding_mask)
+        key_padding_mask = None
 
         q *= self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
