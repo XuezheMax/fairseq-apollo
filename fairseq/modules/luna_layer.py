@@ -152,11 +152,12 @@ class LunaDecoderLayer(nn.Module):
             (default: False).
     """
 
-    def __init__(self, args, add_bias_kv=False, add_zero_attn=False):
+    def __init__(self, args, index, add_bias_kv=False, add_zero_attn=False):
         super().__init__()
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
 
+        self.index = index
         self.embed_dim = args.decoder_embed_dim
         self.encoder_proj_len = args.encoder_projected_length
         self.decoder_proj_len = args.decoder_projected_length
