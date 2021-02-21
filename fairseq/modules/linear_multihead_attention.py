@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -122,7 +122,7 @@ class LinearMultiheadAttention(nn.Module):
         # B x L x D -> L x B x D
         kv = torch.bmm(pkv, kv).transpose(0, 1)
         kv = self.e_layer_norm(kv)
-        return kv, kv
+        return kv
 
     def compute_kv(self,
         query,
@@ -132,7 +132,7 @@ class LinearMultiheadAttention(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Union[Tensor, None]:
 
         if (
             not self.onnx_trace
@@ -143,20 +143,18 @@ class LinearMultiheadAttention(nn.Module):
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
         ):
-            assert key is not None and value is not None
-            return self._compute_kv(key, value, key_padding_mask)
+            return self._compute_kv(key, key_padding_mask)
 
         if self.self_attention:
-            return self._compute_kv(query, query, key_padding_mask)
+            return self._compute_kv(query, key_padding_mask)
         elif self.encoder_decoder_attention:
             # encoder-decoder attention
             if key is None:
-                assert value is None
-                return key, value
+                return key
             else:
-                return self._compute_kv(key, key, key_padding_mask)
+                return self._compute_kv(key, key_padding_mask)
         else:
-            return self._compute_kv(key, value, key_padding_mask)
+            return self._compute_kv(key, key_padding_mask)
 
     def forward(
         self,
