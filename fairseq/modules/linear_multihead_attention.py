@@ -29,11 +29,9 @@ class LinearMultiheadAttention(nn.Module):
         embed_dim,
         num_heads,
         proj_length,
-        kdim=None,
-        vdim=None,
+        kvdim=None,
         dropout=0.0,
         bias=True,
-        kv_same=True,
         self_attention=False,
         encoder_decoder_attention=False,
         q_noise=0.0,
@@ -42,13 +40,9 @@ class LinearMultiheadAttention(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.proj_len = proj_length
-        self.kdim = kdim if kdim is not None else embed_dim
-        self.vdim = vdim if vdim is not None else embed_dim
-        if self_attention or encoder_decoder_attention:
-            assert kv_same, "self attention and encoder-decoder attention requires the same key and value"
+        self.kvdim = kvdim if kvdim is not None else embed_dim
 
-        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
-        self.kv_same = kv_same
+        self.qkv_same_dim = self.kvdim == embed_dim
 
         self.num_heads = num_heads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -64,14 +58,12 @@ class LinearMultiheadAttention(nn.Module):
             "Self-attention requires query, key and " "value to be of the same size"
         )
 
-        self.k_proj = quant_noise(nn.Linear(self.kdim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.v_proj = quant_noise(nn.Linear(self.vdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.k_proj = quant_noise(nn.Linear(self.kvdim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.v_proj = quant_noise(nn.Linear(self.kvdim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.e_proj = quant_noise(nn.Linear(self.kdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.e_layer_norm = LayerNorm(self.kdim)
-        self.f_proj = None if self.kv_same else quant_noise(nn.Linear(self.vdim, self.proj_len, bias=bias), q_noise, qn_block_size)
-        self.f_layer_norm = None if self.kv_same else LayerNorm(self.vdim)
+        self.e_proj = quant_noise(nn.Linear(self.kvdim, self.proj_len, bias=bias), q_noise, qn_block_size)
+        self.e_layer_norm = LayerNorm(self.kvdim)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -107,55 +99,30 @@ class LinearMultiheadAttention(nn.Module):
             weight.copy_(torch.mm(pos_emb, rotation).t())
 
     def reset_parameters(self):
-        if self.qkv_same_dim:
-            # Empirically observed the convergence to be much better with
-            # the scaled initialization
-            nn.init.xavier_uniform_(self.k_proj.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.v_proj.weight, gain=1 / math.sqrt(2))
-            nn.init.xavier_uniform_(self.q_proj.weight, gain=1 / math.sqrt(2))
-        else:
-            nn.init.xavier_uniform_(self.k_proj.weight)
-            nn.init.xavier_uniform_(self.v_proj.weight)
-            nn.init.xavier_uniform_(self.q_proj.weight)
+        gain = 1.0 / math.sqrt(2) if self.qkv_same_dim else 1.0
+        # Empirically observed the convergence to be much better with
+        # the scaled initialization
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.e_proj.weight)
-        if self.f_proj is not None:
-            nn.init.xavier_uniform_(self.f_proj.weight)
-
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    def _compute_kv(self, key, value, key_padding_mask):
-        if self.kv_same:
-            # B x N x D
-            kv = key.transpose(0, 1)
-            if key_padding_mask is not None:
-                kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
+    def _compute_kv(self, key, key_padding_mask):
+        # B x N x D
+        kv = key.transpose(0, 1)
+        if key_padding_mask is not None:
+            kv = kv.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
-            # B x N x L -> B x L x N
-            pkv = F.relu(self.e_proj(kv * self.scaling)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            kv = torch.bmm(pkv, kv).transpose(0, 1)
-            kv = self.e_layer_norm(kv)
-            return kv, kv
-        else:
-            # B x N x D
-            key = key.transpose(0, 1)
-            value = value.transpose(0, 1)
-            if key_padding_mask is not None:
-                key = key.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
-                value = value.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
-
-            # B x N x L -> B x L x N
-            pk = F.relu(self.e_proj(key * self.scaling)).transpose(1, 2)
-            pv = F.relu(self.f_proj(value * self.scaling)).transpose(1, 2)
-            # B x L x D -> L x B x D
-            key = torch.bmm(pk, key).transpose(0, 1)
-            key = self.e_layer_norm(key)
-            value = torch.bmm(pv, value).transpose(0, 1)
-            value = self.f_layer_norm(value)
-            return key, value
+        # B x N x L -> B x L x N
+        pkv = F.relu(self.e_proj(kv * self.scaling)).transpose(1, 2)
+        # B x L x D -> L x B x D
+        kv = torch.bmm(pkv, kv).transpose(0, 1)
+        kv = self.e_layer_norm(kv)
+        return kv, kv
 
     def compute_kv(self,
         query,
@@ -229,6 +196,9 @@ class LinearMultiheadAttention(nn.Module):
 
         if attn_mask is not None:
             raise NotImplementedError('Causal attention has not implemented.')
+
+        if key is not None:
+            assert key.data_ptr() == value.data_ptr(), 'key and value must be the same tensor'
 
         key, value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
         key_padding_mask = None
