@@ -198,7 +198,7 @@ class LinearMultiheadAttention(nn.Module):
         if key is not None:
             assert key.data_ptr() == value.data_ptr(), 'key and value must be the same tensor'
 
-        key, value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
+        key = value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
         key_padding_mask = None
 
         if (
