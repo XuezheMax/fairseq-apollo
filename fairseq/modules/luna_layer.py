@@ -5,6 +5,7 @@
 
 from typing import Dict, List, Optional
 
+import math
 import torch
 import torch.nn as nn
 from fairseq import utils
@@ -29,13 +30,17 @@ class LunaEncoderLayer(nn.Module):
         args (argparse.Namespace): parsed command-line arguments
     """
 
-    def __init__(self, args):
+    def __init__(self, args, index):
         super().__init__()
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
 
+        self.index = index
         self.embed_dim = args.encoder_embed_dim
         self.proj_len = args.encoder_projected_length
+        position_encodings = self._get_sinusoidal_positional_embedding()
+        self.register_buffer('position_encodings', position_encodings)
+
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.encoder_normalize_before
 
@@ -52,6 +57,16 @@ class LunaEncoderLayer(nn.Module):
         self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
         self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
         self.final_layer_norm = LayerNorm(self.embed_dim)
+
+    def _get_sinusoidal_positional_embedding(self):
+        half_dim = self.embed_dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
+        emb = torch.arange(self.proj_len, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(self.proj_len, -1)
+        if self.embed_dim % 2 == 1:
+            emb = torch.cat([emb, torch.zeros(self.proj_len, 1)], dim=1)
+        return emb
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
@@ -98,7 +113,9 @@ class LunaEncoderLayer(nn.Module):
         residual = x
         if self.normalize_before:
             x = self.self_attn_layer_norm(x)
-        x, _ = self.self_attn(query=x, key=x, value=x, key_padding_mask=encoder_padding_mask)
+        x, _ = self.self_attn(query=x, key=x, value=x,
+                              key_padding_mask=encoder_padding_mask,
+                              position_encodings=self.position_encodings)
         x = self.dropout_module(x)
         x = residual + x
         if not self.normalize_before:
@@ -143,6 +160,11 @@ class LunaDecoderLayer(nn.Module):
         self.embed_dim = args.decoder_embed_dim
         self.encoder_proj_len = args.encoder_projected_length
         self.decoder_proj_len = args.decoder_projected_length
+        encoder_position_encodings = self._get_sinusoidal_positional_embedding(self.encoder_proj_len)
+        self.register_buffer('encoder_position_encodings', encoder_position_encodings)
+        decoder_position_encodings = self._get_sinusoidal_positional_embedding(self.decoder_proj_len)
+        self.register_buffer('decoder_position_encodings', decoder_position_encodings)
+
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.normalize_before = args.decoder_normalize_before
 
@@ -171,6 +193,16 @@ class LunaDecoderLayer(nn.Module):
 
         self.need_attn = True
         self.onnx_trace = False
+
+    def _get_sinusoidal_positional_embedding(self, length):
+        half_dim = self.embed_dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
+        emb = torch.arange(length, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(length, -1)
+        if self.embed_dim % 2 == 1:
+            emb = torch.cat([emb, torch.zeros(length, 1)], dim=1)
+        return emb
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
@@ -282,6 +314,7 @@ class LunaDecoderLayer(nn.Module):
             key=encoder_out,
             value=encoder_out,
             key_padding_mask=encoder_padding_mask,
+            position_encodings=self.encoder_position_encodings,
             incremental_state=incremental_state,
             static_kv=True,
             need_weights=need_attn or (not self.training and self.need_attn),

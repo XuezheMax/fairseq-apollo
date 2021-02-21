@@ -297,7 +297,7 @@ class LunaEncoder(FairseqEncoder):
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
         else:
             self.layers = nn.ModuleList([])
-        self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
+        self.layers.extend([self.build_encoder_layer(i, args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
         if args.encoder_normalize_before:
@@ -305,8 +305,8 @@ class LunaEncoder(FairseqEncoder):
         else:
             self.layer_norm = None
 
-    def build_encoder_layer(self, args):
-        return LunaEncoderLayer(args)
+    def build_encoder_layer(self, layer_id, args):
+        return LunaEncoderLayer(args, layer_id)
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
@@ -529,8 +529,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
             self.layers = nn.ModuleList([])
         self.layers.extend(
             [
-                self.build_decoder_layer(args)
-                for _ in range(args.decoder_layers)
+                self.build_decoder_layer(i, args)
+                for i in range(args.decoder_layers)
             ]
         )
         self.num_layers = len(self.layers)
@@ -572,8 +572,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
 
-    def build_decoder_layer(self, args):
-        return LunaDecoderLayer(args)
+    def build_decoder_layer(self, layer_id, args):
+        return LunaDecoderLayer(args, layer_id)
 
     def forward(
         self,

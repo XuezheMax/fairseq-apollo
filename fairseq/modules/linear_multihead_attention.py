@@ -80,16 +80,6 @@ class LinearMultiheadAttention(nn.Module):
         self.tpu = True
         raise NotImplementedError('TPU for linear attention not implemented')
 
-    def _get_sinusoidal_positional_embedding(self, length: int, embedding_dim: int):
-        half_dim = embedding_dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
-        emb = torch.arange(length, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(length, -1)
-        if embedding_dim % 2 == 1:
-            emb = torch.cat([emb, torch.zeros(length, 1)], dim=1)
-        return emb
-
     def _init_positional_weight(self, weight):
         embed_dim, length = weight.size()
         pos_emb = self._get_sinusoidal_positional_embedding(length, embed_dim)
@@ -111,14 +101,10 @@ class LinearMultiheadAttention(nn.Module):
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    def _compute_kv(self, key, key_padding_mask):
-        # B x N x D
-        if self.qkv_same_dim:
-            k = self.k_proj(key).transpose(0, 1)
-            v = self.v_proj(key).transpose(0, 1)
-        else:
-            k = key.transpose(0, 1)
-            v = k
+    def _compute_kv(self, key, key_padding_mask, position_encodings):
+        assert position_encodings is not None
+        k = key.transpose(0, 1)
+        v = k
         if key_padding_mask is not None:
             v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
@@ -134,6 +120,7 @@ class LinearMultiheadAttention(nn.Module):
         key: Optional[Tensor],
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
+        position_encodings: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         static_kv: bool = False,
         attn_mask: Optional[Tensor] = None,
@@ -148,18 +135,18 @@ class LinearMultiheadAttention(nn.Module):
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
         ):
-            return self._compute_kv(key, key_padding_mask)
+            return self._compute_kv(key, key_padding_mask, position_encodings)
 
         if self.self_attention:
-            return self._compute_kv(query, key_padding_mask)
+            return self._compute_kv(query, key_padding_mask, position_encodings)
         elif self.encoder_decoder_attention:
             # encoder-decoder attention
             if key is None:
                 return key
             else:
-                return self._compute_kv(key, key_padding_mask)
+                return self._compute_kv(key, key_padding_mask, position_encodings)
         else:
-            return self._compute_kv(key, key_padding_mask)
+            return self._compute_kv(key, key_padding_mask, position_encodings)
 
     def forward(
         self,
@@ -167,6 +154,7 @@ class LinearMultiheadAttention(nn.Module):
         key: Optional[Tensor],
         value: Optional[Tensor],
         key_padding_mask: Optional[Tensor] = None,
+        position_encodings: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = True,
         static_kv: bool = False,
@@ -203,7 +191,8 @@ class LinearMultiheadAttention(nn.Module):
         if key is not None:
             assert key.data_ptr() == value.data_ptr(), 'key and value must be the same tensor'
 
-        key = value = self.compute_kv(query, key, value, key_padding_mask, incremental_state, static_kv, attn_mask)
+        key = value = self.compute_kv(query, key, value, key_padding_mask, position_encodings,
+                                      incremental_state, static_kv, attn_mask)
         key_padding_mask = None
 
         if (
