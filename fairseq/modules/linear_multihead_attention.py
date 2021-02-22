@@ -64,7 +64,7 @@ class LinearMultiheadAttention(nn.Module):
 
         self.e_query = Parameter(torch.Tensor(self.proj_len, self.kvdim))
         self.e_layer_norm = LayerNorm(self.kvdim)
-        self.e_scale = self.kvdim ** 0.5
+        self.e_scale = self.kvdim ** -0.5
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -111,9 +111,9 @@ class LinearMultiheadAttention(nn.Module):
             v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # 1 x L x D
-        q = self.e_query * self.e_scale
+        q = self.e_query
         if position_encodings is not None:
-            q = q + position_encodings
+            q = q + position_encodings * self.e_scale
         q = q * self.scaling
         # B x L x N
         pkv = F.relu(q.matmul(k))
