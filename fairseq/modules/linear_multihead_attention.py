@@ -64,6 +64,7 @@ class LinearMultiheadAttention(nn.Module):
 
         self.e_query = Parameter(torch.Tensor(self.proj_len, self.kvdim))
         self.e_layer_norm = LayerNorm(self.kvdim)
+        self.e_scale = self.kvdim ** 0.5
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -96,13 +97,12 @@ class LinearMultiheadAttention(nn.Module):
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
 
-        nn.init.xavier_uniform_(self.e_query)
+        nn.init.normal_(self.e_query, mean=0, std=self.kvdim ** -0.5)
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
     def _compute_kv(self, key, key_padding_mask, position_encodings):
-        assert position_encodings is not None
         # N x B x D -> B x N x D
         v = key.transpose(0, 1)
         # B x N x D -> B x D x N
@@ -111,7 +111,10 @@ class LinearMultiheadAttention(nn.Module):
             v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # 1 x L x D
-        q = (self.e_query + position_encodings) * self.scaling
+        q = self.e_query * self.e_scale
+        if position_encodings is not None:
+            q = q + position_encodings
+        q = q * self.scaling
         # B x L x N
         pkv = F.relu(q.matmul(k))
         # B x L x D -> L x B x D
