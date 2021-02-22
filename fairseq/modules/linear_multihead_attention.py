@@ -111,7 +111,7 @@ class LinearMultiheadAttention(nn.Module):
             v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # 1 x L x D
-        q = self.e_query * self.scaling
+        q = (self.e_query + position_encodings) * self.scaling
         # B x L x N
         pkv = F.relu(q.matmul(k))
         # B x L x D -> L x B x D
