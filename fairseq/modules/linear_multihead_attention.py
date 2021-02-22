@@ -97,7 +97,7 @@ class LinearMultiheadAttention(nn.Module):
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
 
-        nn.init.xavier_uniform_(self.e_query)
+        nn.init.normal_(self.e_query, mean=0., std=self.e_scale)
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
@@ -107,16 +107,17 @@ class LinearMultiheadAttention(nn.Module):
         v = key.transpose(0, 1)
         # B x N x D -> B x D x N
         k = v.transpose(1, 2)
-        if key_padding_mask is not None:
-            v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
         # 1 x L x D
         q = self.e_query
         if position_encodings is not None:
             q = q + position_encodings * self.e_scale
-        q = q * self.scaling
+
         # B x L x N
-        pkv = F.relu(q.matmul(k))
+        pkv = q.matmul(k)
+        if key_padding_mask is not None:
+            pkv = pkv.masked_fill(key_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
+        pkv = F.softmax(pkv, dim=-1)
         # B x L x D -> L x B x D
         kv = torch.bmm(pkv, v).transpose(0, 1)
         kv = self.e_layer_norm(kv)
