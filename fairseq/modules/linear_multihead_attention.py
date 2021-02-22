@@ -106,7 +106,7 @@ class LinearMultiheadAttention(nn.Module):
         # N x B x D -> B x N x D
         v = key.transpose(0, 1)
         # B x N x D -> B x D x N
-        k = v.transpose((1, 2))
+        k = v.transpose(1, 2)
         if key_padding_mask is not None:
             v = v.masked_fill(key_padding_mask.unsqueeze(2).to(torch.bool), 0)
 
