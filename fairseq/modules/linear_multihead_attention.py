@@ -114,6 +114,7 @@ class LinearMultiheadAttention(nn.Module):
         q = self.e_query
         if position_encodings is not None:
             q = q + position_encodings * self.e_scale
+        q = q * self.scaling
         # B x L x N
         pkv = F.relu(q.matmul(k))
         # B x L x D -> L x B x D
