@@ -513,6 +513,8 @@ class Trainer(object):
                     self.optimizer.multiply_grads(num / sample_size)
 
             with torch.autograd.profiler.record_function("clip-grads"):
+                if self.get_num_updates() > 500:
+                    self.display_grad_norm(1.0)
                 # clip grads
                 grad_norm = self.clip_grad_norm(self.args.clip_norm, self.args.clip_mode)
 
@@ -553,9 +555,6 @@ class Trainer(object):
                 self.model.perform_additional_optimizer_actions(self.optimizer.optimizer, self.optimizer.fp32_params)
             else:
                 self.model.perform_additional_optimizer_actions(self.optimizer.optimizer)
-
-        if self.get_num_updates() > 500:
-            self.display_grad_norm(1.0)
 
         if not overflow or self.args.distributed_wrapper == 'SlowMo':
             self.set_num_updates(self.get_num_updates() + 1)
