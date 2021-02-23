@@ -554,6 +554,9 @@ class Trainer(object):
             else:
                 self.model.perform_additional_optimizer_actions(self.optimizer.optimizer)
 
+        if self.get_num_updates() > 500:
+            self.display_grad_norm(1.0)
+
         if not overflow or self.args.distributed_wrapper == 'SlowMo':
             self.set_num_updates(self.get_num_updates() + 1)
 
@@ -738,6 +741,22 @@ class Trainer(object):
 
     def clip_grad_norm(self, clip_norm, clip_mode):
         return self.optimizer.clip_grad_norm(clip_norm, aggregate_norm_fn=None, mode=clip_mode)
+
+    def display_grad_norm(self, threshold):
+        named_params = list(
+            filter(
+                lambda p: p.requires_grad,
+                chain(self.model.named_parameters(), self.criterion.named_parameters()),
+            )
+        )
+        named_grads = [(name, torch.norm(p.grad.detach(), p=2, dtype=torch.float32).item())
+                       for name, p in named_params if p.grad is not None]
+        if threshold > 0:
+            threshold = float(threshold)
+
+        for name, grad_norm in named_grads:
+            if grad_norm > threshold:
+                print('{}: {}'.format(name, grad_norm))
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:

@@ -289,7 +289,7 @@ def clip_grad_norm_(params, max_norm, aggregate_norm_fn=None, mode='total'):
     if mode == 'total':
         return clip_total_grad_norm_(params, max_norm, aggregate_norm_fn=aggregate_norm_fn)
     else:
-        return clip_param_grad_norm_(params, max_norm)
+        return clip_param_grad_norm_(params, max_norm, aggregate_norm_fn=aggregate_norm_fn)
 
 
 def clip_total_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Tensor:
@@ -329,7 +329,7 @@ def clip_total_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Ten
     return total_norm
 
 
-def clip_param_grad_norm_(params, max_norm) -> torch.Tensor:
+def clip_param_grad_norm_(params, max_norm, aggregate_norm_fn=None) -> torch.Tensor:
     if isinstance(params, torch.Tensor):
         params = [params]
     params = list(params)
@@ -346,6 +346,8 @@ def clip_param_grad_norm_(params, max_norm) -> torch.Tensor:
     grad_norms = []
     for grad in grads:
         grad_norm = torch.norm(grad, p=2, dtype=torch.float32)
+        if aggregate_norm_fn is not None:
+            grad_norm = aggregate_norm_fn(grad_norm)
         grad_norms.append(grad_norm)
         if max_norm > 0:
             clip_coef = (max_norm / (grad_norm + 1e-6)).clamp_(max=1)
