@@ -495,8 +495,6 @@ class LunarMultiheadAttention(nn.Module):
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
-        self.proj_layer_norm = LayerNorm(embed_dim)
-
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.reset_parameters()
@@ -537,7 +535,6 @@ class LunarMultiheadAttention(nn.Module):
         pqc = F.softmax(pqc, dim=-1)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
-        pc = self.proj_layer_norm(pquery + pc)
         return pc
 
     def compute_pcontext(self,
