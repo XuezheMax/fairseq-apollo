@@ -529,7 +529,8 @@ class LunarMultiheadAttention(nn.Module):
         k = v.transpose(1, 2)
 
         # B x L x N
-        pqc = pquery.transpose(0, 1).matmul(k)
+        pq = pquery.transpose(0, 1) * self.scaling
+        pqc = pq.matmul(k)
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
