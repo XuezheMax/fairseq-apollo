@@ -533,8 +533,8 @@ class LunarMultiheadAttention(nn.Module):
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
-        # B x L x D
-        pc = torch.bmm(pqc, v)
+        # B x L x D -> L x B x D
+        pc = torch.bmm(pqc, v).transpose(0, 1)
         return pc
 
     def compute_pcontext(self,
@@ -626,7 +626,7 @@ class LunarMultiheadAttention(nn.Module):
                 k_proj_weight=self.k_proj.weight,
                 v_proj_weight=self.v_proj.weight,
             )
-            return attn, pcontext.transpose(0, 1), attn_weights
+            return attn, pcontext, attn_weights
 
         if self.self_attention:
             context = query
@@ -642,6 +642,7 @@ class LunarMultiheadAttention(nn.Module):
         else:
             saved_state = None
 
+        # L x B x D
         pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
                                          incremental_state, static_context, attn_mask)
         key_padding_mask = None
@@ -685,8 +686,9 @@ class LunarMultiheadAttention(nn.Module):
             # pcontext are stored with shape (bsz, proj_len, model_dim)
             if "prev_pcontext" in saved_state:
                 # TODO save prev_pcontext for causal attention
-                prev_pcontext = saved_state["prev_pcontext"]
-                assert prev_pcontext is not None
+                _prev_pcontext = saved_state["prev_pcontext"]
+                assert _prev_pcontext is not None
+                prev_pcontext = _prev_pcontext.transpose(0, 1)
                 if static_context:
                     pcontext = prev_pcontext
                 else:
@@ -706,7 +708,7 @@ class LunarMultiheadAttention(nn.Module):
             saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_key_padding_mask"] = key_padding_mask
-            saved_state["prev_pcontext"] = pcontext
+            saved_state["prev_pcontext"] = pcontext.transpose(0, 1)
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
@@ -765,7 +767,7 @@ class LunarMultiheadAttention(nn.Module):
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
 
-        return attn, pcontext.transpose(0, 1), attn_weights
+        return attn, pcontext, attn_weights
 
     @staticmethod
     def _append_prev_key_padding_mask(
