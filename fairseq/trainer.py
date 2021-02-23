@@ -743,14 +743,9 @@ class Trainer(object):
         return self.optimizer.clip_grad_norm(clip_norm, aggregate_norm_fn=None, mode=clip_mode)
 
     def display_grad_norm(self, threshold):
-        named_params = list(
-            filter(
-                lambda p: p.requires_grad,
-                chain(self.model.named_parameters(), self.criterion.named_parameters()),
-            )
-        )
+        named_params = chain(self.model.named_parameters(), self.criterion.named_parameters())
         named_grads = [(name, torch.norm(p.grad.detach(), p=2, dtype=torch.float32).item())
-                       for name, p in named_params if p.grad is not None]
+                       for name, p in named_params if p.requires_grad and p.grad is not None]
         if threshold > 0:
             threshold = float(threshold)
 
