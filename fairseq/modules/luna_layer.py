@@ -203,8 +203,6 @@ class LunaDecoderLayer(nn.Module):
         encoder_out,
         encoder_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        prev_self_attn_state: Optional[List[torch.Tensor]] = None,
-        prev_attn_state: Optional[List[torch.Tensor]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
@@ -230,17 +228,6 @@ class LunaDecoderLayer(nn.Module):
             need_attn = True
 
         residual = x
-        if prev_self_attn_state is not None:
-            prev_key, prev_value = prev_self_attn_state[:2]
-            saved_state: Dict[str, Optional[Tensor]] = {
-                "prev_key": prev_key,
-                "prev_value": prev_value,
-            }
-            if len(prev_self_attn_state) >= 3:
-                saved_state["prev_key_padding_mask"] = prev_self_attn_state[2]
-            assert incremental_state is not None
-            self.self_attn._set_input_buffer(incremental_state, saved_state)
-
         x, attn = self.self_attn(query=x, key=x, value=x,
                                  key_padding_mask=self_attn_padding_mask,
                                  incremental_state=incremental_state,
@@ -251,28 +238,12 @@ class LunaDecoderLayer(nn.Module):
         x = self.self_attn_layer_norm(x)
 
         residual = x
-        if prev_attn_state is not None:
-            prev_key, prev_value = prev_attn_state[:2]
-            saved_state: Dict[str, Optional[Tensor]] = {
-                "prev_key": prev_key,
-                "prev_value": prev_value,
-            }
-            if len(prev_attn_state) >= 3:
-                saved_state["prev_key_padding_mask"] = prev_attn_state[2]
-            assert incremental_state is not None
-            self.encoder_attn._set_input_buffer(incremental_state, saved_state)
-
-        x, attn = self.encoder_attn(
-            query=x,
-            key=encoder_out,
-            value=encoder_out,
-            key_padding_mask=encoder_padding_mask,
-            position_encodings=self.encoder_position_encodings,
-            incremental_state=incremental_state,
-            static_kv=True,
-            need_weights=need_attn or (not self.training and self.need_attn),
-            need_head_weights=need_head_weights,
-        )
+        x, px, attn = self.encoder_attn(query=x, pquery=px, context=encoder_out,
+                                        context_padding_mask=encoder_padding_mask,
+                                        incremental_state=incremental_state,
+                                        static_context=True,
+                                        need_weights=need_attn or (not self.training and self.need_attn),
+                                        need_head_weights=need_head_weights)
         x = self.dropout_module(x)
         x = residual + x
         x = self.encoder_attn_layer_norm(x)
@@ -297,7 +268,7 @@ class LunaDecoderLayer(nn.Module):
             else:
                 self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
             return x, attn, self_attn_state
-        return x, attn, None
+        return x, px, attn, None
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):
         self.need_attn = need_attn

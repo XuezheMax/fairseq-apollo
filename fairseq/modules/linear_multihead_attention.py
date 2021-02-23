@@ -194,6 +194,9 @@ class LinearMultiheadAttention(nn.Module):
                 and not torch.jit.is_scripting()
         ):
             assert key is not None and value is not None
+            key = value = self.compute_kv(query, key, value, key_padding_mask, position_encodings,
+                                          incremental_state, static_kv, attn_mask)
+            key_padding_mask = None
             return F.multi_head_attention_forward(
                 query,
                 key,
@@ -543,30 +546,12 @@ class LunarMultiheadAttention(nn.Module):
         context: Optional[Tensor],
         context_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_kv: bool = False,
+        static_context: bool = False,
         attn_mask: Optional[Tensor] = None,
     ) -> Union[Tensor, None]:
 
-        if (
-            not self.onnx_trace
-            and not self.tpu  # don't use PyTorch version on TPUs
-            and incremental_state is None
-            and not static_kv
-            # A workaround for quantization to work. Otherwise JIT compilation
-            # treats bias in linear module as method.
-            and not torch.jit.is_scripting()
-        ):
-            assert context is not None
-            return self._compute_pcontext(pquery, context, context_padding_mask)
-
-        if self.self_attention:
-            return self._compute_pcontext(pquery, query, context_padding_mask)
-        elif self.encoder_decoder_attention:
-            # encoder-decoder attention
-            if context is None:
-                return context
-            else:
-                return self._compute_pcontext(pquery, context, context_padding_mask)
+        if context is None:
+            return context
         else:
             return self._compute_pcontext(pquery, context, context_padding_mask)
 
@@ -578,7 +563,7 @@ class LunarMultiheadAttention(nn.Module):
         context_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = True,
-        static_kv: bool = False,
+        static_context: bool = False,
         attn_mask: Optional[Tensor] = None,
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
@@ -608,19 +593,19 @@ class LunarMultiheadAttention(nn.Module):
 
         assert not self.self_attention or incremental_state is None, 'linear self attention has not supported incremental processing yet'
 
-        pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
-                                          incremental_state, static_kv, attn_mask)
-        key_padding_mask = None
-
         if (
             not self.onnx_trace
             and not self.tpu  # don't use PyTorch version on TPUs
             and incremental_state is None
-            and not static_kv
+            and not static_context
             # A workaround for quantization to work. Otherwise JIT compilation
             # treats bias in linear module as method.
             and not torch.jit.is_scripting()
         ):
+            assert context is not None
+            pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
+                                             incremental_state, static_context, attn_mask)
+            key_padding_mask = None
             attn, attn_weights = F.multi_head_attention_forward(
                 query,
                 pcontext,
@@ -646,22 +631,30 @@ class LunarMultiheadAttention(nn.Module):
             )
             return attn, pcontext, attn_weights
 
+        if self.self_attention:
+            context = query
+
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if saved_state is not None and "prev_key" in saved_state:
                 # previous time steps are cached - no need to recompute
                 # key and value if they are static
-                if static_kv:
+                if static_context:
                     assert self.encoder_decoder_attention and not self.self_attention
-                    pcontext = None
+                    context = None
         else:
             saved_state = None
+
+        pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
+                                         incremental_state, static_context, attn_mask)
+        key_padding_mask = None
 
         q = self.q_proj(query)
         if pcontext is not None:
             k = self.k_proj(pcontext)
             v = self.v_proj(pcontext)
         else:
+            assert context is None
             k = v = None
 
         q *= self.scaling
@@ -678,7 +671,7 @@ class LunarMultiheadAttention(nn.Module):
                 _prev_key = saved_state["prev_key"]
                 assert _prev_key is not None
                 prev_key = _prev_key.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
+                if static_context:
                     k = prev_key
                 else:
                     assert k is not None
@@ -687,30 +680,37 @@ class LunarMultiheadAttention(nn.Module):
                 _prev_value = saved_state["prev_value"]
                 assert _prev_value is not None
                 prev_value = _prev_value.view(bsz * self.num_heads, -1, self.head_dim)
-                if static_kv:
+                if static_context:
                     v = prev_value
                 else:
                     assert v is not None
                     v = torch.cat([prev_value, v], dim=1)
+            if "prev_pcontext" in saved_state:
+                # TODO save prev_pcontext for causal attention
+                prev_pcontext = saved_state["prev_pcontext"]
+                assert prev_pcontext is not None
+                pcontext = prev_pcontext
             prev_key_padding_mask: Optional[Tensor] = None
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
-            assert k is not None and v is not None
+            assert k is not None and v is not None and pcontext is not None
             key_padding_mask = LunarMultiheadAttention._append_prev_key_padding_mask(
                 key_padding_mask=key_padding_mask,
                 prev_key_padding_mask=prev_key_padding_mask,
                 batch_size=bsz,
                 src_len=k.size(1),
-                static_kv=static_kv,
+                static_kv=static_context,
             )
 
             saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
             saved_state["prev_key_padding_mask"] = key_padding_mask
+            saved_state["prev_pcontext"] = pcontext
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
-        assert k is not None
+
+        assert k is not None and v is not None and pcontext is not None
         src_len = k.size(1)
 
         # This is part of a workaround to get around fork/join parallelism
@@ -748,7 +748,6 @@ class LunarMultiheadAttention(nn.Module):
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
 
-        assert v is not None
         attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if self.onnx_trace and attn.size(1) == 1:
