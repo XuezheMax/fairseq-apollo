@@ -533,8 +533,8 @@ class LunarMultiheadAttention(nn.Module):
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
-        # B x L x D -> L x B x D
-        pc = torch.bmm(pqc, v).transpose(0, 1)
+        # B x L x D
+        pc = torch.bmm(pqc, v)
         return pc
 
     def compute_pcontext(self,
@@ -626,7 +626,7 @@ class LunarMultiheadAttention(nn.Module):
                 k_proj_weight=self.k_proj.weight,
                 v_proj_weight=self.v_proj.weight,
             )
-            return attn, pcontext, attn_weights
+            return attn, pcontext.transpose(0, 1), attn_weights
 
         if self.self_attention:
             context = query
@@ -682,11 +682,15 @@ class LunarMultiheadAttention(nn.Module):
                 else:
                     assert v is not None
                     v = torch.cat([prev_value, v], dim=1)
+            # pcontext are stored with shape (bsz, proj_len, model_dim)
             if "prev_pcontext" in saved_state:
                 # TODO save prev_pcontext for causal attention
                 prev_pcontext = saved_state["prev_pcontext"]
                 assert prev_pcontext is not None
-                pcontext = prev_pcontext
+                if static_context:
+                    pcontext = prev_pcontext
+                else:
+                    raise RuntimeError('pcontext error')
             prev_key_padding_mask: Optional[Tensor] = None
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
@@ -761,7 +765,7 @@ class LunarMultiheadAttention(nn.Module):
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
 
-        return attn, pcontext, attn_weights
+        return attn, pcontext.transpose(0, 1), attn_weights
 
     @staticmethod
     def _append_prev_key_padding_mask(
