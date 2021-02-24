@@ -494,6 +494,7 @@ class LunarMultiheadAttention(nn.Module):
         self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.qq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=False), q_noise, qn_block_size)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -517,6 +518,7 @@ class LunarMultiheadAttention(nn.Module):
         nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.qq_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -528,8 +530,9 @@ class LunarMultiheadAttention(nn.Module):
         # B x N x D -> B x D x N
         k = v.transpose(1, 2)
 
+        # L x B x D -> B x L x D
+        pq = self.qq_proj(pquery).transpose(0, 1) * self.scaling
         # B x L x N
-        pq = pquery.transpose(0, 1) * self.scaling
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))

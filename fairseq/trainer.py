@@ -513,8 +513,9 @@ class Trainer(object):
                     self.optimizer.multiply_grads(num / sample_size)
 
             with torch.autograd.profiler.record_function("clip-grads"):
-                if self.get_num_updates() > 100:
-                    self.display_grad_norm(1.0)
+                num_updates = self.get_num_updates()
+                if num_updates > 100:
+                    self.display_grad_norm(1.0, num_updates)
                 # clip grads
                 grad_norm = self.clip_grad_norm(self.args.clip_norm, self.args.clip_mode)
 
@@ -741,7 +742,7 @@ class Trainer(object):
     def clip_grad_norm(self, clip_norm, clip_mode):
         return self.optimizer.clip_grad_norm(clip_norm, aggregate_norm_fn=None, mode=clip_mode)
 
-    def display_grad_norm(self, threshold):
+    def display_grad_norm(self, threshold, num_updates):
         named_params = chain(self.model.named_parameters(), self.criterion.named_parameters())
         named_grads = [(name, torch.norm(p.grad.detach(), p=2, dtype=torch.float32).item())
                        for name, p in named_params if p.requires_grad and p.grad is not None]
@@ -750,7 +751,7 @@ class Trainer(object):
 
         for name, grad_norm in named_grads:
             if grad_norm > threshold:
-                print('{}: {}'.format(name, grad_norm))
+                print('{}: |{}| {}'.format(num_updates, name, grad_norm))
 
     def cumulative_training_time(self):
         if self._cumulative_training_time is None:

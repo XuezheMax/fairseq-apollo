@@ -277,9 +277,6 @@ class LunaEncoder(FairseqEncoder):
             else None
         )
 
-        self.layernorm_embedding = LayerNorm(embed_dim)
-        self.layernorm_projected_embedding = LayerNorm(embed_dim)
-
         self.proj_len = args.encoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
@@ -317,9 +314,7 @@ class LunaEncoder(FairseqEncoder):
             px = proj_embed + self.projected_positions
 
         x = self.dropout_module(x)
-        x = self.layernorm_embedding(x)
         px = self.dropout_module(px)
-        px = self.layernorm_projected_embedding(px)
         return x, embed, px, proj_embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
@@ -518,9 +513,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
-        self.layernorm_embedding = LayerNorm(embed_dim)
-        self.layernorm_projected_embedding = LayerNorm(embed_dim)
-
         self.proj_len = args.decoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
@@ -691,9 +683,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
             px = px + self.projected_positions
 
         x = self.dropout_module(x)
-        x = self.layernorm_embedding(x)
         px = self.dropout_module(px)
-        px = self.layernorm_projected_embedding(px)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
