@@ -491,12 +491,12 @@ class LunarMultiheadAttention(nn.Module):
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
 
-        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=False), q_noise, qn_block_size)
+        self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pout_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.reset_parameters()
 
@@ -515,24 +515,28 @@ class LunarMultiheadAttention(nn.Module):
         # Empirically observed the convergence to be much better with
         # the scaled initialization
         gain = 1.0 / math.sqrt(2)
-        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
+        nn.init.xavier_uniform_(self.pout_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
+            nn.init.constant_(self.pout_proj.bias, 0.)
 
     def _compute_pcontext(self, pquery, context, context_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
+        k = context
+        v = self.v_proj(context)
         # N x B x D -> N x B x H x K
-        context = context.view(len, bsz, self.num_heads, self.head_dim)
+        k = k.view(len, bsz, self.num_heads, self.head_dim)
+        v = v.view(len, bsz, self.num_heads, self.head_dim)
         # N x B x H x K -> B x H x K x N
-        k = context.permute(1, 2, 3, 0)
-        # B x H x K x N -> B x H x N x K
-        v = k.transpose(2, 3)
+        k = k.permute(1, 2, 3, 0)
+        # N x B x H x K -> B x H x N x K
+        v = v.permute(1, 2, 0, 3)
 
         # L x B x D -> B x L x D
         plen = pquery.size(0)
@@ -551,6 +555,7 @@ class LunarMultiheadAttention(nn.Module):
         # B x H x L x K -> L x B x H x K
         pc = pc.permute(2, 0, 1, 3).contiguous()
         pc = pc.view(plen, bsz, dim)
+        pc = self.pout_proj(pc)
         return pc
 
     def compute_pcontext(self,
@@ -606,44 +611,6 @@ class LunarMultiheadAttention(nn.Module):
 
         assert not self.self_attention or incremental_state is None, 'linear self attention has not supported incremental processing yet'
 
-        if (
-            not self.onnx_trace
-            and not self.tpu  # don't use PyTorch version on TPUs
-            and incremental_state is None
-            and not static_context
-            # A workaround for quantization to work. Otherwise JIT compilation
-            # treats bias in linear module as method.
-            and not torch.jit.is_scripting()
-        ):
-            assert context is not None
-            pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
-                                             incremental_state, static_context, attn_mask)
-            key_padding_mask = None
-            attn, attn_weights = F.multi_head_attention_forward(
-                query,
-                pcontext,
-                pcontext,
-                self.embed_dim,
-                self.num_heads,
-                torch.empty([0]),
-                torch.cat((self.q_proj.bias, self.k_proj.bias, self.v_proj.bias)),
-                None,
-                None,
-                False,
-                self.dropout_module.p,
-                self.out_proj.weight,
-                self.out_proj.bias,
-                self.training or self.dropout_module.apply_during_inference,
-                key_padding_mask,
-                need_weights,
-                attn_mask,
-                use_separate_proj_weight=True,
-                q_proj_weight=self.q_proj.weight,
-                k_proj_weight=self.k_proj.weight,
-                v_proj_weight=self.v_proj.weight,
-            )
-            return attn, pcontext, attn_weights
-
         if self.self_attention:
             context = query
 
@@ -662,14 +629,12 @@ class LunarMultiheadAttention(nn.Module):
         pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
                                          incremental_state, static_context, attn_mask)
         key_padding_mask = None
+        if pcontext is None:
+            assert context is None
 
         q = self.q_proj(query)
-        if pcontext is not None:
-            k = self.k_proj(pcontext)
-            v = self.v_proj(pcontext)
-        else:
-            assert context is None
-            k = v = None
+        k = pcontext
+        v = pcontext
 
         q *= self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
