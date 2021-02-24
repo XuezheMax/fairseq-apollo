@@ -115,8 +115,6 @@ class LunaModel(FairseqEncoderDecoderModel):
                                  'Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--layernorm-embedding', action='store_true',
-                            help='add layernorm to embedding')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
         # args for "Reducing Transformer Depth on Demand with Structured Dropout" (Fan et al., 2019)
@@ -279,10 +277,8 @@ class LunaEncoder(FairseqEncoder):
             else None
         )
 
-        if getattr(args, "layernorm_embedding", False):
-            self.layernorm_embedding = LayerNorm(embed_dim)
-        else:
-            self.layernorm_embedding = None
+        self.layernorm_embedding = LayerNorm(embed_dim)
+        self.layernorm_projected_embedding = LayerNorm(embed_dim)
 
         self.proj_len = args.encoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
@@ -293,15 +289,6 @@ class LunaEncoder(FairseqEncoder):
             else None
         )
         self.register_buffer('projected_positions', projected_positions)
-
-        if not args.adaptive_input and args.quant_noise_pq > 0:
-            self.quant_noise = apply_quant_noise_(
-                nn.Linear(embed_dim, embed_dim, bias=False),
-                args.quant_noise_pq,
-                args.quant_noise_pq_block_size,
-            )
-        else:
-            self.quant_noise = None
 
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
@@ -328,12 +315,11 @@ class LunaEncoder(FairseqEncoder):
             x = embed + self.embed_positions(src_tokens)
         if self.projected_positions is not None:
             px = proj_embed + self.projected_positions
-        if self.layernorm_embedding is not None:
-            x = self.layernorm_embedding(x)
+
         x = self.dropout_module(x)
+        x = self.layernorm_embedding(x)
         px = self.dropout_module(px)
-        if self.quant_noise is not None:
-            x = self.quant_noise(x)
+        px = self.layernorm_projected_embedding(px)
         return x, embed, px, proj_embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
@@ -515,15 +501,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
-        if not args.adaptive_input and args.quant_noise_pq > 0:
-            self.quant_noise = apply_quant_noise_(
-                nn.Linear(embed_dim, embed_dim, bias=False),
-                args.quant_noise_pq,
-                args.quant_noise_pq_block_size,
-            )
-        else:
-            self.quant_noise = None
-
         self.project_in_dim = (
             Linear(input_embed_dim, embed_dim, bias=False)
             if embed_dim != input_embed_dim
@@ -541,10 +518,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
-        if getattr(args, "layernorm_embedding", False):
-            self.layernorm_embedding = LayerNorm(embed_dim)
-        else:
-            self.layernorm_embedding = None
+        self.layernorm_embedding = LayerNorm(embed_dim)
+        self.layernorm_projected_embedding = LayerNorm(embed_dim)
 
         self.proj_len = args.decoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
@@ -705,23 +680,20 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         # embed tokens and positions
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
-        if self.quant_noise is not None:
-            x = self.quant_noise(x)
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
 
         px = self.embed_scale * self.projected_embeddings
 
         if positions is not None:
-            x += positions
+            x = x + positions
         if self.projected_positions is not None:
             px = px + self.projected_positions
 
-        if self.layernorm_embedding is not None:
-            x = self.layernorm_embedding(x)
-
         x = self.dropout_module(x)
+        x = self.layernorm_embedding(x)
         px = self.dropout_module(px)
+        px = self.layernorm_projected_embedding(px)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -903,6 +875,5 @@ def base_architecture(args):
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
-    args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
