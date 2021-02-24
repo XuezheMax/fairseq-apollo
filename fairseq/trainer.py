@@ -513,9 +513,6 @@ class Trainer(object):
                     self.optimizer.multiply_grads(num / sample_size)
 
             with torch.autograd.profiler.record_function("clip-grads"):
-                num_updates = self.get_num_updates()
-                if num_updates > 100:
-                    self.display_grad_norm(1.0, num_updates)
                 # clip grads
                 grad_norm = self.clip_grad_norm(self.args.clip_norm, self.args.clip_mode)
 
