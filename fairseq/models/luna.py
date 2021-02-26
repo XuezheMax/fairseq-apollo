@@ -276,8 +276,10 @@ class LunaEncoder(FairseqEncoder):
         )
 
         self.proj_len = args.encoder_projected_length
-        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
-        nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
+        self.rotation_matrix = Parameter(torch.Tensor(self.proj_len, self.proj_len))
+        nn.init.orthogonal_(self.rotation_matrix)
+        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
+        self.register_buffer('projected_positions', projected_positions)
 
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
@@ -301,7 +303,7 @@ class LunaEncoder(FairseqEncoder):
         x = embed = self.embed_tokens(src_tokens) * self.embed_scale
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
-        px = proj_embed = self.projected_embeddings * self.embed_scale
+        px = proj_embed = self.rotation_matrix.mm(self.projected_positions)
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -504,8 +506,10 @@ class LunaDecoder(FairseqIncrementalDecoder):
         )
 
         self.proj_len = args.decoder_projected_length
-        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
-        nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
+        self.rotation_matrix = Parameter(torch.Tensor(self.proj_len, self.proj_len))
+        nn.init.orthogonal_(self.rotation_matrix)
+        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
+        self.register_buffer('projected_positions', projected_positions)
 
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
@@ -661,7 +665,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if positions is not None:
             x = x + positions
 
-        px = self.projected_embeddings * self.embed_scale
+        px = self.rotation_matrix.mm(self.projected_positions)
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
