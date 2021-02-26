@@ -298,10 +298,10 @@ class LunaEncoder(FairseqEncoder):
 
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
-        x = embed = self.embed_scale * self.embed_tokens(src_tokens)
+        x = embed = self.embed_tokens(src_tokens) * self.embed_scale
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
-        px = proj_embed = self.projected_embeddings
+        px = proj_embed = self.projected_embeddings * self.embed_scale
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -655,13 +655,13 @@ class LunaDecoder(FairseqIncrementalDecoder):
                 positions = positions[:, -1:]
 
         # embed tokens and positions
-        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        x = self.embed_tokens(prev_output_tokens) * self.embed_scale
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
         if positions is not None:
             x = x + positions
 
-        px = self.projected_embeddings
+        px = self.projected_embeddings * self.embed_scale
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
