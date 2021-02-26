@@ -108,8 +108,6 @@ class LunaModel(FairseqEncoderDecoderModel):
                                  ' (requires shared dictionary and embed dim)')
         parser.add_argument('--no-token-positional-embeddings', default=False, action='store_true',
                             help='if set, disables positional embeddings (outside self attention)')
-        parser.add_argument('--no-projected-positional-embeddings', default=False, action='store_true',
-                            help='if set, disables projected positional embeddings (outside self attention)')
         parser.add_argument('--adaptive-softmax-cutoff', metavar='EXPR',
                             help='comma separated list of adaptive softmax cutoff points. '
                                  'Must be used with adaptive_loss criterion'),
@@ -280,12 +278,6 @@ class LunaEncoder(FairseqEncoder):
         self.proj_len = args.encoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
-        projected_positions = (
-            get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
-            if not args.no_projected_positional_embeddings
-            else None
-        )
-        self.register_buffer('projected_positions', projected_positions)
 
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
@@ -307,11 +299,9 @@ class LunaEncoder(FairseqEncoder):
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
-        px = proj_embed = self.embed_scale * self.projected_embeddings
         if self.embed_positions is not None:
             x = embed + self.embed_positions(src_tokens)
-        if self.projected_positions is not None:
-            px = proj_embed + self.projected_positions
+        px = proj_embed = self.projected_embeddings
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -516,12 +506,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
         self.proj_len = args.decoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
-        projected_positions = (
-            get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
-            if not args.no_projected_positional_embeddings
-            else None
-        )
-        self.register_buffer('projected_positions', projected_positions)
 
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
@@ -674,13 +658,10 @@ class LunaDecoder(FairseqIncrementalDecoder):
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
-
-        px = self.embed_scale * self.projected_embeddings
-
         if positions is not None:
             x = x + positions
-        if self.projected_positions is not None:
-            px = px + self.projected_positions
+
+        px = self.projected_embeddings
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
