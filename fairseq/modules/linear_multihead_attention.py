@@ -493,8 +493,18 @@ class LunarMultiheadAttention(nn.Module):
 
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.pv_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.qk_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
+        self.pqk_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
+        if bias:
+            self.qk_qbias = Parameter(torch.Tensor(embed_dim))
+            self.qk_kbias = Parameter(torch.Tensor(embed_dim))
+            self.pqk_qbias = Parameter(torch.Tensor(embed_dim))
+            self.pqk_kbias = Parameter(torch.Tensor(embed_dim))
+        else:
+            self.register_parameter('qk_qbias', None)
+            self.register_parameter('qk_kbias', None)
+            self.register_parameter('pqk_qbias', None)
+            self.register_parameter('pqk_kbias', None)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -517,8 +527,18 @@ class LunarMultiheadAttention(nn.Module):
         gain = 1.0 / math.sqrt(2)
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.pv_proj.weight, gain=gain)
-        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
-        nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.qk_weight, gain=gain)
+        nn.init.xavier_uniform_(self.pqk_weight, gain=gain)
+
+        if self.qk_qbias is not None:
+            assert self.qk_kbias is not None
+            assert self.pqk_qbias is not None
+            assert self.pqk_kbias is not None
+            bound = self.embed_dim ** -0.5
+            nn.init.uniform_(self.qk_qbias, -bound, bound)
+            nn.init.uniform_(self.qk_kbias, -bound, bound)
+            nn.init.uniform_(self.pqk_qbias, -bound, bound)
+            nn.init.uniform_(self.pqk_kbias, -bound, bound)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -527,11 +547,19 @@ class LunarMultiheadAttention(nn.Module):
     def _compute_pcontext(self, pquery, context, context_padding_mask):
         # N x B x D -> B x N x D
         v = self.v_proj(context).transpose(0, 1)
+        # N x B x D
+        k = context
+        if self.pqk_kbias is not None:
+            k = k + self.pqk_kbias
         # N x B x D -> B x D x N
-        k = context.permute(1, 2, 0)
+        k = k.permute(1, 2, 0)
 
         # L x B x D -> B x L x D
-        pq = self.pq_proj(pquery).transpose(0, 1) * self.scaling
+        pq = pquery.transpose(0, 1)
+        if self.pqk_qbias is not None:
+            pq = pq + self.pqk_qbias
+        pq = torch.matmul(pq, self.pqk_weight)
+        pq = pq * self.scaling
         # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
@@ -613,12 +641,18 @@ class LunarMultiheadAttention(nn.Module):
                                          incremental_state, static_context, attn_mask)
         key_padding_mask = None
 
-        q = self.q_proj(query)
-        k = pcontext
+        q = query
+        if self.qk_qbias is not None:
+            q = q + self.qk_qbias
+        q = torch.matmul(q, self.qk_weight)
         if pcontext is None:
             assert context is None
+            k = None
             v = None
         else:
+            k = pcontext
+            if self.qk_kbias is not None:
+                k = k + self.qk_kbias
             v = self.pv_proj(pcontext)
 
         q *= self.scaling
