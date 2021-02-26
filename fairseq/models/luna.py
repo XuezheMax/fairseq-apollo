@@ -74,12 +74,16 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
+        parser.add_argument('--encoder-projected-embed-dim', type=int, metavar='N',
+                            help='encoder projected embedding dimension')
         parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
+        parser.add_argument('--encoder-projected-attention-heads', type=int, metavar='N',
+                            help='num encoder projected attention heads')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--encoder-projected-length', type=int, metavar='N',
@@ -88,12 +92,16 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
+        parser.add_argument('--decoder-projected-embed-dim', type=int, metavar='N',
+                            help='decoder projected-embedding dimension')
         parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
         parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
                             help='num decoder attention heads')
+        parser.add_argument('--decoder-projected-attention-heads', type=int, metavar='N',
+                            help='num decoder projected attention heads')
         parser.add_argument('--decoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the decoder')
         parser.add_argument('--decoder-output-dim', type=int, metavar='N',
@@ -257,12 +265,14 @@ class LunaEncoder(FairseqEncoder):
 
         embed_dim = embed_tokens.embedding_dim
         assert embed_dim == args.encoder_embed_dim, 'encoder embedding dim mismatch.'
+        proj_embed_dim = args.encoder_projected_embed_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
 
         self.embed_tokens = embed_tokens
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.proj_embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(proj_embed_dim)
 
         self.embed_positions = (
             PositionalEmbedding(
@@ -276,9 +286,9 @@ class LunaEncoder(FairseqEncoder):
         )
 
         self.proj_len = args.encoder_projected_length
-        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
-        nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
-        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
+        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, proj_embed_dim))
+        nn.init.normal_(self.projected_embeddings, mean=0., std=proj_embed_dim ** -0.5)
+        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, proj_embed_dim)
         self.register_buffer('projected_positions', projected_positions)
 
         if self.encoder_layerdrop > 0.0:
@@ -290,9 +300,12 @@ class LunaEncoder(FairseqEncoder):
 
         if embed_dim != args.decoder_embed_dim:
             self.project_x_out_dim = Linear(embed_dim, args.decoder_embed_dim, bias=False)
-            self.project_px_out_dim = Linear(embed_dim, args.decoder_embed_dim, bias=False)
         else:
             self.project_x_out_dim = None
+
+        if proj_embed_dim != args.decoder_projected_embed_dim:
+            self.project_px_out_dim = Linear(proj_embed_dim, args.decoder_projected_embed_dim, bias=False)
+        else:
             self.project_px_out_dim = None
 
     def build_encoder_layer(self, layer_id, args):
@@ -302,7 +315,7 @@ class LunaEncoder(FairseqEncoder):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
         x = x + self.embed_positions(src_tokens)
-        px = proj_embed = self.embed_scale * self.projected_embeddings
+        px = proj_embed = self.proj_embed_scale * self.projected_embeddings
         px = px + self.projected_positions
 
         x = self.dropout_module(x)
@@ -478,7 +491,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
-        self.embed_dim = embed_dim
+        proj_embed_dim = args.decoder_projected_embed_dim
         self.output_embed_dim = args.decoder_output_dim
 
         self.padding_idx = embed_tokens.padding_idx
@@ -487,6 +500,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         self.embed_tokens = embed_tokens
 
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.proj_embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(proj_embed_dim)
 
         self.project_in_dim = (
             Linear(input_embed_dim, embed_dim, bias=False)
@@ -506,9 +520,9 @@ class LunaDecoder(FairseqIncrementalDecoder):
         )
 
         self.proj_len = args.decoder_projected_length
-        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
-        nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
-        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
+        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, proj_embed_dim))
+        nn.init.normal_(self.projected_embeddings, mean=0., std=proj_embed_dim ** -0.5)
+        projected_positions = get_sinusoidal_positional_embedding(self.proj_len, proj_embed_dim)
         self.register_buffer('projected_positions', projected_positions)
 
         if self.decoder_layerdrop > 0.0:
@@ -665,7 +679,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if positions is not None:
             x = x + positions
 
-        px = self.embed_scale * self.projected_embeddings
+        px = self.proj_embed_scale * self.projected_embeddings
         px = px + self.projected_positions
 
         x = self.dropout_module(x)
@@ -821,17 +835,21 @@ def get_sinusoidal_positional_embedding(length, embed_dim):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
+    args.encoder_projected_embed_dim = getattr(args, "encoder_projected_embed_dim", args.encoder_embed_dim)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_projected_attention_heads = getattr(args, "encoder_projected_attention_heads", args.encoder_attention_heads)
     args.encoder_projected_length = getattr(args, 'encoder_projected_length', 32)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
 
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
+    args.decoder_projected_embed_dim = getattr(args, "decoder_projected_embed_dim", args.decoder_embed_dim)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    args.decoder_projected_attention_heads = getattr(args, "decoder_projected_attention_heads", args.decoder_attention_heads)
     args.decoder_projected_length = getattr(args, 'decoder_projected_length', args.encoder_projected_length)
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
 

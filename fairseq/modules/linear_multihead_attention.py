@@ -471,7 +471,9 @@ class LunarMultiheadAttention(nn.Module):
     def __init__(
         self,
         embed_dim,
+        pembed_dim,
         num_heads,
+        num_pheads,
         dropout=0.0,
         bias=True,
         self_attention=False,
@@ -482,6 +484,8 @@ class LunarMultiheadAttention(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
+        self.pembed_dim = pembed_dim
+        self.num_pheads = num_pheads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
@@ -493,18 +497,8 @@ class LunarMultiheadAttention(nn.Module):
 
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.pv_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.qk_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
-        self.pqk_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
-        if bias:
-            self.qk_qbias = Parameter(torch.Tensor(embed_dim))
-            self.qk_kbias = Parameter(torch.Tensor(embed_dim))
-            self.pqk_qbias = Parameter(torch.Tensor(embed_dim))
-            self.pqk_kbias = Parameter(torch.Tensor(embed_dim))
-        else:
-            self.register_parameter('qk_qbias', None)
-            self.register_parameter('qk_kbias', None)
-            self.register_parameter('pqk_qbias', None)
-            self.register_parameter('pqk_kbias', None)
+        self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
 
@@ -527,39 +521,21 @@ class LunarMultiheadAttention(nn.Module):
         gain = 1.0 / math.sqrt(2)
         nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.pv_proj.weight, gain=gain)
-        nn.init.xavier_uniform_(self.qk_weight, gain=gain)
-        nn.init.xavier_uniform_(self.pqk_weight, gain=gain)
-
-        if self.qk_qbias is not None:
-            assert self.qk_kbias is not None
-            assert self.pqk_qbias is not None
-            assert self.pqk_kbias is not None
-            bound = self.embed_dim ** -0.5
-            nn.init.uniform_(self.qk_qbias, -bound, bound)
-            nn.init.uniform_(self.qk_kbias, -bound, bound)
-            nn.init.uniform_(self.pqk_qbias, -bound, bound)
-            nn.init.uniform_(self.pqk_kbias, -bound, bound)
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    def _compute_pcontext(self, pquery, context, context_padding_mask):
+    def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
         # N x B x D -> B x N x D
         v = self.v_proj(context).transpose(0, 1)
-        # N x B x D
-        k = context
-        if self.pqk_kbias is not None:
-            k = k + self.pqk_kbias
         # N x B x D -> B x D x N
-        k = k.permute(1, 2, 0)
+        k = context.permute(1, 2, 0)
 
         # L x B x D -> B x L x D
-        pq = pquery.transpose(0, 1)
-        if self.pqk_qbias is not None:
-            pq = pq + self.pqk_qbias
-        pq = torch.matmul(pq, self.pqk_weight)
-        pq = pq * self.scaling
+        pq = self.pq_proj(pquery).transpose(0, 1) * self.scaling
         # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
@@ -567,6 +543,38 @@ class LunarMultiheadAttention(nn.Module):
         pqc = F.softmax(pqc, dim=-1)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
+        return pc
+
+    def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
+        # N x B x D
+        len, bsz, dim = context.size()
+        k = context
+        v = self.v_proj(context)
+        # N x B x D -> N x B x H x K
+        k = k.view(len, bsz, self.num_heads, self.head_dim)
+        v = v.view(len, bsz, self.num_heads, self.head_dim)
+        # N x B x H x K -> B x H x K x N
+        k = k.permute(1, 2, 3, 0)
+        # N x B x H x K -> B x H x N x K
+        v = v.permute(1, 2, 0, 3)
+
+        # L x B x D -> B x L x D
+        plen = pquery.size(0)
+        pq = self.pq_proj(pquery.transpose(0, 1))
+        # B x L x D -> B x L x H x K
+        pq = pq.view(-1, plen, self.num_heads, self.head_dim)
+        # B x L x H x K -> B x H x L x K
+        pq = pq.transpose(1, 2) * self.scaling
+        # B x H x L x N
+        pqc = pq.matmul(k)
+        if context_padding_mask is not None:
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+        pqc = F.softmax(pqc, dim=-1)
+        # B x H x L x K
+        pc = torch.matmul(pqc, v)
+        # B x H x L x K -> L x B x H x K
+        pc = pc.permute(2, 0, 1, 3).contiguous()
+        pc = pc.view(plen, bsz, dim)
         return pc
 
     def compute_pcontext(self,
@@ -582,7 +590,10 @@ class LunarMultiheadAttention(nn.Module):
         if context is None:
             return context
         else:
-            return self._compute_pcontext(pquery, context, context_padding_mask)
+            if self.num_pheads == 1:
+                return self._compute_pcontext_singlehead(pquery, context, context_padding_mask)
+            else:
+                return self._compute_pcontext_multiheads(pquery, context, context_padding_mask)
 
     def forward(
         self,

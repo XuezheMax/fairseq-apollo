@@ -37,12 +37,13 @@ class LunaEncoderLayer(nn.Module):
 
         self.index = index
         self.embed_dim = args.encoder_embed_dim
+        self.pembed_dim = args.encoder_projected_embed_dim
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
-        self.self_attn = self.build_self_attention(self.embed_dim, args)
+        self.self_attn = self.build_self_attention(self.embed_dim, self.pembed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-        self.self_atten_proj_layer_norm = LayerNorm(self.embed_dim)
+        self.self_atten_proj_layer_norm = LayerNorm(self.pembed_dim)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -61,10 +62,12 @@ class LunaEncoderLayer(nn.Module):
     def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
-    def build_self_attention(self, embed_dim, args):
+    def build_self_attention(self, embed_dim, pembed_dim, args):
         return LunarMultiheadAttention(
             embed_dim,
+            pembed_dim,
             args.encoder_attention_heads,
+            args.encoder_projected_attention_heads,
             dropout=args.attention_dropout,
             self_attention=True,
             q_noise=self.quant_noise,
@@ -144,6 +147,7 @@ class LunaDecoderLayer(nn.Module):
 
         self.index = index
         self.embed_dim = args.decoder_embed_dim
+        self.pembed_dim = args.decoder_projected_embed_dim
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
@@ -155,9 +159,9 @@ class LunaDecoderLayer(nn.Module):
         export = getattr(args, "char_inputs", False)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
+        self.encoder_attn = self.build_encoder_attention(self.embed_dim, self.pembed_dim, args)
         self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
-        self.encoder_atten_proj_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.encoder_atten_proj_layer_norm = LayerNorm(self.pembed_dim, export=export)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -191,10 +195,12 @@ class LunaDecoderLayer(nn.Module):
             qn_block_size=self.quant_noise_block_size,
         )
 
-    def build_encoder_attention(self, embed_dim, args):
+    def build_encoder_attention(self, embed_dim, pembed_dim, args):
         return LunarMultiheadAttention(
             embed_dim,
+            pembed_dim,
             args.decoder_attention_heads,
+            args.decoder_projected_attention_heads,
             dropout=args.attention_dropout,
             encoder_decoder_attention=True,
             q_noise=self.quant_noise,
