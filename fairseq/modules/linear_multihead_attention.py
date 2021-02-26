@@ -652,18 +652,12 @@ class LunarMultiheadAttention(nn.Module):
                                          incremental_state, static_context, attn_mask)
         key_padding_mask = None
 
-        q = query
-        if self.qk_qbias is not None:
-            q = q + self.qk_qbias
-        q = torch.matmul(q, self.qk_weight)
+        q = self.q_proj(query)
+        k = pcontext
         if pcontext is None:
             assert context is None
-            k = None
             v = None
         else:
-            k = pcontext
-            if self.qk_kbias is not None:
-                k = k + self.qk_kbias
             v = self.pv_proj(pcontext)
 
         q *= self.scaling
