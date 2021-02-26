@@ -524,53 +524,21 @@ class LunarMultiheadAttention(nn.Module):
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    # def _compute_pcontext(self, pquery, context, context_padding_mask):
-    #     # N x B x D -> B x N x D
-    #     v = self.v_proj(context).transpose(0, 1)
-    #     # N x B x D -> B x D x N
-    #     k = context.permute(1, 2, 0)
-    #
-    #     # L x B x D -> B x L x D
-    #     pq = self.pq_proj(pquery).transpose(0, 1) * self.scaling
-    #     # B x L x N
-    #     pqc = pq.matmul(k)
-    #     if context_padding_mask is not None:
-    #         pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
-    #     pqc = F.softmax(pqc, dim=-1)
-    #     # B x L x D -> L x B x D
-    #     pc = torch.bmm(pqc, v).transpose(0, 1)
-    #     return pc
-
     def _compute_pcontext(self, pquery, context, context_padding_mask):
-        # N x B x D
-        len, bsz, dim = context.size()
-        k = context
-        v = self.v_proj(context)
-        # N x B x D -> N x B x H x K
-        k = k.view(len, bsz, self.num_heads, self.head_dim)
-        v = v.view(len, bsz, self.num_heads, self.head_dim)
-        # N x B x H x K -> B x H x K x N
-        k = k.permute(1, 2, 3, 0)
-        # N x B x H x K -> B x H x N x K
-        v = v.permute(1, 2, 0, 3)
+        # N x B x D -> B x N x D
+        v = self.v_proj(context).transpose(0, 1)
+        # N x B x D -> B x D x N
+        k = context.permute(1, 2, 0)
 
         # L x B x D -> B x L x D
-        plen = pquery.size(0)
-        pq = self.pq_proj(pquery.transpose(0, 1))
-        # B x L x D -> B x L x H x K
-        pq = pq.view(-1, plen, self.num_heads, self.head_dim)
-        # B x L x H x K -> B x H x L x K
-        pq = pq.transpose(1, 2) * self.scaling
-        # B x H x L x N
+        pq = self.pq_proj(pquery).transpose(0, 1) * self.scaling
+        # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
-        # B x H x L x K
-        pc = torch.matmul(pqc, v)
-        # B x H x L x K -> L x B x H x K
-        pc = pc.permute(2, 0, 1, 3).contiguous()
-        pc = pc.view(plen, bsz, dim)
+        # B x L x D -> L x B x D
+        pc = torch.bmm(pqc, v).transpose(0, 1)
         return pc
 
     def compute_pcontext(self,
