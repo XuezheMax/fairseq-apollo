@@ -532,14 +532,14 @@ class LunarMultiheadAttention(nn.Module):
             nn.init.constant_(self.out_proj.bias, 0.)
 
     def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
-        # N x B x D
-        pcontext = self.c_proj(context)
+        # N x B x D -> B x N x D
+        pcontext = self.c_proj(context.transpose(0, 1))
         if context_padding_mask is not None:
             pcontext = pcontext.masked_fill(context_padding_mask.unsqueeze(2).to(torch.bool), 0)
-        # N x B x D -> B x N x D
-        v = pcontext.transpose(0, 1)
-        # N x B x D -> B x D x N
-        k = pcontext.permute(1, 2, 0)
+        # B x N x D
+        v = pcontext
+        # B x N x D -> B x D x N
+        k = pcontext.transpose(1, 2)
 
         # L x B x D -> B x L x D
         pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
