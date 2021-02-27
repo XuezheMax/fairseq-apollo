@@ -123,8 +123,6 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='sets adaptive softmax dropout for the tail projections')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
-        parser.add_argument('--normalize-outside-attention', default=False, action='store_true',
-                            help='do not perform cross-attention')
         # args for "Reducing Transformer Depth on Demand with Structured Dropout" (Fan et al., 2019)
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
@@ -866,7 +864,6 @@ def base_architecture(args):
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
     args.no_token_positional_embeddings = getattr( args, "no_token_positional_embeddings", False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
-    args.normalize_outside_attention = getattr(args, "normalize_outside_attention", False)
 
     args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)

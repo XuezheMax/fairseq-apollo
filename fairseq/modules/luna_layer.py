@@ -38,17 +38,12 @@ class LunaEncoderLayer(nn.Module):
         self.index = index
         self.embed_dim = args.encoder_embed_dim
         self.pembed_dim = args.encoder_projected_embed_dim
-        self.normalize = args.normalize_outside_attention
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.self_attn = self.build_self_attention(self.embed_dim, self.pembed_dim, args)
-        if self.normalize:
-            self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-            self.self_atten_proj_layer_norm = LayerNorm(self.pembed_dim)
-        else:
-            self.self_attn_layer_norm = None
-            self.self_atten_proj_layer_norm = None
+        self.self_attn_layer_norm = LayerNorm(self.embed_dim)
+        self.self_atten_proj_layer_norm = LayerNorm(self.pembed_dim)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -73,7 +68,6 @@ class LunaEncoderLayer(nn.Module):
             pembed_dim,
             args.encoder_attention_heads,
             args.encoder_projected_attention_heads,
-            normalize=not self.normalize,
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             self_attention=True,
@@ -111,15 +105,14 @@ class LunaEncoderLayer(nn.Module):
         residual = x
         presidual = px
         x, px, _ = self.self_attn(query=x, pquery=px, context=x, context_padding_mask=encoder_padding_mask)
-        if self.normalize:
-            # apply dropout
-            x = self.dropout_module(x)
-            px = self.dropout_module(px)
-            # apply layer norm
-            x = residual + x
-            x = self.self_attn_layer_norm(x)
-            px = presidual + px
-            px = self.self_atten_proj_layer_norm(px)
+        # apply dropout
+        x = self.dropout_module(x)
+        px = self.dropout_module(px)
+        # apply layer norm
+        x = residual + x
+        x = self.self_attn_layer_norm(x)
+        px = presidual + px
+        px = self.self_atten_proj_layer_norm(px)
 
         residual = x
         x = self.activation_fn(self.fc1(x))
@@ -156,7 +149,6 @@ class LunaDecoderLayer(nn.Module):
         self.index = index
         self.embed_dim = args.decoder_embed_dim
         self.pembed_dim = args.decoder_projected_embed_dim
-        self.normalize = args.normalize_outside_attention
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
@@ -169,12 +161,8 @@ class LunaDecoderLayer(nn.Module):
         self.self_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         self.encoder_attn = self.build_encoder_attention(self.embed_dim, self.pembed_dim, args)
-        if self.normalize:
-            self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
-            self.encoder_atten_proj_layer_norm = LayerNorm(self.pembed_dim, export=export)
-        else:
-            self.encoder_attn_layer_norm = None
-            self.encoder_atten_proj_layer_norm = None
+        self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.encoder_atten_proj_layer_norm = LayerNorm(self.pembed_dim, export=export)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -214,7 +202,6 @@ class LunaDecoderLayer(nn.Module):
             pembed_dim,
             args.decoder_attention_heads,
             args.decoder_projected_attention_heads,
-            normalize=not self.normalize,
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             encoder_decoder_attention=True,
@@ -274,15 +261,14 @@ class LunaDecoderLayer(nn.Module):
                                         static_context=True,
                                         need_weights=need_attn or (not self.training and self.need_attn),
                                         need_head_weights=need_head_weights)
-        if self.normalize:
-            # apply dropout
-            x = self.dropout_module(x)
-            px = self.dropout_module(px)
-            # apply layer norm
-            x = residual + x
-            x = self.encoder_attn_layer_norm(x)
-            px = presidual + px
-            px = self.encoder_atten_proj_layer_norm(px)
+        # apply dropout
+        x = self.dropout_module(x)
+        px = self.dropout_module(px)
+        # apply layer norm
+        x = residual + x
+        x = self.encoder_attn_layer_norm(x)
+        px = presidual + px
+        px = self.encoder_atten_proj_layer_norm(px)
 
         residual = x
         x = self.activation_fn(self.fc1(x))

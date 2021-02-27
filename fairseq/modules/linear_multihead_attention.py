@@ -474,7 +474,6 @@ class LunarMultiheadAttention(nn.Module):
         pembed_dim,
         num_heads,
         num_pheads,
-        normalize=True,
         dropout=0.0,
         attention_dropout=0.0,
         bias=True,
@@ -500,7 +499,6 @@ class LunarMultiheadAttention(nn.Module):
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
-        self.normalize = normalize
 
         self.c_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
@@ -508,13 +506,6 @@ class LunarMultiheadAttention(nn.Module):
         self.pq_proj = quant_noise(nn.Linear(pembed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
-
-        if self.normalize:
-            self.layer_norm = LayerNorm(self.embed_dim)
-            self.proj_layer_norm = LayerNorm(self.pembed_dim)
-        else:
-            self.layer_norm = None
-            self.proj_layer_norm = None
 
         self.onnx_trace = False
         self.tpu = False
@@ -530,7 +521,7 @@ class LunarMultiheadAttention(nn.Module):
     def reset_parameters(self):
         # Empirically observed the convergence to be much better with
         # the scaled initialization
-        gain = 1.0 / math.sqrt(2) if self.embed_dim == self.pembed_dim else 1.0
+        gain = 1.0
         nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
@@ -665,9 +656,6 @@ class LunarMultiheadAttention(nn.Module):
         pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
                                          incremental_state, static_context, attn_mask)
         key_padding_mask = None
-        if pcontext is not None and self.normalize:
-            pcontext = self.dropout_module(pcontext)
-            pcontext = self.proj_layer_norm(pquery + pcontext)
 
         q = self.q_proj(query)
         if pcontext is None:
@@ -787,10 +775,6 @@ class LunarMultiheadAttention(nn.Module):
             if not need_head_weights:
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
-
-        if self.normalize:
-            attn = self.dropout_module(attn)
-            attn = self.layer_norm(query + attn)
 
         return attn, pcontext, attn_weights
 
