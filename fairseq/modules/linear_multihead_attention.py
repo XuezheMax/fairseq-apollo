@@ -543,10 +543,10 @@ class LunarMultiheadAttention(nn.Module):
         v = pcontext
 
         # L x B x D -> B x L x D
-        pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
+        pq = self.pq_proj(pquery).transpose(0, 1) * (self.pscaling * self.scaling)
         # B x L x N
         pqc = pq.matmul(k)
-        pqc = torch.tanh(pqc)
+        pqc = F.relu(pqc)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
         return pc
@@ -573,10 +573,10 @@ class LunarMultiheadAttention(nn.Module):
         # B x L x D -> B x L x H x K
         pq = pq.view(-1, plen, self.num_pheads, self.phead_dim)
         # B x L x H x K -> B x H x L x K
-        pq = pq.transpose(1, 2) * self.pscaling
+        pq = pq.transpose(1, 2) * (self.pscaling * self.scaling)
         # B x H x L x N
         pqc = pq.matmul(k)
-        pqc = torch.tanh(pqc)
+        pqc = F.relu(pqc)
         # B x H x L x K
         pc = torch.matmul(pqc, v)
         # B x H x L x K -> L x B x H x K
