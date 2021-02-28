@@ -523,9 +523,17 @@ class LunarMultiheadAttention(nn.Module):
         # the scaled initialization
         gain = 1.0
         nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
+        if self.c_proj.bias is not None:
+            nn.init.constant_(self.c_proj.bias, 0.)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        if self.q_proj.bias is not None:
+            nn.init.constant_(self.q_proj.bias, 0.)
         nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
+        if self.pc_proj.bias is not None:
+            nn.init.constant_(self.pc_proj.bias, 0.)
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
+        if self.pq_proj.bias is not None:
+            nn.init.constant_(self.pq_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
