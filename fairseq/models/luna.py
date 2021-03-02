@@ -356,12 +356,12 @@ class LunaEncoder(FairseqEncoder):
         """
         x, encoder_embedding, px, projected_embedding = self.forward_embedding(src_tokens)
 
-        bsz = x.size(1)
+        bsz = x.size(0)
         len, dim = px.size()
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        # L x C -> L x 1 x C
+        # L x C -> L x B x C
         px = px.unsqueeze(1).expand(len, bsz, dim)
 
         x = self.dropout_module(x)
