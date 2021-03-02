@@ -685,10 +685,13 @@ class LunaDecoder(FairseqIncrementalDecoder):
         x = self.dropout_module(x)
         px = self.dropout_module(px)
 
+        bsz = x.size(0)
+        len, dim = px.size()
+
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        # L x C -> L x 1 x C
-        px = px.unsqueeze(1)
+        # L x C -> L x 1 x C -> L x B x C
+        px = px.unsqueeze(1).expand(len, bsz, dim)
 
         self_attn_padding_mask: Optional[Tensor] = None
         if prev_output_tokens.eq(self.padding_idx).any():
