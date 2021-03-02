@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, NamedTuple
 
 import torch
 import torch.nn as nn
@@ -17,7 +17,6 @@ from fairseq.models import (
     register_model,
     register_model_architecture,
 )
-from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
@@ -34,6 +33,19 @@ from torch import Tensor
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
+
+EncoderOut = NamedTuple(
+    "EncoderOut",
+    [
+        ("encoder_out", Tensor),  # T x B x C
+        ("encoder_projected_out", Tensor),  # L x B x C
+        ("encoder_padding_mask", Optional[Tensor]),  # B x T
+        ("encoder_embedding", Optional[Tensor]),  # B x T x C
+        ("encoder_states", Optional[List[Tensor]]),  # List[T x B x C]
+        ("src_tokens", Optional[Tensor]),  # B x T
+        ("src_lengths", Optional[Tensor]),  # B x 1
+    ],
+)
 
 
 @register_model("luna")
@@ -371,10 +383,9 @@ class LunaEncoder(FairseqEncoder):
 
         return EncoderOut(
             encoder_out=x,  # T x B x C
-            # encoder_projected_out=px, # L x B x C
+            encoder_projected_out=px, # L x B x C
             encoder_padding_mask=encoder_padding_mask,  # B x T
             encoder_embedding=encoder_embedding,  # B x T x C
-            # encoder_projected_embedding=projected_embedding, # B x L x C
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=None,
             src_lengths=None,
@@ -405,6 +416,11 @@ class LunaEncoder(FairseqEncoder):
             if encoder_out.encoder_out is None
             else encoder_out.encoder_out.index_select(1, new_order)
         )
+        new_encoder_projected_out = (
+            encoder_out.encoder_projected_out
+            if encoder_out.encoder_projected_out is None
+            else encoder_out.encoder_projected_out.index_select(1, new_order)
+        )
         new_encoder_padding_mask = (
             encoder_padding_mask
             if encoder_padding_mask is None
@@ -415,6 +431,7 @@ class LunaEncoder(FairseqEncoder):
             if encoder_embedding is None
             else encoder_embedding.index_select(0, new_order)
         )
+
         src_tokens = encoder_out.src_tokens
         if src_tokens is not None:
             src_tokens = src_tokens.index_select(0, new_order)
@@ -430,6 +447,7 @@ class LunaEncoder(FairseqEncoder):
 
         return EncoderOut(
             encoder_out=new_encoder_out,  # T x B x C
+            encoder_projected_out=new_encoder_projected_out, # L x B x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
             encoder_embedding=new_encoder_embedding,  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
@@ -524,6 +542,11 @@ class LunaDecoder(FairseqIncrementalDecoder):
         nn.init.normal_(self.projected_embeddings, mean=0., std=proj_embed_dim ** -0.5)
         projected_positions = get_sinusoidal_positional_embedding(self.proj_len, proj_embed_dim)
         self.register_buffer('projected_positions', projected_positions)
+        if args.encoder_projected_length != self.proj_len:
+            self.length_proj_weight = Parameter(torch.Tensor(1, self.proj_len, args.encoder_projected_length))
+            nn.init.xavier_uniform_(self.length_proj_weight)
+        else:
+            self.register_parameter('length_proj_weight', None)
 
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
@@ -679,19 +702,22 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if positions is not None:
             x = x + positions
 
-        px = self.proj_embed_scale * self.projected_embeddings
+        # L x B x C -> B x L x C
+        px = encoder_out.encoder_projected_out.transpose(0, 1)
+        if self.length_proj_weight is not None:
+            px = torch.matmul(self.length_proj_weight, px)
+            # TODO
+            raise RuntimeError('encoder and decoder projected length mismatch.')
+        px = px + self.proj_embed_scale * self.projected_embeddings
         px = px + self.projected_positions
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
 
-        bsz = x.size(0)
-        len, dim = px.size()
-
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        # L x C -> L x 1 x C -> L x B x C
-        px = px.unsqueeze(1).expand(len, bsz, dim)
+        # B x L x C -> L x B x C
+        px = px.transpose(0, 1)
 
         self_attn_padding_mask: Optional[Tensor] = None
         if prev_output_tokens.eq(self.padding_idx).any():
