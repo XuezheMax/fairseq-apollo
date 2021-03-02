@@ -330,8 +330,6 @@ class LunaEncoder(FairseqEncoder):
         px = proj_embed = self.proj_embed_scale * self.projected_embeddings
         px = px + self.projected_positions
 
-        x = self.dropout_module(x)
-        px = self.dropout_module(px)
         return x, embed, px, proj_embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
@@ -358,10 +356,16 @@ class LunaEncoder(FairseqEncoder):
         """
         x, encoder_embedding, px, projected_embedding = self.forward_embedding(src_tokens)
 
+        bsz = x.size(1)
+        len, dim = px.size()
+
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
         # L x C -> L x 1 x C
-        px = px.unsqueeze(1)
+        px = px.unsqueeze(1).expand(len, bsz, dim)
+
+        x = self.dropout_module(x)
+        px = self.dropout_module(px)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
@@ -711,13 +715,13 @@ class LunaDecoder(FairseqIncrementalDecoder):
         px = px + self.proj_embed_scale * self.projected_embeddings
         px = px + self.projected_positions
 
-        x = self.dropout_module(x)
-        px = self.dropout_module(px)
-
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
         # B x L x C -> L x B x C
         px = px.transpose(0, 1)
+
+        x = self.dropout_module(x)
+        px = self.dropout_module(px)
 
         self_attn_padding_mask: Optional[Tensor] = None
         if prev_output_tokens.eq(self.padding_idx).any():
