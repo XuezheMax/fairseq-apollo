@@ -102,9 +102,12 @@ class LunarMultiheadAttention(nn.Module):
         pq = pquery.transpose(0, 1) * self.pscaling
         # B x L x N
         pqc = pq.matmul(k)
+
+        clen = context.size(0)
         if context_padding_mask is not None:
+            clen = clen - context_padding_mask.sum(dim=1)
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
-        pqc = F.softmax(pqc, dim=-1)
+        pqc = (F.elu(pqc) + 1.0) / clen
         pqc = self.attention_dropout_module(pqc)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
