@@ -28,7 +28,6 @@ class LunarMultiheadAttention(nn.Module):
         num_heads,
         num_pheads,
         dropout=0.0,
-        attention_dropout=0.0,
         bias=True,
         self_attention=False,
         encoder_decoder_attention=False,
@@ -41,7 +40,6 @@ class LunarMultiheadAttention(nn.Module):
         self.pembed_dim = pembed_dim
         self.num_pheads = num_pheads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.attention_dropout_module = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
         self.phead_dim = pembed_dim // num_pheads
@@ -105,7 +103,7 @@ class LunarMultiheadAttention(nn.Module):
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
-        pqc = self.attention_dropout_module(pqc)
+        pqc = self.dropout_module(pqc)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
         return pc
@@ -133,7 +131,7 @@ class LunarMultiheadAttention(nn.Module):
         if context_padding_mask is not None:
             pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
         pqc = F.softmax(pqc, dim=-1)
-        pqc = self.attention_dropout_module(pqc)
+        pqc = self.dropout_module(pqc)
         # B x H x L x K
         pc = torch.matmul(pqc, v)
         # B x H x L x K -> L x B x H x K
@@ -148,7 +146,6 @@ class LunarMultiheadAttention(nn.Module):
         context_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         static_context: bool = False,
-        attn_mask: Optional[Tensor] = None,
     ) -> Union[Tensor, None]:
 
         if context is None:
@@ -168,7 +165,6 @@ class LunarMultiheadAttention(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = True,
         static_context: bool = False,
-        attn_mask: Optional[Tensor] = None,
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
@@ -178,9 +174,6 @@ class LunarMultiheadAttention(nn.Module):
                 padding elements are indicated by 1s.
             need_weights (bool, optional): return the attention weights,
                 averaged over heads (default: False).
-            attn_mask (ByteTensor, optional): typically used to
-                implement causal attention, where the mask prevents the
-                attention from looking forward in time (default: None).
             need_head_weights (bool, optional): return the attention
                 weights for each head. Implies *need_weights*. Default:
                 return the average attention weights over all heads.
@@ -192,10 +185,8 @@ class LunarMultiheadAttention(nn.Module):
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
-        if attn_mask is not None:
-            raise NotImplementedError('Causal attention has not implemented.')
-
-        assert not self.self_attention or incremental_state is None, 'linear self attention has not supported incremental processing yet'
+        assert not self.self_attention or incremental_state is None, \
+            'For incremental self attention (causal attention), please use LunarCausalAttention'
 
         if self.self_attention:
             context = query
@@ -213,7 +204,7 @@ class LunarMultiheadAttention(nn.Module):
 
         # L x B x D
         pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
-                                         incremental_state, static_context, attn_mask)
+                                         incremental_state, static_context)
         key_padding_mask = None
 
         if pcontext is None:
@@ -298,12 +289,6 @@ class LunarMultiheadAttention(nn.Module):
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
-        if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0)
-            if self.onnx_trace:
-                attn_mask = attn_mask.repeat(attn_weights.size(0), 1, 1)
-            attn_weights += attn_mask
-
         if key_padding_mask is not None:
             # don't attend to padding symbols
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
@@ -317,7 +302,7 @@ class LunarMultiheadAttention(nn.Module):
 
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = attn_weights_float.type_as(attn_weights)
-        attn_probs = self.attention_dropout_module(attn_weights)
+        attn_probs = self.dropout_module(attn_weights)
 
         attn = torch.bmm(attn_probs, v)
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
@@ -459,8 +444,6 @@ class LunarCausalAttention(nn.Module):
         dropout=0.0,
         attention_dropout=0.0,
         bias=True,
-        self_attention=False,
-        encoder_decoder_attention=False,
         q_noise=0.0,
         qn_block_size=8,
     ):
@@ -479,13 +462,9 @@ class LunarCausalAttention(nn.Module):
         self.scaling = self.head_dim ** -0.5
         self.pscaling = self.phead_dim ** -0.5
 
-        self.self_attention = self_attention
-        self.encoder_decoder_attention = encoder_decoder_attention
-
-        self.ck_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
-        self.cv_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
-        self.pck_proj = quant_noise(nn.Linear(pembed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.pcv_proj = quant_noise(nn.Linear(pembed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pk_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
+        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -504,18 +483,15 @@ class LunarCausalAttention(nn.Module):
         # Empirically observed the convergence to be much better with
         # the scaled initialization
         gain = 1.0 / math.sqrt(2.0)
-        nn.init.xavier_uniform_(self.ck_proj.weight, gain=gain)
-        if self.ck_proj.bias is not None:
-            nn.init.constant_(self.ck_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.cv_proj.weight, gain=gain)
-        if self.cv_proj.bias is not None:
-            nn.init.constant_(self.cv_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.pck_proj.weight, gain=gain)
-        if self.pck_proj.bias is not None:
-            nn.init.constant_(self.pck_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.pcv_proj.weight, gain=gain)
-        if self.pcv_proj.bias is not None:
-            nn.init.constant_(self.pcv_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.pk_proj.weight, gain=gain)
+        if self.pk_proj.bias is not None:
+            nn.init.constant_(self.pk_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+        if self.k_proj.bias is not None:
+            nn.init.constant_(self.k_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
+        if self.v_proj.bias is not None:
+            nn.init.constant_(self.v_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -523,7 +499,7 @@ class LunarCausalAttention(nn.Module):
 
     def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
         # N x B x D -> B x D x N
-        k = self.ck_proj(context).permute(1, 2, 0)
+        k = self.pk_proj(context).permute(1, 2, 0)
         # N x B x D -> B x N x D
         v = self.cv_proj(context).transpose(0, 1)
 
@@ -541,7 +517,7 @@ class LunarCausalAttention(nn.Module):
 
     def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
         # N x B x D
-        k = self.ck_proj(context)
+        k = self.pk_proj(context)
         v = self.cv_proj(context)
         len, bsz, dim = k.size()
         # N x B x D -> N x B x H x K
@@ -570,39 +546,19 @@ class LunarCausalAttention(nn.Module):
         pc = pc.view(plen, bsz, dim)
         return pc
 
-    def compute_pcontext(self,
-        query,
-        pquery,
-        context: Optional[Tensor],
-        context_padding_mask: Optional[Tensor] = None,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        static_context: bool = False,
-        attn_mask: Optional[Tensor] = None,
-    ) -> Union[Tensor, None]:
-
-        if context is None:
-            return context
-        else:
-            if self.num_pheads == 1:
-                return self._compute_pcontext_singlehead(pquery, context, context_padding_mask)
-            else:
-                return self._compute_pcontext_multiheads(pquery, context, context_padding_mask)
-
     def forward(
         self,
         query,
         pquery,
-        context: Optional[Tensor],
-        context_padding_mask: Optional[Tensor] = None,
+        padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = True,
-        static_context: bool = False,
         attn_mask: Optional[Tensor] = None,
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
         Args:
-            context_padding_mask (ByteTensor, optional): mask to exclude
+            padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
                 padding elements are indicated by 1s.
             need_weights (bool, optional): return the attention weights,
@@ -621,36 +577,13 @@ class LunarCausalAttention(nn.Module):
         assert embed_dim == self.embed_dim
         assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
-        if attn_mask is not None:
-            raise NotImplementedError('Causal attention has not implemented.')
-
-        assert not self.self_attention or incremental_state is None, 'linear self attention has not supported incremental processing yet'
-
-        if self.self_attention:
-            context = query
-
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
-            if saved_state is not None and "prev_key" in saved_state:
-                # previous time steps are cached - no need to recompute
-                # key and value if they are static
-                if static_context:
-                    assert self.encoder_decoder_attention and not self.self_attention
-                    context = None
         else:
             saved_state = None
 
-        # L x B x D
-        pcontext = self.compute_pcontext(query, pquery, context, context_padding_mask,
-                                         incremental_state, static_context, attn_mask)
-        key_padding_mask = None
-
-        if pcontext is None:
-            assert context is None
-            k = v = None
-        else:
-            k = self.pck_proj(pcontext)
-            v = self.pcv_proj(pcontext)
+        k = self.k_proj(query)
+        v = self.v_proj(query)
 
         q = query * self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -814,8 +747,6 @@ class LunarCausalAttention(nn.Module):
             for k in input_buffer.keys():
                 input_buffer_k = input_buffer[k]
                 if input_buffer_k is not None:
-                    if self.encoder_decoder_attention and input_buffer_k.size(0) == new_order.size(0):
-                        break
                     input_buffer[k] = input_buffer_k.index_select(0, new_order)
             incremental_state = self._set_input_buffer(incremental_state, input_buffer)
         return incremental_state
