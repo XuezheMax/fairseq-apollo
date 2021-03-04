@@ -24,7 +24,6 @@ class LunarMultiheadAttention(nn.Module):
     def __init__(
         self,
         embed_dim,
-        pembed_dim,
         num_heads,
         num_pheads,
         dropout=0.0,
@@ -37,24 +36,23 @@ class LunarMultiheadAttention(nn.Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.pembed_dim = pembed_dim
         self.num_pheads = num_pheads
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
-        self.phead_dim = pembed_dim // num_pheads
+        self.phead_dim = embed_dim // num_pheads
         assert (self.head_dim * num_heads == self.embed_dim), "embed_dim must be divisible by num_heads"
-        assert (self.phead_dim * num_pheads == self.pembed_dim), "projected embed_dim must be divisible by num_pheads"
+        assert (self.phead_dim * num_pheads == self.embed_dim), "projected embed_dim must be divisible by num_pheads"
         self.scaling = self.head_dim ** -0.5
         self.pscaling = self.phead_dim ** -0.5
 
         self.self_attention = self_attention
         self.encoder_decoder_attention = encoder_decoder_attention
 
-        self.ck_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
-        self.cv_proj = quant_noise(nn.Linear(embed_dim, pembed_dim, bias=bias), q_noise, qn_block_size)
-        self.pck_proj = quant_noise(nn.Linear(pembed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.pcv_proj = quant_noise(nn.Linear(pembed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -73,18 +71,18 @@ class LunarMultiheadAttention(nn.Module):
         # Empirically observed the convergence to be much better with
         # the scaled initialization
         gain = 1.0 / math.sqrt(2.0)
-        nn.init.xavier_uniform_(self.ck_proj.weight, gain=gain)
-        if self.ck_proj.bias is not None:
-            nn.init.constant_(self.ck_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.cv_proj.weight, gain=gain)
-        if self.cv_proj.bias is not None:
-            nn.init.constant_(self.cv_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.pck_proj.weight, gain=gain)
-        if self.pck_proj.bias is not None:
-            nn.init.constant_(self.pck_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.pcv_proj.weight, gain=gain)
-        if self.pcv_proj.bias is not None:
-            nn.init.constant_(self.pcv_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
+        if self.pq_proj.bias is not None:
+            nn.init.constant_(self.pq_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        if self.q_proj.bias is not None:
+            nn.init.constant_(self.q_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+        if self.k_proj.bias is not None:
+            nn.init.constant_(self.k_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
+        if self.v_proj.bias is not None:
+            nn.init.constant_(self.v_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -92,12 +90,12 @@ class LunarMultiheadAttention(nn.Module):
 
     def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
         # N x B x D -> B x D x N
-        k = self.ck_proj(context).permute(1, 2, 0)
+        k = context.permute(1, 2, 0)
         # N x B x D -> B x N x D
-        v = self.cv_proj(context).transpose(0, 1)
+        v = context.transpose(0, 1)
 
         # L x B x D -> B x L x D
-        pq = pquery.transpose(0, 1) * self.pscaling
+        pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
         # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
@@ -110,12 +108,9 @@ class LunarMultiheadAttention(nn.Module):
 
     def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
         # N x B x D
-        k = self.ck_proj(context)
-        v = self.cv_proj(context)
-        len, bsz, dim = k.size()
+        len, bsz, dim = context.size()
         # N x B x D -> N x B x H x K
-        k = k.view(len, bsz, self.num_pheads, self.phead_dim)
-        v = v.view(len, bsz, self.num_pheads, self.phead_dim)
+        k = v = context.contiguous().view(len, bsz, self.num_pheads, self.phead_dim)
         # N x B x H x K -> B x H x K x N
         k = k.permute(1, 2, 3, 0)
         # N x B x H x K -> B x H x N x K
@@ -123,7 +118,7 @@ class LunarMultiheadAttention(nn.Module):
 
         plen = pquery.size(0)
         # L x B x D -> L x B x H x K
-        pq = pquery.view(plen, -1, self.num_pheads, self.phead_dim)
+        pq = self.pq_proj(pquery).view(plen, -1, self.num_pheads, self.phead_dim)
         # L x B x H x K -> B x H x L x K
         pq = pq.permute(1, 2, 0, 3) * self.pscaling
         # B x H x L x N
@@ -207,14 +202,15 @@ class LunarMultiheadAttention(nn.Module):
                                          incremental_state, static_context)
         key_padding_mask = None
 
+        q = self.q_proj(query)
         if pcontext is None:
             assert context is None
             k = v = None
         else:
-            k = self.pck_proj(pcontext)
-            v = self.pcv_proj(pcontext)
+            k = self.k_proj(pcontext)
+            v = self.v_proj(pcontext)
 
-        q = query * self.scaling
+        q = q * self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if k is not None:
