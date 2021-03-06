@@ -94,13 +94,18 @@ class LunarMultiheadAttention(nn.Module):
         # N x B x D -> B x N x D
         v = context.transpose(0, 1)
 
+        seq_len = context.size(0)
+        if context_padding_mask is not None:
+            seq_len = seq_len - context_padding_mask.to(torch.float32).sum(dim=1, keepdim=True)
+        # L x B x D
+        pq = self.pq_proj(pquery) * (self.pscaling / seq_len)
         # L x B x D -> B x L x D
-        pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
+        pq = pq.transpose(0, 1)
         # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
-        pqc = F.softmax(pqc, dim=-1)
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), 0.)
+        pqc = F.relu(pqc)
         pqc = self.dropout_module(pqc)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
@@ -109,6 +114,7 @@ class LunarMultiheadAttention(nn.Module):
     def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
+        plen = pquery.size(0)
         # N x B x D -> N x B x H x K
         k = v = context.contiguous().view(len, bsz, self.num_pheads, self.phead_dim)
         # N x B x H x K -> B x H x K x N
@@ -116,16 +122,20 @@ class LunarMultiheadAttention(nn.Module):
         # N x B x H x K -> B x H x N x K
         v = v.permute(1, 2, 0, 3)
 
-        plen = pquery.size(0)
+        seq_len = context.size(0)
+        if context_padding_mask is not None:
+            seq_len = seq_len - context_padding_mask.to(torch.float32).sum(dim=1, keepdim=True)
+        # L x B x D
+        pq = self.pq_proj(pquery) * (self.pscaling / seq_len)
         # L x B x D -> L x B x H x K
-        pq = self.pq_proj(pquery).view(plen, -1, self.num_pheads, self.phead_dim)
+        pq = pq.view(plen, -1, self.num_pheads, self.phead_dim)
         # L x B x H x K -> B x H x L x K
-        pq = pq.permute(1, 2, 0, 3) * self.pscaling
+        pq = pq.permute(1, 2, 0, 3)
         # B x H x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
-        pqc = F.softmax(pqc, dim=-1)
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), 0.)
+        pqc = F.relu(pqc)
         pqc = self.dropout_module(pqc)
         # B x H x L x K
         pc = torch.matmul(pqc, v)
@@ -495,6 +505,7 @@ class LunarCausalAttention(nn.Module):
         pq = pq.view(bsz * self.num_heads, -1, self.head_dim).transpose(1, 2)
         # B*H x N x L
         pattn = k.bmm(pq)
+        pattn = F.relu(pattn)
         return pattn
 
     def forward(
