@@ -550,8 +550,8 @@ class LunarCausalAttention(nn.Module):
 
         # B*H x N x K
         q = q.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        k = k.view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        v = v.view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        k = k.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        v = v.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
@@ -591,23 +591,17 @@ class LunarCausalAttention(nn.Module):
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
 
-        src_len = k.size(1)
-
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
         if key_padding_mask is not None and key_padding_mask.dim() == 0:
             key_padding_mask = None
-
-        if key_padding_mask is not None:
-            assert key_padding_mask.size(0) == bsz
-            assert key_padding_mask.size(1) == src_len
 
         if saved_state is not None:
             attn_weights = incremental_causal_attention(q, k, pattn_weights, softmax=2)
         else:
             attn_weights = efficient_causal_attention(q, k, pattn_weights, softmax=2)
 
-        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
+        assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, plen]
 
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = attn_weights_float.type_as(attn_weights)
@@ -628,7 +622,7 @@ class LunarCausalAttention(nn.Module):
         attn = self.out_proj(attn)
         attn_weights: Optional[Tensor] = None
         if need_weights:
-            attn_weights = attn_weights_float.view(bsz, self.num_heads, tgt_len, src_len).transpose(1, 0)
+            attn_weights = attn_weights_float.view(bsz, self.num_heads, tgt_len, plen).transpose(1, 0)
             if not need_head_weights:
                 # average attention weights over heads
                 attn_weights = attn_weights.mean(dim=0)
