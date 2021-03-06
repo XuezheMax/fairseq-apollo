@@ -25,7 +25,7 @@ from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
 from .linear_multihead_attention import LinearMultiheadAttention
-from .lunar_attention import LunarMultiheadAttention
+from .lunar_attention import LunarMultiheadAttention, LunarCausalAttention
 from .positional_embedding import PositionalEmbedding
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
@@ -67,6 +67,7 @@ __all__ = [
     'MultiheadAttention',
     'LinearMultiheadAttention',
     'LunarMultiheadAttention',
+    'LunarCausalAttention',
     'PositionalEmbedding',
     'SamePad',
     'ScalarBias',

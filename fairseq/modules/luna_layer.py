@@ -9,7 +9,7 @@ import math
 import torch
 import torch.nn as nn
 from fairseq import utils
-from fairseq.modules import LayerNorm, MultiheadAttention, LunarMultiheadAttention
+from fairseq.modules import LayerNorm, LunarMultiheadAttention, LunarCausalAttention
 from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
@@ -138,7 +138,7 @@ class LunaDecoderLayer(nn.Module):
             (default: False).
     """
 
-    def __init__(self, args, index, add_bias_kv=False, add_zero_attn=False):
+    def __init__(self, args, index):
         super().__init__()
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
@@ -148,7 +148,7 @@ class LunaDecoderLayer(nn.Module):
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
-        self.self_attn = self.build_self_attention(self.embed_dim, args, add_bias_kv=add_bias_kv, add_zero_attn=add_zero_attn)
+        self.self_attn = self.build_self_attention(self.embed_dim, args)
 
         # use layerNorm rather than FusedLayerNorm for exporting.
         # char_inputs can be used to determint this.
@@ -180,14 +180,11 @@ class LunaDecoderLayer(nn.Module):
     def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
 
-    def build_self_attention(self, embed_dim, args, add_bias_kv=False, add_zero_attn=False):
-        return MultiheadAttention(
+    def build_self_attention(self, embed_dim, args):
+        return LunarCausalAttention(
             embed_dim,
             args.decoder_attention_heads,
             dropout=args.attention_dropout,
-            add_bias_kv=add_bias_kv,
-            add_zero_attn=add_zero_attn,
-            self_attention=True,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
@@ -213,7 +210,6 @@ class LunaDecoderLayer(nn.Module):
         encoder_out,
         encoder_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
         need_head_weights: bool = False,
@@ -238,11 +234,10 @@ class LunaDecoderLayer(nn.Module):
             need_attn = True
 
         residual = x
-        x, attn = self.self_attn(query=x, key=x, value=x,
+        x, attn = self.self_attn(query=x, pquery=px,
                                  key_padding_mask=self_attn_padding_mask,
                                  incremental_state=incremental_state,
-                                 need_weights=False,
-                                 attn_mask=self_attn_mask)
+                                 need_weights=False)
         x = self.dropout_module(x)
         x = residual + x
         x = self.self_attn_layer_norm(x)
