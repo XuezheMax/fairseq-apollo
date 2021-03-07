@@ -534,8 +534,14 @@ class LunarCausalAttention(nn.Module):
                 # previous time steps are cached - no need to recompute pquery
                 # B x H x L x K
                 pq = saved_state["prev_pquery"]
+            key_accum_mat = 0
+            value_accum_mat = 0
+            num_steps = 1
         else:
             saved_state = None
+            key_accum_mat = None
+            value_accum_mat = None
+            num_steps = None
 
         if pq is None:
             # L x B x D -> L x B x H x K
@@ -557,24 +563,16 @@ class LunarCausalAttention(nn.Module):
         v = v.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if saved_state is not None:
-            # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
-            if "prev_key" in saved_state:
-                _prev_key = saved_state["prev_key"]
-                assert _prev_key is not None
-                prev_key = _prev_key.view(bsz * self.num_heads, -1, self.head_dim)
-                k = torch.cat([prev_key, k], dim=1)
-            if "prev_value" in saved_state:
-                _prev_value = saved_state["prev_value"]
-                assert _prev_value is not None
-                prev_value = _prev_value.view(bsz * self.num_heads, -1, self.head_dim)
-                v = torch.cat([prev_value, v], dim=1)
-            # pattentions are store with shape (bsz, num_heads, seq_len, plen)
-            if "prev_pattn_weights" in saved_state:
-                _prev_pattn = saved_state["prev_pattn_weights"]
-                assert _prev_pattn is not None
-                prev_pattn = _prev_pattn.view(bsz * self.num_heads, -1, plen)
-                pattn_weights = torch.cat([prev_pattn, pattn_weights], dim=1)
-
+            # key accumulative matrix are store with shape (bsz, num_heads, head_dim, plen)
+            if "prev_key_accum_mat" in saved_state:
+                _prev_key_accum_mat = saved_state["prev_key_accum_mat"]
+                key_accum_mat = _prev_key_accum_mat.view(bsz * self.num_heads, self.head_dim, plen)
+            # value accumulative matrix are store with shape (bsz, num_heads, plen, head_dim)
+            if "prev_value_accum_mat" in saved_state:
+                _prev_value_accum_mat = saved_state["prev_value_accum_mat"]
+                value_accum_mat = _prev_value_accum_mat.view(bsz * self.num_heads, plen, self.head_dim)
+            if "prev_num_steps" in saved_state:
+                num_steps = saved_state["prev_num_steps"] + 1
             prev_key_padding_mask: Optional[Tensor] = None
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
@@ -585,24 +583,15 @@ class LunarCausalAttention(nn.Module):
                 src_len=k.size(1),
             )
 
-            saved_state["prev_pquery"] = pq
-            saved_state["prev_key"] = k.view(bsz, self.num_heads, -1, self.head_dim)
-            saved_state["prev_value"] = v.view(bsz, self.num_heads, -1, self.head_dim)
-            saved_state["prev_pattn_weights"] = pattn_weights.view(bsz, self.num_heads, -1, plen)
-            saved_state["prev_key_padding_mask"] = key_padding_mask
-            # In this branch incremental_state is never None
-            assert incremental_state is not None
-            incremental_state = self._set_input_buffer(incremental_state, saved_state)
-
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
         if key_padding_mask is not None and key_padding_mask.dim() == 0:
             key_padding_mask = None
 
         if incremental_state is not None:
-            attn_weights = incremental_causal_attention(q, k, pattn_weights, softmax=2)
+            attn_weights, key_accum_mat = incremental_causal_attention(q, k, pattn_weights, key_accum_mat, num_steps)
         else:
-            attn_weights = efficient_causal_attention(q, k, pattn_weights, softmax=2)
+            attn_weights = efficient_causal_attention(q, k, pattn_weights)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, plen]
 
@@ -611,9 +600,19 @@ class LunarCausalAttention(nn.Module):
         attn_probs = self.dropout_module(attn_weights)
 
         if incremental_state is not None:
-            attn = incremental_causal_attention(attn_probs, pattn_weights, v, softmax=1)
+            attn, value_accum_mat = incremental_causal_attention(attn_probs, pattn_weights, v, value_accum_mat, num_steps)
         else:
-            attn = efficient_causal_attention(attn_probs, pattn_weights, v, softmax=1)
+            attn = efficient_causal_attention(attn_probs, pattn_weights, v)
+
+        if saved_state is not None:
+            saved_state["prev_pquery"] = pq
+            saved_state["prev_key_accum_mat"] = key_accum_mat.view(bsz, self.num_heads, self.head_dim, plen)
+            saved_state["prev_value_accum_mat"] = value_accum_mat.view(bsz, self.num_heads, plen, self.head_dim)
+            saved_state["prev_num_steps"] = num_steps
+            saved_state["prev_key_padding_mask"] = key_padding_mask
+            # In this branch incremental_state is never None
+            assert incremental_state is not None
+            incremental_state = self._set_input_buffer(incremental_state, saved_state)
 
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
         if self.onnx_trace and attn.size(1) == 1:
@@ -731,56 +730,46 @@ class LunarCausalAttention(nn.Module):
             state_dict[key] = value
 
 
-def efficient_causal_attention(x, y, z, softmax=None):
+def efficient_causal_attention(x, y, z):
     """
     efficient causal attention operation
     Args:
         x (Tensor): Tensor with shape `(batch, n, d1)`
         y (Tensor): Tensor with shape `(batch, n, d1)`
         z (Tensor): Tensor with shape '(batch, n, d2)`
-        softmax (int): the position to perform softmax (None, 1, or 2)
 
     return:
     """
-    assert softmax in [None, 1, 2]
     n = x.size(1)
     rets = []
+    accum_mat = 0
     for i in range(n):
         xx = x[:, i:i + 1] # B x 1 x d1
-        yy = y[:, :i + 1] # B x i x d1
-        zz = z[:, :i + 1] # B x i x d2
-        if softmax == 1:
-            yy = F.softmax(yy, dim=1)
-        elif softmax == 2:
-            zz = F.softmax(zz, dim=1)
+        yy = y[:, i:i + 1] # B x 1 x d1
+        zz = z[:, i:i + 1] # B x 1 x d2
 
         # B x d1 x d2
-        a = torch.bmm(yy.transpose(1, 2), zz)
+        accum_mat = accum_mat + torch.bmm(yy.transpose(1, 2), zz)
         # B x 1 x d2
-        rets.append(torch.bmm(xx, a))
+        rets.append(torch.bmm(xx, accum_mat.div(i + 1.)))
     # B x N x d2
     return torch.cat(rets, dim=1)
 
 
-def incremental_causal_attention(x, y, z, softmax=None):
+def incremental_causal_attention(x, y, z, accum_mat, n):
     """
     efficient causal attention operation
     Args:
         x (Tensor): Tensor with shape `(batch, 1, d1)`
-        y (Tensor): Tensor with shape `(batch, n, d1)`
-        z (Tensor): Tensor with shape '(batch, n, d2)`
-        softmax (int): the position to perform softmax (None, 1, or 2)
+        y (Tensor): Tensor with shape `(batch, 1, d1)`
+        z (Tensor): Tensor with shape '(batch, 1, d2)`
+        accum_mat (Tensor): Tensor with shape '(batch, d1, d2)`
+        n (int): number of steps
 
     return:
     """
-    assert softmax in [None, 1, 2]
-    if softmax == 1:
-        y = F.softmax(y, dim=1)
-    elif softmax == 2:
-        z = F.softmax(z, dim=1)
-
     # B x d1 x d2
-    a = torch.bmm(y.transpose(1, 2), z)
+    accum_mat = accum_mat + torch.bmm(y.transpose(1, 2), z)
     # B x 1 x d2
-    out = torch.bmm(x, a)
-    return out
+    out = torch.bmm(x, accum_mat.div(n))
+    return out, accum_mat
