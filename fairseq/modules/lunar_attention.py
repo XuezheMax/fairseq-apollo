@@ -536,7 +536,7 @@ class LunarCausalAttention(nn.Module):
                 pq = saved_state["prev_pquery"]
             key_accum_mat = 0
             value_accum_mat = 0
-            num_steps = 1
+            num_steps = query.new_ones(bsz)
         else:
             saved_state = None
             key_accum_mat = None
@@ -572,7 +572,7 @@ class LunarCausalAttention(nn.Module):
                 _prev_value_accum_mat = saved_state["prev_value_accum_mat"]
                 value_accum_mat = _prev_value_accum_mat.view(bsz * self.num_heads, plen, self.head_dim)
             if "prev_num_steps" in saved_state:
-                num_steps = saved_state["prev_num_steps"] + 1
+                num_steps = saved_state["prev_num_steps"] + 1.0
             prev_key_padding_mask: Optional[Tensor] = None
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
@@ -751,7 +751,7 @@ def efficient_causal_attention(x, y, z):
         # B x d1 x d2
         accum_mat = accum_mat + torch.bmm(yy.transpose(1, 2), zz)
         # B x 1 x d2
-        rets.append(torch.bmm(xx, accum_mat.div(i + 1.)))
+        rets.append(torch.bmm(xx, accum_mat).div(i + 1.))
     # B x N x d2
     return torch.cat(rets, dim=1)
 
@@ -762,14 +762,15 @@ def incremental_causal_attention(x, y, z, accum_mat, n):
     Args:
         x (Tensor): Tensor with shape `(batch, 1, d1)`
         y (Tensor): Tensor with shape `(batch, 1, d1)`
-        z (Tensor): Tensor with shape '(batch, 1, d2)`
-        accum_mat (Tensor): Tensor with shape '(batch, d1, d2)`
-        n (int): number of steps
+        z (Tensor): Tensor with shape `(batch, 1, d2)`
+        accum_mat (Tensor): Tensor with shape `(batch, d1, d2)`
+        n (Tensor): number of steps with shape `(batch, )`
 
     return:
     """
+    bsz = n.size(0)
     # B x d1 x d2
     accum_mat = accum_mat + torch.bmm(y.transpose(1, 2), z)
     # B x 1 x d2
-    out = torch.bmm(x, accum_mat.div(n))
+    out = torch.bmm(x, accum_mat).div(n.view(bsz, 1, 1))
     return out, accum_mat
