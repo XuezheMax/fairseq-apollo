@@ -94,18 +94,13 @@ class LunarMultiheadAttention(nn.Module):
         # N x B x D -> B x N x D
         v = context.transpose(0, 1)
 
-        seq_len = context.size(0)
-        if context_padding_mask is not None:
-            seq_len = seq_len - context_padding_mask.to(torch.float32).sum(dim=1, keepdim=True)
-        # L x B x D
-        pq = self.pq_proj(pquery) * (self.pscaling / seq_len)
         # L x B x D -> B x L x D
-        pq = pq.transpose(0, 1)
+        pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
         # B x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), 0.)
-        pqc = F.relu(pqc)
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
+        pqc = F.softmax(pqc, dim=-1)
         pqc = self.dropout_module(pqc)
         # B x L x D -> L x B x D
         pc = torch.bmm(pqc, v).transpose(0, 1)
@@ -114,7 +109,6 @@ class LunarMultiheadAttention(nn.Module):
     def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
-        plen = pquery.size(0)
         # N x B x D -> N x B x H x K
         k = v = context.contiguous().view(len, bsz, self.num_pheads, self.phead_dim)
         # N x B x H x K -> B x H x K x N
@@ -122,20 +116,16 @@ class LunarMultiheadAttention(nn.Module):
         # N x B x H x K -> B x H x N x K
         v = v.permute(1, 2, 0, 3)
 
-        seq_len = context.size(0)
-        if context_padding_mask is not None:
-            seq_len = seq_len - context_padding_mask.to(torch.float32).sum(dim=1, keepdim=True)
-        # L x B x D
-        pq = self.pq_proj(pquery) * (self.pscaling / seq_len)
+        plen = pquery.size(0)
         # L x B x D -> L x B x H x K
-        pq = pq.view(plen, -1, self.num_pheads, self.phead_dim)
+        pq = self.pq_proj(pquery).view(plen, -1, self.num_pheads, self.phead_dim)
         # L x B x H x K -> B x H x L x K
-        pq = pq.permute(1, 2, 0, 3)
+        pq = pq.permute(1, 2, 0, 3) * self.pscaling
         # B x H x L x N
         pqc = pq.matmul(k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), 0.)
-        pqc = F.relu(pqc)
+            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+        pqc = F.softmax(pqc, dim=-1)
         pqc = self.dropout_module(pqc)
         # B x H x L x K
         pc = torch.matmul(pqc, v)
@@ -188,8 +178,6 @@ class LunarMultiheadAttention(nn.Module):
 
         tgt_len, bsz, embed_dim = query.size()
         assert embed_dim == self.embed_dim
-        assert list(query.size()) == [tgt_len, bsz, embed_dim]
-
         assert not self.self_attention or incremental_state is None, \
             'For incremental self attention (causal attention), please use LunarCausalAttention'
 
@@ -460,6 +448,7 @@ class LunarCausalAttention(nn.Module):
         self.scaling = self.head_dim ** -0.5
 
         self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
@@ -483,6 +472,9 @@ class LunarCausalAttention(nn.Module):
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
         if self.pq_proj.bias is not None:
             nn.init.constant_(self.pq_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
+        if self.q_proj.bias is not None:
+            nn.init.constant_(self.q_proj.bias, 0.)
         nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
         if self.k_proj.bias is not None:
             nn.init.constant_(self.k_proj.bias, 0.)
@@ -534,7 +526,6 @@ class LunarCausalAttention(nn.Module):
         tgt_len, bsz, embed_dim = query.size()
         plen = pquery.size(0)
         assert embed_dim == self.embed_dim
-        assert list(query.size()) == [tgt_len, bsz, embed_dim]
 
         pq = None
         if incremental_state is not None:
@@ -554,10 +545,11 @@ class LunarCausalAttention(nn.Module):
 
         # B*H x N x L
         pattn_weights = self._compute_pattention(pq, query, key_padding_mask)
+        key_padding_mask = None
 
+        q = self.q_proj(query) * self.scaling
         k = self.k_proj(query)
         v = self.v_proj(query)
-        q = query * self.scaling
 
         # B*H x N x K
         q = q.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -607,7 +599,7 @@ class LunarCausalAttention(nn.Module):
         if key_padding_mask is not None and key_padding_mask.dim() == 0:
             key_padding_mask = None
 
-        if saved_state is not None:
+        if incremental_state is not None:
             attn_weights = incremental_causal_attention(q, k, pattn_weights, softmax=2)
         else:
             attn_weights = efficient_causal_attention(q, k, pattn_weights, softmax=2)
@@ -618,7 +610,7 @@ class LunarCausalAttention(nn.Module):
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = self.dropout_module(attn_weights)
 
-        if saved_state is not None:
+        if incremental_state is not None:
             attn = incremental_causal_attention(attn_probs, pattn_weights, v, softmax=1)
         else:
             attn = efficient_causal_attention(attn_probs, pattn_weights, v, softmax=1)
@@ -754,9 +746,9 @@ def efficient_causal_attention(x, y, z, softmax=None):
     n = x.size(1)
     rets = []
     for i in range(n):
-        xx = x[:, i].unsqueeze(1) # B x 1 x d1
-        yy = y[:, :i] # B x i x d1
-        zz = z[:, :i] # B x i x d2
+        xx = x[:, i:i + 1] # B x 1 x d1
+        yy = y[:, :i + 1] # B x i x d1
+        zz = z[:, :i + 1] # B x i x d2
         if softmax == 1:
             yy = F.softmax(yy, dim=1)
         elif softmax == 2:
