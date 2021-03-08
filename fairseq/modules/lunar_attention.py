@@ -571,7 +571,8 @@ class LunarCausalAttention(nn.Module):
                 _prev_value_accum_mat = saved_state["prev_value_accum_mat"]
                 value_accum_mat = _prev_value_accum_mat.view(bsz * self.num_heads, plen, self.head_dim)
             if "prev_num_steps" in saved_state:
-                num_steps = saved_state["prev_num_steps"] + 1.0
+                _prev_num_steps = saved_state["prev_num_steps"]
+                num_steps = _prev_num_steps.view(bsz * self.num_heads) + 1.0
             prev_key_padding_mask: Optional[Tensor] = None
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
@@ -583,7 +584,7 @@ class LunarCausalAttention(nn.Module):
             )
 
         if num_steps is None:
-            num_steps = query.new_ones(bsz)
+            num_steps = query.new_ones(bsz * self.num_heads)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -610,7 +611,7 @@ class LunarCausalAttention(nn.Module):
             saved_state["prev_pquery"] = pq
             saved_state["prev_key_accum_mat"] = key_accum_mat.view(bsz, self.num_heads, self.head_dim, plen)
             saved_state["prev_value_accum_mat"] = value_accum_mat.view(bsz, self.num_heads, plen, self.head_dim)
-            saved_state["prev_num_steps"] = num_steps
+            saved_state["prev_num_steps"] = num_steps.view(bsz, self.num_heads)
             saved_state["prev_key_padding_mask"] = key_padding_mask
             # In this branch incremental_state is never None
             assert incremental_state is not None
