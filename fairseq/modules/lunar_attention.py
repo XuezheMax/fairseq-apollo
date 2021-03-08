@@ -497,7 +497,7 @@ class LunarCausalAttention(nn.Module):
         pq = pq.view(bsz * self.num_heads, -1, self.head_dim).transpose(1, 2)
         # B*H x N x L
         pattn = k.bmm(pq)
-        pattn = F.relu(pattn)
+        pattn = F.elu(pattn) + 1.0
         return pattn
 
     def forward(
@@ -550,6 +550,7 @@ class LunarCausalAttention(nn.Module):
 
         # B*H x N x L
         pattn_weights = self._compute_pattention(pq, query, key_padding_mask)
+        pattn_weights = self.dropout_module(pattn_weights)
         key_padding_mask = None
 
         q = self.q_proj(query) * self.scaling
