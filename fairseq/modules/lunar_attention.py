@@ -528,6 +528,7 @@ class LunarCausalAttention(nn.Module):
         assert embed_dim == self.embed_dim
 
         pq = None
+        num_steps = None
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if saved_state is not None and "prev_pquery" in saved_state:
@@ -536,12 +537,10 @@ class LunarCausalAttention(nn.Module):
                 pq = saved_state["prev_pquery"]
             key_accum_mat = 0
             value_accum_mat = 0
-            num_steps = query.new_ones(bsz)
         else:
             saved_state = None
             key_accum_mat = None
             value_accum_mat = None
-            num_steps = None
 
         if pq is None:
             # L x B x D -> L x B x H x K
@@ -582,6 +581,9 @@ class LunarCausalAttention(nn.Module):
                 batch_size=bsz,
                 src_len=k.size(1),
             )
+
+        if num_steps is None:
+            num_steps = query.new_ones(bsz)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
