@@ -595,7 +595,7 @@ class LunarCausalAttention(nn.Module):
         if incremental_state is not None:
             attn_weights, key_accum_mat = incremental_causal_attention(q, k, pattn_weights, key_accum_mat, num_steps)
         else:
-            attn_weights = efficient_causal_attention(q, k, pattn_weights)
+            attn_weights = efficient_causal_attention_v2(q, k, pattn_weights)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, plen]
 
@@ -606,7 +606,7 @@ class LunarCausalAttention(nn.Module):
         if incremental_state is not None:
             attn, value_accum_mat = incremental_causal_attention(attn_probs, pattn_weights, v, value_accum_mat, num_steps)
         else:
-            attn = efficient_causal_attention(attn_probs, pattn_weights, v)
+            attn = efficient_causal_attention_v2(attn_probs, pattn_weights, v)
 
         if saved_state is not None:
             saved_state["prev_pquery"] = pq
@@ -732,6 +732,29 @@ class LunarCausalAttention(nn.Module):
 
         for key, value in items_to_add.items():
             state_dict[key] = value
+
+def efficient_causal_attention_v2(x, y, z):
+    """
+    efficient causal attention operation
+    Args:
+        x (Tensor): Tensor with shape `(batch, n, d1)`
+        y (Tensor): Tensor with shape `(batch, n, d1)`
+        z (Tensor): Tensor with shape '(batch, n, d2)`
+
+    return:
+    """
+    B, n, d1 = x.size()
+    x = x.contiguous()
+    y = y.contiguous()
+    z = z.contiguous()
+    d2 = z.size(-1)
+    rets = []
+    accum_mat = 0
+    sum_mat = torch.bmm(y.view(B*n, d1, 1), z.view(B*n, 1, d2)).view(B, n, d1, d2)
+    accum_mat = torch.cumsum(sum_mat, dim=1)
+    length_div = torch.arange(1, n+1, device=x.device).unsqueeze(0).unsqueeze(2).contiguous()
+    rets = torch.bmm(x.view(B*n, 1, d1), accum_mat.view(B*n, d1, d2)) 
+    return rets.view(B, n, d2) / length_div
 
 
 def efficient_causal_attention(x, y, z):
