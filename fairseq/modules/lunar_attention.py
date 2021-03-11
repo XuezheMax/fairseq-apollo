@@ -437,10 +437,12 @@ class LunarCausalAttention(nn.Module):
         bias=True,
         q_noise=0.0,
         qn_block_size=8,
+        parallel=True,
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
+        self.parallel = parallel
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.head_dim = embed_dim // num_heads
@@ -561,6 +563,8 @@ class LunarCausalAttention(nn.Module):
         q = q.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         k = k.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         v = v.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+
+        efficient_causal_attention = efficient_causal_attention_parallel if self.parallel else efficient_causal_attention_seq
 
         if saved_state is not None:
             # key accumulative matrix are store with shape (bsz, num_heads, head_dim, plen)
@@ -734,7 +738,7 @@ class LunarCausalAttention(nn.Module):
             state_dict[key] = value
 
 
-def efficient_causal_attention(x, y, z):
+def efficient_causal_attention_seq(x, y, z):
     """
     efficient causal attention operation
     Args:
@@ -758,6 +762,29 @@ def efficient_causal_attention(x, y, z):
         rets.append(torch.bmm(xx, accum_mat).div(i + 1.))
     # B x N x d2
     return torch.cat(rets, dim=1)
+
+
+def efficient_causal_attention_parallel(x, y, z):
+    """
+    efficient causal attention operation
+    Args:
+        x (Tensor): Tensor with shape `(batch, n, d1)`
+        y (Tensor): Tensor with shape `(batch, n, d1)`
+        z (Tensor): Tensor with shape '(batch, n, d2)`
+    return:
+    """
+    B, n, d1 = x.size()
+    x = x.contiguous()
+    y = y.contiguous()
+    z = z.contiguous()
+    d2 = z.size(-1)
+    rets = []
+    accum_mat = 0
+    sum_mat = torch.bmm(y.view(B*n, d1, 1), z.view(B*n, 1, d2)).view(B, n, d1, d2)
+    accum_mat = torch.cumsum(sum_mat, dim=1)
+    length_div = torch.arange(1, n+1, device=x.device).unsqueeze(0).unsqueeze(2).contiguous()
+    rets = torch.bmm(x.view(B*n, 1, d1), accum_mat.view(B*n, d1, d2))
+    return rets.view(B, n, d2) / length_div
 
 
 def incremental_causal_attention(x, y, z, accum_mat, n):
