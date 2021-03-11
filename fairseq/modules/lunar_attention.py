@@ -773,18 +773,17 @@ def efficient_causal_attention_parallel(x, y, z):
         z (Tensor): Tensor with shape '(batch, n, d2)`
     return:
     """
-    B, n, d1 = x.size()
-    x = x.contiguous()
-    y = y.contiguous()
-    z = z.contiguous()
+    bsz, n, d1 = x.size()
     d2 = z.size(-1)
-    rets = []
-    accum_mat = 0
-    sum_mat = torch.bmm(y.view(B*n, d1, 1), z.view(B*n, 1, d2)).view(B, n, d1, d2)
+    # (bsz, n, d1, 1) x (bsz, n, 1, d2) -> (bsz, n, d1, d2)
+    sum_mat = torch.matmul(y.unsqueeze(3), z.unsqueeze(2))
     accum_mat = torch.cumsum(sum_mat, dim=1)
-    length_div = torch.arange(1, n+1, device=x.device).unsqueeze(0).unsqueeze(2).contiguous()
-    rets = torch.bmm(x.view(B*n, 1, d1), accum_mat.view(B*n, d1, d2))
-    return rets.view(B, n, d2) / length_div
+    # (bsz, n, 1, d1) x (bsz, n, d1, d2) -> (bsz, n, 1, d2) -> (bsz, n, d2)
+    res = torch.matmul(x.unsqueeze(2), accum_mat).squeeze(2)
+    # (1, n, 1)
+    length_div = torch.arange(1, n+1, device=x.device).unsqueeze(0).unsqueeze(2)
+    res = res / length_div
+    return res
 
 
 def incremental_causal_attention(x, y, z, accum_mat, n):
