@@ -774,14 +774,13 @@ def efficient_causal_attention_parallel(x, y, z):
     return:
     """
     bsz, n, d1 = x.size()
-    d2 = z.size(-1)
     # (bsz, n, d1, 1) x (bsz, n, 1, d2) -> (bsz, n, d1, d2)
     sum_mat = torch.matmul(y.unsqueeze(3), z.unsqueeze(2))
     accum_mat = torch.cumsum(sum_mat, dim=1)
     # (bsz, n, 1, d1) x (bsz, n, d1, d2) -> (bsz, n, 1, d2) -> (bsz, n, d2)
     res = torch.matmul(x.unsqueeze(2), accum_mat).squeeze(2)
     # (1, n, 1)
-    length_div = torch.arange(1, n+1, device=x.device).unsqueeze(0).unsqueeze(2)
+    length_div = torch.arange(1, n + 1, device=x.device).unsqueeze(0).unsqueeze(2)
     res = res / length_div
     return res
 
