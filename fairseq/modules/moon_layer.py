@@ -120,6 +120,7 @@ class MoonEncoderLayer(nn.Module):
 
 class MoonDecoderLayer(nn.Module):
     """Decoder layer block.
+
     In the original paper each operation (multi-head attention, encoder
     attention or FFN) is postprocessed with: `dropout -> add residual ->
     layernorm`. In the tensor2tensor code they suggest that learning is more
@@ -127,6 +128,7 @@ class MoonDecoderLayer(nn.Module):
     `dropout -> add residual`. We default to the approach in the paper, but the
     tensor2tensor approach can be enabled by setting
     *args.decoder_normalize_before* to ``True``.
+
     Args:
         args (argparse.Namespace): parsed command-line arguments
         no_encoder_attn (bool, optional): whether to attend to encoder outputs
@@ -224,6 +226,7 @@ class MoonDecoderLayer(nn.Module):
             need_attn (bool, optional): return attention weights
             need_head_weights (bool, optional): return attention weights
                 for each head (default: return average over heads).
+
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
             projected output of shape `(proj_len, batch, embed_dim)`

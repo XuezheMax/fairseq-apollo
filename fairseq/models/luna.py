@@ -117,6 +117,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                                  'if different from decoder embed dim')
         parser.add_argument('--decoder-projected-length', type=int, metavar='N',
                             help='projected length of decoder as key')
+        parser.add_argument('--no-lunar-causal-attention', default=False, action='store_true',
+                            help='do not perform cross-attention')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -207,7 +209,8 @@ class LunaModel(FairseqEncoderDecoderModel):
 
     @classmethod
     def build_decoder(cls, args, tgt_dict, embed_tokens):
-        return LunaDecoder(args, tgt_dict, embed_tokens)
+        return LunaDecoder(args, tgt_dict, embed_tokens,
+                           no_lunar_causal_attn=getattr(args, "no_lunar_causal_attention", False))
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
     # Current workaround is to add union of all arguments in child classes.
@@ -492,11 +495,12 @@ class LunaDecoder(FairseqIncrementalDecoder):
         embed_tokens (torch.nn.Embedding): output embedding
     """
 
-    def __init__(self, args, dictionary, embed_tokens):
+    def __init__(self, args, dictionary, embed_tokens, no_lunar_causal_attn=False):
         self.args = args
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
+        self.no_lunar_causal_attn = no_lunar_causal_attn
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.decoder_layerdrop = args.decoder_layerdrop
@@ -545,7 +549,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
         else:
             self.layers = nn.ModuleList([])
-        self.layers.extend([self.build_decoder_layer(i, args)for i in range(args.decoder_layers)])
+        self.layers.extend([self.build_decoder_layer(i, args, no_lunar_causal_attn) for i in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
 
         self.project_out_dim = (
@@ -580,8 +584,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
 
-    def build_decoder_layer(self, layer_id, args):
-        return LunaDecoderLayer(args, layer_id)
+    def build_decoder_layer(self, layer_id, args, no_lunar_causal_attn):
+        return LunaDecoderLayer(args, layer_id, no_lunar_causal_attn)
 
     def forward(
         self,
@@ -720,10 +724,15 @@ class LunaDecoder(FairseqIncrementalDecoder):
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
+            if incremental_state is None and self.no_lunar_causal_attn and not full_context_alignment:
+                self_attn_mask = self.buffered_future_mask(x)
+            else:
+                self_attn_mask = None
             x, px, layer_attn, _ = layer(x, px,
                                          encoder_out.encoder_out if encoder_out is not None else None,
                                          encoder_out.encoder_padding_mask if encoder_out is not None else None,
                                          incremental_state,
+                                         self_attn_mask=self_attn_mask,
                                          self_attn_padding_mask=self_attn_padding_mask,
                                          need_attn=bool(idx == alignment_layer),
                                          need_head_weights=bool(idx == alignment_layer))
@@ -759,6 +768,20 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if self.embed_positions is None:
             return self.max_target_positions
         return min(self.max_target_positions, self.embed_positions.max_positions)
+
+    def buffered_future_mask(self, tensor):
+        dim = tensor.size(0)
+        # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
+        if (
+            self._future_mask.size(0) == 0
+            or (not self._future_mask.device == tensor.device)
+            or self._future_mask.size(0) < dim
+        ):
+            self._future_mask = torch.triu(
+                utils.fill_with_neg_inf(torch.zeros([dim, dim])), 1
+            )
+        self._future_mask = self._future_mask.to(tensor)
+        return self._future_mask[:dim, :dim]
 
     def upgrade_state_dict_named(self, state_dict, name):
         """Upgrade a (possibly old) state dict for new versions of fairseq."""
@@ -859,6 +882,7 @@ def base_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
+    args.no_lunar_causal_attention = getattr(args, "no_lunar_causal_attention", False)
 
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
