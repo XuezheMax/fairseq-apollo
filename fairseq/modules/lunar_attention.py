@@ -51,8 +51,8 @@ class LunarMultiheadAttention(nn.Module):
 
         self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pc_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -77,22 +77,23 @@ class LunarMultiheadAttention(nn.Module):
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
         if self.q_proj.bias is not None:
             nn.init.constant_(self.q_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
-        if self.k_proj.bias is not None:
-            nn.init.constant_(self.k_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
-        if self.v_proj.bias is not None:
-            nn.init.constant_(self.v_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
+        if self.pc_proj.bias is not None:
+            nn.init.constant_(self.pc_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
+        if self.c_proj.bias is not None:
+            nn.init.constant_(self.c_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
     def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
+        c = self.c_proj(context)
         # N x B x D -> B x D x N
-        k = context.permute(1, 2, 0)
+        k = c.permute(1, 2, 0)
         # N x B x D -> B x N x D
-        v = context.transpose(0, 1)
+        v = c.transpose(0, 1)
 
         # L x B x D -> B x L x D
         pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
@@ -109,8 +110,9 @@ class LunarMultiheadAttention(nn.Module):
     def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
+        c = self.c_proj(context)
         # N x B x D -> N x B x H x K
-        k = v = context.contiguous().view(len, bsz, self.num_pheads, self.phead_dim)
+        k = v = c.view(len, bsz, self.num_pheads, self.phead_dim)
         # N x B x H x K -> B x H x K x N
         k = k.permute(1, 2, 3, 0)
         # N x B x H x K -> B x H x N x K
@@ -205,16 +207,10 @@ class LunarMultiheadAttention(nn.Module):
             assert context is None
             k = v = None
         else:
-            k = self.k_proj(pcontext)
-            v = self.v_proj(pcontext)
+            k = v = self.pc_proj(pcontext).view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         q = q * self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-
-        if k is not None:
-            k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        if v is not None:
-            v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, num_heads, seq_len, head_dim)
