@@ -119,6 +119,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='projected length of decoder as key')
         parser.add_argument('--no-lunar-causal-attention', default=False, action='store_true',
                             help='do not perform cross-attention')
+        parser.add_argument('--normalize-before-residual', action='store_true',
+                            help='apply layernorm before each encoder block')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -883,6 +885,7 @@ def base_architecture(args):
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.no_lunar_causal_attention = getattr(args, "no_lunar_causal_attention", False)
+    args.normalize_before_residual = getattr(args, "normalize_before_residual", False)
 
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)

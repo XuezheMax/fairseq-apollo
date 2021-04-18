@@ -37,6 +37,7 @@ class LunaEncoderLayer(nn.Module):
 
         self.index = index
         self.embed_dim = args.encoder_embed_dim
+        self.normalize_before_residual = args.normalize_before_residual
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
@@ -106,18 +107,22 @@ class LunaEncoderLayer(nn.Module):
         x = self.dropout_module(x)
         px = self.dropout_module(px)
         # apply layer norm
-        x = residual + x
-        x = self.self_attn_layer_norm(x)
-        px = presidual + px
-        px = self.self_atten_proj_layer_norm(px)
+        if self.normalize_before_residual:
+            x = self.self_attn_layer_norm(x) + residual
+            px = self.self_atten_proj_layer_norm(px) + presidual
+        else:
+            x = self.self_attn_layer_norm(residual + x)
+            px = self.self_atten_proj_layer_norm(presidual + px)
 
         residual = x
         x = self.activation_fn(self.fc1(x))
         x = self.activation_dropout_module(x)
         x = self.fc2(x)
         x = self.dropout_module(x)
-        x = residual + x
-        x = self.final_layer_norm(x)
+        if self.normalize_before_residual:
+            x = self.final_layer_norm(x) + residual
+        else:
+            x = self.final_layer_norm(residual + x)
         return x, px
 
 
@@ -145,6 +150,7 @@ class LunaDecoderLayer(nn.Module):
 
         self.index = index
         self.lunar_causal_attn = not no_lunar_causal_attn
+        self.normalize_before_residual = args.normalize_before_residual
         self.embed_dim = args.decoder_embed_dim
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
@@ -264,8 +270,10 @@ class LunaDecoderLayer(nn.Module):
                                      need_weights=False,
                                      attn_mask=self_attn_mask)
         x = self.dropout_module(x)
-        x = residual + x
-        x = self.self_attn_layer_norm(x)
+        if self.normalize_before_residual:
+            x = self.self_attn_layer_norm(x) + residual
+        else:
+            x = self.self_attn_layer_norm(residual + x)
 
         residual = x
         presidual = px
@@ -279,18 +287,22 @@ class LunaDecoderLayer(nn.Module):
         x = self.dropout_module(x)
         px = self.dropout_module(px)
         # apply layer norm
-        x = residual + x
-        x = self.encoder_attn_layer_norm(x)
-        px = presidual + px
-        px = self.encoder_atten_proj_layer_norm(px)
+        if self.normalize_before_residual:
+            x = self.encoder_attn_layer_norm(x) + residual
+            px = self.encoder_atten_proj_layer_norm(px) + presidual
+        else:
+            x = self.encoder_attn_layer_norm(residual + x)
+            px = self.encoder_atten_proj_layer_norm(presidual + px)
 
         residual = x
         x = self.activation_fn(self.fc1(x))
         x = self.activation_dropout_module(x)
         x = self.fc2(x)
         x = self.dropout_module(x)
-        x = residual + x
-        x = self.final_layer_norm(x)
+        if self.normalize_before_residual:
+            x = self.final_layer_norm(x) + residual
+        else:
+            x = self.final_layer_norm(residual + x)
 
         if self.onnx_trace and incremental_state is not None:
             saved_state = self.self_attn._get_input_buffer(incremental_state)
