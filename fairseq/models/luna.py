@@ -135,6 +135,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='sets adaptive softmax dropout for the tail projections')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        parser.add_argument('--layernorm-embedding', action='store_true',
+                            help='add layernorm to embedding')
         # args for "Reducing Transformer Depth on Demand with Structured Dropout" (Fan et al., 2019)
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
@@ -296,6 +298,13 @@ class LunaEncoder(FairseqEncoder):
             else None
         )
 
+        if args.layernorm_embedding:
+            self.layernorm_embedding = LayerNorm(embed_dim)
+            self.layernorm_porjected_embedding = LayerNorm(embed_dim)
+        else:
+            self.layernorm_embedding = None
+            self.layernorm_porjected_embedding = None
+
         self.proj_len = args.encoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
@@ -323,8 +332,13 @@ class LunaEncoder(FairseqEncoder):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
         x = x + self.embed_positions(src_tokens)
+        if self.layernorm_embedding is not None:
+            x = self.layernorm_embedding(x)
+
         px = proj_embed = self.embed_scale * self.projected_embeddings
         px = px + self.projected_positions
+        if self.layernorm_porjected_embedding is not None:
+            px = self.layernorm_porjected_embedding(px)
 
         return x, embed, px, proj_embed
 
@@ -536,6 +550,13 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        if args.layernorm_embedding:
+            self.layernorm_embedding = LayerNorm(embed_dim)
+            self.layernorm_porjected_embedding = LayerNorm(embed_dim)
+        else:
+            self.layernorm_embedding = None
+            self.layernorm_porjected_embedding = None
+
         self.proj_len = args.decoder_projected_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
@@ -701,6 +722,9 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if positions is not None:
             x = x + positions
 
+        if self.layernorm_embedding is not None:
+            x = self.layernorm_embedding(x)
+
         # L x B x C -> B x L x C
         px = encoder_out.encoder_projected_out.transpose(0, 1)
         if self.length_proj_weight is not None:
@@ -709,6 +733,9 @@ class LunaDecoder(FairseqIncrementalDecoder):
             raise RuntimeError('encoder and decoder projected length mismatch.')
         px = px + self.embed_scale * self.projected_embeddings
         px = px + self.projected_positions
+
+        if self.layernorm_porjected_embedding is not None:
+            px = self.layernorm_porjected_embedding(px)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -886,6 +913,7 @@ def base_architecture(args):
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.no_lunar_causal_attention = getattr(args, "no_lunar_causal_attention", False)
     args.normalize_before_residual = getattr(args, "normalize_before_residual", False)
+    args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
 
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
@@ -897,4 +925,3 @@ def base_architecture(args):
 
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
-
