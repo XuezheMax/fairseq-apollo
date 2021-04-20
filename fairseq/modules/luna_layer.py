@@ -315,7 +315,7 @@ class LunaDecoderLayer(nn.Module):
                 ]
             else:
                 self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
+            return x, px, attn, self_attn_state
         return x, px, attn, None
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):

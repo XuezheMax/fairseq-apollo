@@ -160,7 +160,7 @@ class LunarMultiheadAttention(nn.Module):
         context: Optional[Tensor],
         context_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        need_weights: bool = True,
+        need_weights: bool = False,
         static_context: bool = False,
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
@@ -504,7 +504,7 @@ class LunarCausalAttention(nn.Module):
         pquery,
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        need_weights: bool = True,
+        need_weights: bool = False,
         need_head_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
