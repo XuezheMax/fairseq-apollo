@@ -257,6 +257,8 @@ class LunaDecoderLayer(nn.Module):
         if need_head_weights:
             need_attn = True
 
+        static_px = px is None
+
         residual = x
         if self.lunar_causal_attn:
             x, attn = self.self_attn(query=x, pquery=px,
@@ -285,14 +287,14 @@ class LunaDecoderLayer(nn.Module):
                                         need_head_weights=need_head_weights)
         # apply dropout
         x = self.dropout_module(x)
-        px = self.dropout_module(px)
+        px = self.dropout_module(px) if not static_px else None
         # apply layer norm
         if self.normalize_before_residual:
             x = self.encoder_attn_layer_norm(x) + residual
-            px = self.encoder_atten_proj_layer_norm(px) + presidual
+            px = self.encoder_atten_proj_layer_norm(px) + presidual if not static_px else None
         else:
             x = self.encoder_attn_layer_norm(residual + x)
-            px = self.encoder_atten_proj_layer_norm(presidual + px)
+            px = self.encoder_atten_proj_layer_norm(presidual + px) if not static_px else None
 
         residual = x
         x = self.activation_fn(self.fc1(x))

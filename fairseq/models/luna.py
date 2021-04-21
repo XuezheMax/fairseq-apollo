@@ -719,10 +719,16 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        static_px = False
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
+            projected_input_buffer = self._get_projected_input_buffer(incremental_state)
+            if "prev_projected_input" in projected_input_buffer:
+                static_px = True
+        else:
+            projected_input_buffer = None
 
         # embed tokens and positions
         x = self.embed_tokens(prev_output_tokens) * self.embed_scale
@@ -734,26 +740,33 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
 
-        # L x B x C -> B x L x C
-        px = encoder_out.encoder_projected_out.transpose(0, 1)
-        if self.length_proj_weight is not None:
-            px = torch.matmul(self.length_proj_weight, px)
-            # TODO
-            raise RuntimeError('encoder and decoder projected length mismatch.')
-        px = px + self.embed_scale * self.projected_embeddings
-        if self.projected_positions is not None:
-            px = px + self.projected_positions
-
-        if self.layernorm_porjected_embedding is not None:
-            px = self.layernorm_porjected_embedding(px)
-
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        # B x L x C -> L x B x C
-        px = px.transpose(0, 1)
-
         x = self.dropout_module(x)
-        px = self.dropout_module(px)
+
+        if not static_px:
+            # L x B x C -> B x L x C
+            px = encoder_out.encoder_projected_out.transpose(0, 1)
+            if self.length_proj_weight is not None:
+                px = torch.matmul(self.length_proj_weight, px)
+                # TODO
+                raise RuntimeError('encoder and decoder projected length mismatch.')
+            px = px + self.embed_scale * self.projected_embeddings
+            if self.projected_positions is not None:
+                px = px + self.projected_positions
+
+            if self.layernorm_porjected_embedding is not None:
+                px = self.layernorm_porjected_embedding(px)
+
+            if projected_input_buffer is not None:
+                projected_input_buffer["prev_projected_input"] = px
+                incremental_state = self._set_projected_input_buffer(incremental_state, projected_input_buffer)
+
+            # B x L x C -> L x B x C
+            px = px.transpose(0, 1)
+            px = self.dropout_module(px)
+        else:
+            px = None
 
         self_attn_padding_mask: Optional[Tensor] = None
         if prev_output_tokens.eq(self.padding_idx).any():
@@ -793,6 +806,24 @@ class LunaDecoder(FairseqIncrementalDecoder):
             x = self.project_out_dim(x)
 
         return x, {"attn": [attn], "inner_states": inner_states}
+
+    def _get_projected_input_buffer(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
+    ) -> Dict[str, Optional[Tensor]]:
+        result = self.get_incremental_state(incremental_state, "px_state")
+        if result is not None:
+            return result
+        else:
+            empty_result: Dict[str, Optional[Tensor]] = {}
+            return empty_result
+
+    def _set_projected_input_buffer(
+        self,
+        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+        buffer: Dict[str, Optional[Tensor]],
+    ):
+        return self.set_incremental_state(incremental_state, "px_state", buffer)
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
