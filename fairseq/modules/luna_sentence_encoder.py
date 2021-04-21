@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Tuple, List, Union
+import math
 
 import torch
 import torch.nn as nn
@@ -252,6 +253,13 @@ class LunaSentenceEncoder(nn.Module):
 
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, self.embedding_dim))
         nn.init.normal_(self.projected_embeddings, mean=0.0, std=self.embedding_dim ** -0.5)
+        if self.use_position_embeddings and not self.learned_pos_embedding:
+            projected_positions = get_sinusoidal_positional_embedding(self.proj_len, self.embedding_dim)
+            if self.embed_scale is None:
+                self.embed_scale = math.sqrt(self.embedding_dim)
+        else:
+            projected_positions = None
+        self.register_buffer('projected_positions', projected_positions)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -360,6 +368,8 @@ class LunaSentenceEncoder(nn.Module):
 
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
+        if self.projected_positions is not None:
+            px += self.projected_positions
 
         if self.segment_embeddings is not None and segment_labels is not None:
             x += self.segment_embeddings(segment_labels)
@@ -401,3 +411,14 @@ class LunaSentenceEncoder(nn.Module):
             inner_states = [(x, px)]
 
         return inner_states, sentence_cls_rep, sentence_proj_rep
+
+
+def get_sinusoidal_positional_embedding(length, embed_dim):
+    half_dim = embed_dim // 2
+    emb = math.log(10000) / (half_dim - 1)
+    emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
+    emb = torch.arange(length, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
+    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(length, -1)
+    if embed_dim % 2 == 1:
+        emb = torch.cat([emb, torch.zeros(length, 1)], dim=1)
+    return emb
