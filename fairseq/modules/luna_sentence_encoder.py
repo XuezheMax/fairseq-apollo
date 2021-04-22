@@ -400,7 +400,7 @@ class LunaSentenceEncoder(nn.Module):
             inner_states.append((x, px))
 
         for layer in self.layers:
-            x, px, _ = layer(x, self_attn_padding_mask=padding_mask)
+            x, px, _ = layer(x, px, self_attn_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append((x, px))
 
