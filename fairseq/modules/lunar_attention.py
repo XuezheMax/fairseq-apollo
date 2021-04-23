@@ -522,7 +522,6 @@ class LunarCausalAttention(nn.Module):
             need_weights = True
 
         tgt_len, bsz, embed_dim = query.size()
-        plen = pquery.size(0)
         assert embed_dim == self.embed_dim
 
         pq = None
@@ -541,11 +540,13 @@ class LunarCausalAttention(nn.Module):
             value_accum_mat = None
 
         if pq is None:
+            plen = pquery.size(0)
             # L x B x D -> L x B x H x K
             pq = self.pq_proj(pquery).view(plen, bsz, self.num_heads, self.head_dim)
             # L x B x H x K -> B x H x L x K
             pq = pq.permute(1, 2, 0, 3) * self.scaling
 
+        plen = pq.size(2)
         # B*H x N x L
         pattn_weights = self._compute_pattention(pq, query, key_padding_mask)
         pattn_weights = self.dropout_module(pattn_weights)
