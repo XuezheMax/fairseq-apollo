@@ -60,7 +60,7 @@ class LunaSentenceEncoderLayer(nn.Module):
 
         # layer norm associated with the self attention layer
         self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
-        self.self_atten_proj_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.self_atten_proj_layer_norm = LayerNorm(self.embedding_dim, export=export)
 
         self.fc1 = self.build_fc1(self.embedding_dim, ffn_embedding_dim, q_noise=q_noise, qn_block_size=qn_block_size)
         self.fc2 = self.build_fc2(ffn_embedding_dim, self.embedding_dim, q_noise=q_noise, qn_block_size=qn_block_size)
