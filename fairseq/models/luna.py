@@ -98,6 +98,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--encoder-projected-length', type=int, metavar='N',
                             help='projected length of encoder as key')
+        parser.add_argument('--encoder-normalize-before', action='store_true',
+                            help='apply layernorm before each encoder block')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
@@ -117,10 +119,10 @@ class LunaModel(FairseqEncoderDecoderModel):
                                  'if different from decoder embed dim')
         parser.add_argument('--decoder-projected-length', type=int, metavar='N',
                             help='projected length of decoder as key')
+        parser.add_argument('--decoder-normalize-before', action='store_true',
+                            help='apply layernorm before each decoder block')
         parser.add_argument('--no-lunar-causal-attention', default=False, action='store_true',
                             help='do not perform cross-attention')
-        parser.add_argument('--normalize-before-residual', action='store_true',
-                            help='apply layernorm before each encoder block')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -298,6 +300,8 @@ class LunaEncoder(FairseqEncoder):
             else None
         )
 
+        assert not args.layernorm_embedding or not args.encoder_normalize_before
+
         if args.layernorm_embedding:
             self.layernorm_embedding = LayerNorm(embed_dim)
             self.layernorm_porjected_embedding = LayerNorm(embed_dim)
@@ -321,12 +325,12 @@ class LunaEncoder(FairseqEncoder):
         self.layers.extend([self.build_encoder_layer(i, args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
-        if embed_dim != args.decoder_embed_dim:
-            self.project_x_out_dim = Linear(embed_dim, args.decoder_embed_dim, bias=False)
-            self.project_px_out_dim = Linear(embed_dim, args.decoder_embed_dim, bias=False)
+        if args.encoder_normalize_before:
+            self.layer_norm = LayerNorm(embed_dim)
+            self.proj_layer_norm = LayerNorm(embed_dim)
         else:
-            self.project_x_out_dim = None
-            self.project_px_out_dim = None
+            self.layer_norm = None
+            self.proj_layer_norm = None
 
     def build_encoder_layer(self, layer_id, args):
         return LunaEncoderLayer(args, layer_id)
@@ -394,11 +398,9 @@ class LunaEncoder(FairseqEncoder):
                 assert encoder_states is not None
                 encoder_states.append((x, px))
 
-        if self.project_x_out_dim is not None:
-            x = self.project_x_out_dim(x)
-            px = self.project_px_out_dim(px)
-            # TODO no project_out_dim
-            raise RuntimeError('encoder and decoder dim mismatch.')
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+            px = self.proj_layer_norm(px)
 
         return EncoderOut(
             encoder_out=x,  # T x B x C
@@ -555,6 +557,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        assert not args.layernorm_embedding or not args.decoder_normalize_before
+
         if args.layernorm_embedding:
             self.layernorm_embedding = LayerNorm(embed_dim)
             self.layernorm_porjected_embedding = LayerNorm(embed_dim)
@@ -583,6 +587,13 @@ class LunaDecoder(FairseqIncrementalDecoder):
             self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(i, args, no_lunar_causal_attn) for i in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
+
+        if args.decoder_normalize_before:
+            self.layer_norm = LayerNorm(embed_dim)
+            self.proj_layer_norm = LayerNorm(embed_dim)
+        else:
+            self.layer_norm = None
+            self.proj_layer_norm = None
 
         self.project_out_dim = (
             Linear(embed_dim, self.output_embed_dim, bias=False)
@@ -799,8 +810,14 @@ class LunaDecoder(FairseqIncrementalDecoder):
             # average probabilities over heads
             attn = attn.mean(dim=0)
 
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+            px = self.proj_layer_norm(px)
+
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+        # L x B x C -> B x L x C
+        px = px.transpose(0, 1)
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
@@ -891,12 +908,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
                         ] = state_dict[k]
                         del state_dict[k]
 
-        version_key = "{}.version".format(name)
-        if utils.item(state_dict.get(version_key, torch.Tensor([1]))[0]) <= 2:
-            # earlier checkpoints did not normalize after the stack of layers
-            self.normalize = False
-            state_dict[version_key] = torch.Tensor([1])
-
         return state_dict
 
 
@@ -936,6 +947,7 @@ def base_architecture(args):
     args.encoder_projected_attention_heads = getattr(args, "encoder_projected_attention_heads", args.encoder_attention_heads)
     args.encoder_projected_length = getattr(args, 'encoder_projected_length', 32)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
+    args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
 
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
@@ -945,6 +957,7 @@ def base_architecture(args):
     args.decoder_projected_attention_heads = getattr(args, "decoder_projected_attention_heads", args.decoder_attention_heads)
     args.decoder_projected_length = getattr(args, 'decoder_projected_length', args.encoder_projected_length)
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
+    args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
 
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
@@ -953,7 +966,6 @@ def base_architecture(args):
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.no_lunar_causal_attention = getattr(args, "no_lunar_causal_attention", False)
-    args.normalize_before_residual = getattr(args, "normalize_before_residual", False)
     args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
 
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)

@@ -32,6 +32,7 @@ class LunaSentenceEncoderLayer(nn.Module):
         attention_dropout: float = 0.1,
         activation_dropout: float = 0.1,
         activation_fn: str = 'relu',
+        normalize_before: bool = False,
         export: bool = False,
         q_noise: float = 0.0,
         qn_block_size: int = 8,
@@ -59,6 +60,7 @@ class LunaSentenceEncoderLayer(nn.Module):
         )
 
         # layer norm associated with the self attention layer
+        self.normalize_before = normalize_before
         self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
         self.self_atten_proj_layer_norm = LayerNorm(self.embedding_dim, export=export)
 
@@ -105,23 +107,42 @@ class LunaSentenceEncoderLayer(nn.Module):
         """
         residual = x
         presidual = px
+        # apply prev layer norm
+        if self.normalize_before:
+            x = self.self_attn_layer_norm(x)
+            px = self.self_atten_proj_layer_norm(px)
+
         x, px, attn = self.self_attn(query=x, pquery=px, context=x,
                                      context_padding_mask=self_attn_padding_mask,
                                      need_weights=False)
         # apply dropout
         x = self.dropout_module(x)
         px = self.dropout_module(px)
-        # apply layer norm
-        x = self.self_attn_layer_norm(residual + x)
-        px = self.self_atten_proj_layer_norm(presidual + px)
+        # residual
+        x = residual + x
+        px = presidual + px
 
+        # apply post layer norm
+        if not self.normalize_before:
+            x = self.self_attn_layer_norm(x)
+            px = self.self_atten_proj_layer_norm(px)
+
+        #######################################################################
+        # Feed-Forward Network
         residual = x
+        # apply prev layer norm
+        if self.normalize_before:
+            x = self.final_layer_norm(x)
+
         x = self.activation_fn(self.fc1(x))
         x = self.activation_dropout_module(x)
         x = self.fc2(x)
         x = self.dropout_module(x)
         x = residual + x
-        x = self.final_layer_norm(x)
+
+        # apply post layer norm
+        if not self.normalize_before:
+            x = self.final_layer_norm(x)
         return x, px, attn
 
 
@@ -199,6 +220,7 @@ class LunaSentenceEncoder(nn.Module):
         use_position_embeddings: bool = True,
         offset_positions_by_padding: bool = True,
         layernorm_embedding: bool = False,
+        normalize_before: bool = False,
         apply_bert_init: bool = False,
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
@@ -276,6 +298,7 @@ class LunaSentenceEncoder(nn.Module):
                 attention_dropout=attention_dropout,
                 activation_dropout=activation_dropout,
                 activation_fn=activation_fn,
+                normalize_before=normalize_before,
                 export=export,
                 q_noise=q_noise,
                 qn_block_size=qn_block_size,
@@ -283,12 +306,21 @@ class LunaSentenceEncoder(nn.Module):
             for _ in range(num_encoder_layers)
         ])
 
+        assert not layernorm_embedding or not normalize_before
+
         if layernorm_embedding:
             self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
             self.proj_emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
         else:
             self.emb_layer_norm = None
             self.proj_emb_layer_norm = None
+
+        if normalize_before:
+            self.layer_norm = LayerNorm(self.embedding_dim, export=export)
+            self.proj_layer_norm = LayerNorm(self.embedding_dim, export=export)
+        else:
+            self.layer_norm = None
+            self.proj_layer_norm = None
 
         # Apply initialization of model params after building the model
         if self.apply_bert_init:
@@ -325,6 +357,7 @@ class LunaSentenceEncoder(nn.Module):
         attention_dropout,
         activation_dropout,
         activation_fn,
+        normalize_before,
         export,
         q_noise,
         qn_block_size,
@@ -338,6 +371,7 @@ class LunaSentenceEncoder(nn.Module):
             attention_dropout=attention_dropout,
             activation_dropout=activation_dropout,
             activation_fn=activation_fn,
+            normalize_before=normalize_before,
             export=export,
             q_noise=q_noise,
             qn_block_size=qn_block_size,
@@ -403,6 +437,10 @@ class LunaSentenceEncoder(nn.Module):
             x, px, _ = layer(x, px, self_attn_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append((x, px))
+
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+            px = self.proj_layer_norm(px)
 
         sentence_cls_rep = x[0, :, :]
         sentence_proj_rep = px
