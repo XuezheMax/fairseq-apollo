@@ -755,10 +755,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if not static_px:
             # L x B x C -> B x L x C
             px = encoder_out.encoder_projected_out.transpose(0, 1)
-            if projected_input_buffer is not None:
-                projected_input_buffer["prev_projected_input"] = px
-                incremental_state = self._set_projected_input_buffer(incremental_state, projected_input_buffer)
-
             # B x L x C -> L x B x C
             px = px.transpose(0, 1)
             px = self.dropout_module(px)
@@ -799,12 +795,19 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
-            px = self.proj_layer_norm(px)
+            if not static_px:
+                px = self.proj_layer_norm(px)
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
         # L x B x C -> B x L x C
-        px = px.transpose(0, 1)
+        if not static_px:
+            px = px.transpose(0, 1)
+            if projected_input_buffer is not None:
+                projected_input_buffer["prev_projected_input"] = px
+                incremental_state = self._set_projected_input_buffer(incremental_state, projected_input_buffer)
+        else:
+            px = projected_input_buffer["prev_projected_input"]
 
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
