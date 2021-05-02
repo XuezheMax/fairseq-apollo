@@ -40,6 +40,7 @@ EncoderOut = NamedTuple(
         ("encoder_out", Tensor),  # T x B x C
         ("encoder_projected_out", Tensor),  # L x B x C
         ("encoder_padding_mask", Optional[Tensor]),  # B x T
+        ("encoder_projected_padding_mask", Optional[Tensor]),  # B x L
         ("encoder_embedding", Optional[Tensor]),  # B x T x C
         ("encoder_states", Optional[List[Tensor]]),  # List[T x B x C]
         ("src_tokens", Optional[Tensor]),  # B x T
@@ -117,8 +118,6 @@ class LunaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--decoder-output-dim', type=int, metavar='N',
                             help='decoder output dimension (extra linear layer '
                                  'if different from decoder embed dim')
-        parser.add_argument('--decoder-projected-length', type=int, metavar='N',
-                            help='projected length of decoder as key')
         parser.add_argument('--decoder-normalize-before', action='store_true',
                             help='apply layernorm before each decoder block')
         parser.add_argument('--no-lunar-causal-attention', default=False, action='store_true',
@@ -343,13 +342,17 @@ class LunaEncoder(FairseqEncoder):
         if self.layernorm_embedding is not None:
             x = self.layernorm_embedding(x)
 
-        px = proj_embed = self.embed_scale * self.projected_embeddings
+        return x, embed
+
+    def forward_projected_embedding(self, src_lengths):
+        max_len = src_lengths.max()
+        px = proj_embed = self.embed_scale * self.projected_embeddings[:max_len]
         if self.projected_positions is not None:
-            px = px + self.projected_positions
+            px = px + self.projected_positions[:max_len]
         if self.layernorm_porjected_embedding is not None:
             px = self.layernorm_porjected_embedding(px)
 
-        return x, embed, px, proj_embed
+        return px, proj_embed
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
         """
@@ -373,7 +376,8 @@ class LunaEncoder(FairseqEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
-        x, encoder_embedding, px, projected_embedding = self.forward_embedding(src_tokens)
+        x, encoder_embedding = self.forward_embedding(src_tokens)
+        px, projected_embedding = self.forward_projected_embedding(src_lengths)
 
         bsz = x.size(0)
         len, dim = px.size()
@@ -388,12 +392,14 @@ class LunaEncoder(FairseqEncoder):
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
+        pidx= torch.arange(len).unsqueeze(0).to(x.device)
+        encoder_projected_padding_mask = pidx.ge(src_lengths.unsqueeze(1))
 
         encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
         for layer in self.layers:
-            x, px = layer(x, px, encoder_padding_mask)
+            x, px = layer(x, px, encoder_padding_mask, encoder_projected_padding_mask)
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append((x, px))
@@ -404,8 +410,9 @@ class LunaEncoder(FairseqEncoder):
 
         return EncoderOut(
             encoder_out=x,  # T x B x C
-            encoder_projected_out=px, # L x B x C
+            encoder_projected_out=px,  # L x B x C
             encoder_padding_mask=encoder_padding_mask,  # B x T
+            encoder_projected_padding_mask=encoder_projected_padding_mask,  # B x L
             encoder_embedding=encoder_embedding,  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=None,
@@ -430,6 +437,7 @@ class LunaEncoder(FairseqEncoder):
         variables for Torchscript Optional refinement
         """
         encoder_padding_mask: Optional[Tensor] = encoder_out.encoder_padding_mask
+        encoder_projected_padding_mask: Optional[Tensor] = encoder_out.encoder_projected_padding_mask
         encoder_embedding: Optional[Tensor] = encoder_out.encoder_embedding
 
         new_encoder_out = (
@@ -446,6 +454,11 @@ class LunaEncoder(FairseqEncoder):
             encoder_padding_mask
             if encoder_padding_mask is None
             else encoder_padding_mask.index_select(0, new_order)
+        )
+        new_encoder_projected_padding_mask = (
+            encoder_projected_padding_mask
+            if encoder_projected_padding_mask is None
+            else encoder_projected_padding_mask.index_select(0, new_order)
         )
         new_encoder_embedding = (
             encoder_embedding
@@ -470,6 +483,7 @@ class LunaEncoder(FairseqEncoder):
             encoder_out=new_encoder_out,  # T x B x C
             encoder_projected_out=new_encoder_projected_out, # L x B x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
+            encoder_projected_padding_mask=new_encoder_projected_padding_mask,  # B x L
             encoder_embedding=new_encoder_embedding,  # B x T x C
             encoder_states=encoder_states,  # List[T x B x C]
             src_tokens=src_tokens,  # B x T
@@ -561,25 +575,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         if args.layernorm_embedding:
             self.layernorm_embedding = LayerNorm(embed_dim)
-            self.layernorm_porjected_embedding = LayerNorm(embed_dim)
         else:
             self.layernorm_embedding = None
-            self.layernorm_porjected_embedding = None
-
-        self.proj_len = args.decoder_projected_length
-        self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
-        nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
-        if not args.no_token_positional_embeddings and not args.decoder_learned_pos:
-            projected_positions = get_sinusoidal_positional_embedding(self.proj_len, embed_dim)
-        else:
-            projected_positions = None
-        self.register_buffer('projected_positions', projected_positions)
-
-        if args.encoder_projected_length != self.proj_len:
-            self.length_proj_weight = Parameter(torch.Tensor(1, self.proj_len, args.encoder_projected_length))
-            nn.init.xavier_uniform_(self.length_proj_weight)
-        else:
-            self.register_parameter('length_proj_weight', None)
 
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
@@ -758,17 +755,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
         if not static_px:
             # L x B x C -> B x L x C
             px = encoder_out.encoder_projected_out.transpose(0, 1)
-            if self.length_proj_weight is not None:
-                px = torch.matmul(self.length_proj_weight, px)
-                # TODO
-                raise RuntimeError('encoder and decoder projected length mismatch.')
-            px = px + self.embed_scale * self.projected_embeddings
-            if self.projected_positions is not None:
-                px = px + self.projected_positions
-
-            if self.layernorm_porjected_embedding is not None:
-                px = self.layernorm_porjected_embedding(px)
-
             if projected_input_buffer is not None:
                 projected_input_buffer["prev_projected_input"] = px
                 incremental_state = self._set_projected_input_buffer(incremental_state, projected_input_buffer)
@@ -794,6 +780,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
             x, px, layer_attn, _ = layer(x, px,
                                          encoder_out.encoder_out if encoder_out is not None else None,
                                          encoder_out.encoder_padding_mask if encoder_out is not None else None,
+                                         encoder_out.encoder_projected_padding_mask if encoder_out is not None else None,
                                          incremental_state,
                                          self_attn_mask=self_attn_mask,
                                          self_attn_padding_mask=self_attn_padding_mask,
@@ -955,7 +942,6 @@ def base_architecture(args):
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
     args.decoder_projected_attention_heads = getattr(args, "decoder_projected_attention_heads", args.decoder_attention_heads)
-    args.decoder_projected_length = getattr(args, 'decoder_projected_length', args.encoder_projected_length)
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
     args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
 

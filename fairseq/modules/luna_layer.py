@@ -87,13 +87,15 @@ class LunaEncoderLayer(nn.Module):
                     state_dict["{}.{}.{}".format(name, new, m)] = state_dict[k]
                     del state_dict[k]
 
-    def forward(self, x, px, encoder_padding_mask):
+    def forward(self, x, px, encoder_padding_mask, encoder_projected_padding_mask):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
             px (Tensor): projected input to the layer of shape `(proj_len, batch, embed_dim)`
             encoder_padding_mask (ByteTensor): binary ByteTensor of shape
                 `(batch, seq_len)` where padding elements are indicated by ``1``.
+            encoder_projected_padding_mask (ByteTensor): binary ByteTensor of shape
+                `(batch, proj_len)` where padding elements are indicated by ``1``.
 
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
@@ -107,7 +109,9 @@ class LunaEncoderLayer(nn.Module):
             x = self.self_attn_layer_norm(x)
             px = self.self_atten_proj_layer_norm(px)
 
-        x, px, _ = self.self_attn(query=x, pquery=px, context=x, context_padding_mask=encoder_padding_mask)
+        x, px, _ = self.self_attn(query=x, pquery=px, context=x,
+                                  context_padding_mask=encoder_padding_mask,
+                                  pcontext_padding_mask=encoder_projected_padding_mask)
         # apply dropout
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -247,6 +251,7 @@ class LunaDecoderLayer(nn.Module):
         px,
         encoder_out,
         encoder_padding_mask: Optional[torch.Tensor] = None,
+        encoder_projected_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
@@ -260,6 +265,9 @@ class LunaDecoderLayer(nn.Module):
             encoder_out (Tensor): output from encoder of shape `(encoder_seq_len, batch, embed_dim)`
             encoder_padding_mask (ByteTensor, optional): binary
                 ByteTensor of shape `(batch, src_len)` where padding
+                elements are indicated by ``1``.
+            encoder_projected_padding_mask (ByteTensor, optional): binary
+                ByteTensor of shape `(batch, proj_len)` where padding
                 elements are indicated by ``1``.
             need_attn (bool, optional): return attention weights
             need_head_weights (bool, optional): return attention weights
@@ -302,6 +310,7 @@ class LunaDecoderLayer(nn.Module):
 
         x, px, attn = self.encoder_attn(query=x, pquery=px, context=encoder_out,
                                         context_padding_mask=encoder_padding_mask,
+                                        pcontext_padding_mask=encoder_projected_padding_mask,
                                         incremental_state=incremental_state,
                                         static_context=True,
                                         need_weights=need_attn or (not self.training and self.need_attn),
@@ -314,7 +323,7 @@ class LunaDecoderLayer(nn.Module):
         px = presidual + px if not static_px else None
         if not self.normalize_before:
             x = self.encoder_attn_layer_norm(x)
-            px = self.encoder_atten_proj_layer_norm(presidual + px) if not static_px else None
+            px = self.encoder_atten_proj_layer_norm(px) if not static_px else None
 
         residual = x
         if self.normalize_before:
