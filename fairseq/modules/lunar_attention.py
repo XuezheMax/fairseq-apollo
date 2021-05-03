@@ -456,6 +456,7 @@ class LunarCausalAttention(nn.Module):
         query,
         pquery,
         key_padding_mask: Optional[Tensor] = None,
+        pkey_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = False,
         need_head_weights: bool = False,
@@ -464,6 +465,9 @@ class LunarCausalAttention(nn.Module):
         Args:
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
+                padding elements are indicated by 1s.
+            pkey_padding_mask (ByteTensor, optional): mask to exclude
+                keys that are pads, of shape `(batch, proj_len)`, where
                 padding elements are indicated by 1s.
             need_weights (bool, optional): return the attention weights,
                 averaged over heads (default: False).
@@ -503,7 +507,6 @@ class LunarCausalAttention(nn.Module):
         # B*H x N x L
         pattn_weights = self._compute_pattention(pq, query, key_padding_mask)
         pattn_weights = self.dropout_module(pattn_weights)
-        key_padding_mask = None
 
         q = self.q_proj(query) * self.scaling
         k = self.k_proj(query)
@@ -528,23 +531,14 @@ class LunarCausalAttention(nn.Module):
             if "prev_num_steps" in saved_state:
                 _prev_num_steps = saved_state["prev_num_steps"]
                 num_steps = _prev_num_steps.view(bsz * self.num_heads) + 1.0
-            prev_key_padding_mask: Optional[Tensor] = None
-            if "prev_key_padding_mask" in saved_state:
-                prev_key_padding_mask = saved_state["prev_key_padding_mask"]
-            key_padding_mask = LunarCausalAttention._append_prev_key_padding_mask(
-                key_padding_mask=key_padding_mask,
-                prev_key_padding_mask=prev_key_padding_mask,
-                batch_size=bsz,
-                src_len=k.size(1),
-            )
 
         if num_steps is None:
             num_steps = query.new_ones(bsz * self.num_heads)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
-        if key_padding_mask is not None and key_padding_mask.dim() == 0:
-            key_padding_mask = None
+        if pkey_padding_mask is not None and pkey_padding_mask.dim() == 0:
+            pkey_padding_mask = None
 
         if incremental_state is not None:
             attn_weights, key_accum_mat = incremental_causal_attention(q, k, pattn_weights, key_accum_mat, num_steps)
@@ -552,6 +546,17 @@ class LunarCausalAttention(nn.Module):
             attn_weights = efficient_causal_attention(q, k, pattn_weights)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, plen]
+
+        if pkey_padding_mask is not None:
+            # don't attend to padding symbols
+            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, plen)
+            if not self.tpu:
+                attn_weights = attn_weights.masked_fill(pkey_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+            else:
+                attn_weights = attn_weights.transpose(0, 2)
+                attn_weights = attn_weights.masked_fill(pkey_padding_mask, float('-inf'))
+                attn_weights = attn_weights.transpose(0, 2)
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, plen)
 
         attn_weights_float = utils.softmax(attn_weights, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = attn_weights_float.type_as(attn_weights)
@@ -567,7 +572,6 @@ class LunarCausalAttention(nn.Module):
             saved_state["prev_key_accum_mat"] = key_accum_mat.view(bsz, self.num_heads, self.head_dim, plen)
             saved_state["prev_value_accum_mat"] = value_accum_mat.view(bsz, self.num_heads, plen, self.head_dim)
             saved_state["prev_num_steps"] = num_steps.view(bsz, self.num_heads)
-            saved_state["prev_key_padding_mask"] = key_padding_mask
             # In this branch incremental_state is never None
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
@@ -588,41 +592,6 @@ class LunarCausalAttention(nn.Module):
                 attn_weights = attn_weights.mean(dim=0)
 
         return attn, attn_weights
-
-    @staticmethod
-    def _append_prev_key_padding_mask(
-        key_padding_mask: Optional[Tensor],
-        prev_key_padding_mask: Optional[Tensor],
-        batch_size: int,
-        src_len: int,
-    ) -> Optional[Tensor]:
-        # saved key padding masks have shape (bsz, seq_len)
-        if prev_key_padding_mask is not None and key_padding_mask is not None:
-            new_key_padding_mask = torch.cat(
-                [prev_key_padding_mask.float(), key_padding_mask.float()], dim=1
-            )
-        # During incremental decoding, as the padding token enters and
-        # leaves the frame, there will be a time when prev or current
-        # is None
-        elif prev_key_padding_mask is not None:
-            filler = torch.zeros(
-                (batch_size, src_len - prev_key_padding_mask.size(1)),
-                device=prev_key_padding_mask.device,
-            )
-            new_key_padding_mask = torch.cat(
-                [prev_key_padding_mask.float(), filler.float()], dim=1
-            )
-        elif key_padding_mask is not None:
-            filler = torch.zeros(
-                (batch_size, src_len - key_padding_mask.size(1)),
-                device=key_padding_mask.device,
-            )
-            new_key_padding_mask = torch.cat(
-                [filler.float(), key_padding_mask.float()], dim=1
-            )
-        else:
-            new_key_padding_mask = prev_key_padding_mask
-        return new_key_padding_mask
 
     @torch.jit.export
     def reorder_incremental_state(

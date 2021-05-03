@@ -289,6 +289,7 @@ class LunaDecoderLayer(nn.Module):
         if self.lunar_causal_attn:
             x, attn = self.self_attn(query=x, pquery=px,
                                      key_padding_mask=self_attn_padding_mask,
+                                     pkey_padding_mask=encoder_projected_padding_mask,
                                      incremental_state=incremental_state,
                                      need_weights=False)
         else:
