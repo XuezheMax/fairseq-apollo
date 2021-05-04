@@ -101,7 +101,7 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='projected length of encoder as key')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
-        parser.add_argument('--encoder-dynamic-projection', action='store_true',
+        parser.add_argument('--encoder-fixed-projection', action='store_true',
                             help='apply layernorm before each encoder block')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
@@ -311,7 +311,7 @@ class LunaEncoder(FairseqEncoder):
             self.layernorm_porjected_embedding = None
 
         self.proj_len = args.encoder_projected_length
-        self.dynamic_projection = args.encoder_dynamic_projection
+        self.dynamic_projection = not args.encoder_fixed_projection
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
         if not args.no_token_positional_embeddings and not args.encoder_learned_pos:
@@ -942,7 +942,7 @@ def base_architecture(args):
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
     args.encoder_projected_attention_heads = getattr(args, "encoder_projected_attention_heads", args.encoder_attention_heads)
     args.encoder_projected_length = getattr(args, 'encoder_projected_length', 32)
-    args.encoder_dynamic_projection = getattr(args, "encoder_dynamic_projection", False)
+    args.encode_fixed_projection = getattr(args, "encoder_fixed_projection", False)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
 
