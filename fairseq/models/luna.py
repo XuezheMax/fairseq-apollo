@@ -942,7 +942,7 @@ def base_architecture(args):
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
     args.encoder_projected_attention_heads = getattr(args, "encoder_projected_attention_heads", args.encoder_attention_heads)
     args.encoder_projected_length = getattr(args, 'encoder_projected_length', 32)
-    args.encode_fixed_projection = getattr(args, "encoder_fixed_projection", False)
+    args.encoder_fixed_projection = getattr(args, "encoder_fixed_projection", False)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
 
