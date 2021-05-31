@@ -21,12 +21,11 @@ from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
+from .positional_embedding import PositionalEmbedding
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
-from .linear_multihead_attention import LinearMultiheadAttention
-from .lunar_attention import LunarMultiheadAttention, LunarCausalAttention
-from .positional_embedding import PositionalEmbedding
+from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
@@ -36,7 +35,6 @@ from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .luna_layer import LunaEncoderLayer, LunaDecoderLayer
-from .moon_layer import MoonDecoderLayer, MoonEncoderLayer
 from .vggblock import VGGBlock
 
 __all__ = [
