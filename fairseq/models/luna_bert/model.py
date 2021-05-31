@@ -99,7 +99,7 @@ class LunaBertModel(FairseqEncoderModel):
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
 
-        encoder = LunaEncoder(args, task.source_dictionary)
+        encoder = LunaBertEncoder(args, task.source_dictionary)
         return cls(args, encoder)
 
     def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
@@ -259,7 +259,7 @@ class LunaClassificationHead(nn.Module):
         return x
 
 
-class LunaEncoder(FairseqEncoder):
+class LunaBertEncoder(FairseqEncoder):
     """Luna encoder."""
 
     def __init__(self, args, dictionary):
