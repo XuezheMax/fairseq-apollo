@@ -26,8 +26,8 @@ from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 logger = logging.getLogger(__name__)
 
 
-@register_model('luna')
-class RobertaModel(FairseqEncoderModel):
+@register_model('luna_bert')
+class LunaBertModel(FairseqEncoderModel):
 
     @classmethod
     def hub_models(cls):
@@ -342,7 +342,7 @@ class LunaEncoder(FairseqEncoder):
         return self.args.max_positions
 
 
-@register_model_architecture('luna', 'luna')
+@register_model_architecture('luna_bert', 'luna_bert')
 def base_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 12)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
@@ -361,18 +361,18 @@ def base_architecture(args):
     args.encoder_layerdrop = getattr(args, 'encoder_layerdrop', 0.0)
 
 
-@register_model_architecture('luna', 'luna_base_512')
+@register_model_architecture('luna_bert', 'luna_base_512')
 def luna_base_architecture(args):
     base_architecture(args)
 
 
-@register_model_architecture('luna', 'luna_base_2048')
+@register_model_architecture('luna_bert', 'luna_base_2048')
 def luna_base_architecture(args):
     args.projected_length = getattr(args, 'projected_length', 256)
     base_architecture(args)
 
 
-@register_model_architecture('luna', 'luna_large_512')
+@register_model_architecture('luna_bert', 'luna_large_512')
 def roberta_large_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
@@ -381,7 +381,7 @@ def roberta_large_architecture(args):
     base_architecture(args)
 
 
-@register_model_architecture('luna', 'luna_large_2048')
+@register_model_architecture('luna_bert', 'luna_large_2048')
 def roberta_large_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
