@@ -759,11 +759,8 @@ class LunaDecoder(FairseqIncrementalDecoder):
         x = self.dropout_module(x)
 
         if not static_px:
-            # L x B x C -> B x L x C
-            px = encoder_out.encoder_projected_out.transpose(0, 1)
-            # B x L x C -> L x B x C
-            px = px.transpose(0, 1)
-            px = self.dropout_module(px)
+            # L x B x C
+            px = encoder_out.encoder_projected_out
         else:
             px = None
 
