@@ -5,11 +5,10 @@
 
 from typing import Dict, List, Optional
 
-import math
 import torch
 import torch.nn as nn
 from fairseq import utils
-from fairseq.modules import LayerNorm, MultiheadAttention, LunarMultiheadAttention, LunarCausalAttention
+from fairseq.modules import LayerNorm, LunarMultiheadAttention, LunarCausalAttention
 from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
@@ -162,19 +161,18 @@ class LunaDecoderLayer(nn.Module):
             (default: False).
     """
 
-    def __init__(self, args, index, no_lunar_causal_attn):
+    def __init__(self, args, index):
         super().__init__()
         self.quant_noise = getattr(args, "quant_noise_pq", 0)
         self.quant_noise_block_size = getattr(args, "quant_noise_pq_block_size", 8)
 
         self.index = index
-        self.lunar_causal_attn = not no_lunar_causal_attn
         self.normalize_before = args.decoder_normalize_before
         self.embed_dim = args.decoder_embed_dim
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
-        self.self_attn = self.build_self_attention(self.embed_dim, args, self.lunar_causal_attn)
+        self.self_attn = self.build_self_attention(self.embed_dim, args)
 
         # use layerNorm rather than FusedLayerNorm for exporting.
         # char_inputs can be used to determint this.
@@ -206,30 +204,14 @@ class LunaDecoderLayer(nn.Module):
     def build_fc2(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), q_noise, qn_block_size)
 
-    def build_self_attention(self, embed_dim, args, lunar_causal_attn):
-        def _build_lunar_causal_attn(embed_dim, args):
-            return LunarCausalAttention(
-                embed_dim,
-                args.decoder_attention_heads,
-                dropout=args.attention_dropout,
-                q_noise=self.quant_noise,
-                qn_block_size=self.quant_noise_block_size,
-            )
-
-        def _build_self_attn(embed_dim, args):
-            return MultiheadAttention(
-                embed_dim,
-                args.decoder_attention_heads,
-                dropout=args.attention_dropout,
-                self_attention=True,
-                q_noise=self.quant_noise,
-                qn_block_size=self.quant_noise_block_size,
-            )
-
-        if lunar_causal_attn:
-            return _build_lunar_causal_attn(embed_dim, args)
-        else:
-            return _build_self_attn(embed_dim, args)
+    def build_self_attention(self, embed_dim, args):
+        return LunarCausalAttention(
+            embed_dim,
+            args.decoder_attention_heads,
+            dropout=args.attention_dropout,
+            q_noise=self.quant_noise,
+            qn_block_size=self.quant_noise_block_size,
+        )
 
     def build_encoder_attention(self, embed_dim, args):
         return LunarMultiheadAttention(
@@ -253,7 +235,6 @@ class LunaDecoderLayer(nn.Module):
         encoder_padding_mask: Optional[torch.Tensor] = None,
         encoder_projected_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        self_attn_mask: Optional[torch.Tensor] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
         need_attn: bool = False,
         need_head_weights: bool = False,
@@ -286,18 +267,12 @@ class LunaDecoderLayer(nn.Module):
         if self.normalize_before:
             x = self.self_attn_layer_norm(x)
 
-        if self.lunar_causal_attn:
-            x, attn = self.self_attn(query=x, pquery=px,
-                                     key_padding_mask=self_attn_padding_mask,
-                                     pkey_padding_mask=encoder_projected_padding_mask,
-                                     incremental_state=incremental_state,
-                                     need_weights=False)
-        else:
-            x, attn = self.self_attn(query=x, key=x, value=x,
-                                     key_padding_mask=self_attn_padding_mask,
-                                     incremental_state=incremental_state,
-                                     need_weights=False,
-                                     attn_mask=self_attn_mask)
+        x, attn = self.self_attn(query=x, pquery=px,
+                                 key_padding_mask=self_attn_padding_mask,
+                                 pkey_padding_mask=encoder_projected_padding_mask,
+                                 incremental_state=incremental_state,
+                                 need_weights=False)
+
         x = self.dropout_module(x)
         x = residual + x
         if not self.normalize_before:

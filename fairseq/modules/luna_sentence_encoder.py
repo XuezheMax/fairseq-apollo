@@ -205,7 +205,7 @@ class LunaSentenceEncoder(nn.Module):
         self,
         padding_idx: int,
         vocab_size: int,
-        projected_length: int,
+        projection_length: int,
         num_encoder_layers: int = 6,
         embedding_dim: int = 768,
         ffn_embedding_dim: int = 3072,
@@ -236,7 +236,7 @@ class LunaSentenceEncoder(nn.Module):
         super().__init__()
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
-        self.proj_len = projected_length
+        self.proj_len = projection_length
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len

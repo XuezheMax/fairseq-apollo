@@ -86,8 +86,8 @@ class LunaBertModel(FairseqEncoderModel):
         parser.add_argument('--untie-weights-luna', action='store_true',
                             help='Untie weights between embeddings and classifiers in Luna')
         # args for Luna
-        parser.add_argument('--projected-length', type=int, default=128,
-                            help='Luna projected length')
+        parser.add_argument('--projection-length', type=int, default=128,
+                            help='Luna projection length')
 
     @classmethod
     def build_model(cls, args, task):
@@ -272,7 +272,7 @@ class LunaBertEncoder(FairseqEncoder):
         self.sentence_encoder = LunaSentenceEncoder(
             padding_idx=dictionary.pad(),
             vocab_size=len(dictionary),
-            projected_length=args.projected_length,
+            projection_length=args.projection_length,
             num_encoder_layers=args.encoder_layers,
             embedding_dim=args.encoder_embed_dim,
             ffn_embedding_dim=args.encoder_ffn_embed_dim,
@@ -348,7 +348,7 @@ def base_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
-    args.projected_length = getattr(args, 'projected_length', 128)
+    args.projection_length = getattr(args, 'projection_length', 128)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
@@ -368,7 +368,7 @@ def luna_base_architecture(args):
 
 @register_model_architecture('luna_bert', 'luna_base_2048')
 def luna_base_architecture(args):
-    args.projected_length = getattr(args, 'projected_length', 256)
+    args.projection_length = getattr(args, 'projection_length', 256)
     base_architecture(args)
 
 
@@ -387,5 +387,5 @@ def roberta_large_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
-    args.projected_length = getattr(args, 'projected_length', 256)
+    args.projection_length = getattr(args, 'projection_length', 256)
     base_architecture(args)
