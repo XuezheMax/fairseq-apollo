@@ -12,7 +12,7 @@ from .cross_entropy import cross_entropy
 from .downsampled_multihead_attention import DownsampledMultiHeadAttention
 from .dynamic_convolution import DynamicConv, DynamicConv1dTBC
 from .dynamic_crf_layer import DynamicCRF
-from .fairseq_dropout import FairseqDropout
+from .fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from .fp32_group_norm import Fp32GroupNorm
 from .gelu import gelu, gelu_accurate
 from .grad_multiply import GradMultiply
