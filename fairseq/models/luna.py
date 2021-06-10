@@ -99,8 +99,6 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
-        parser.add_argument('--encoder-fixed-projection', action='store_true',
-                            help='apply layernorm before each encoder block')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
@@ -123,7 +121,7 @@ class LunaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--projection-length', type=int, metavar='N',
                             help='projected length of encoder as key')
         parser.add_argument('--fix-projection-length', action='store_true',
-                            help='fixed projection length for all input sequences')
+                            help='fix projection length for all input sequences')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -310,7 +308,7 @@ class LunaEncoder(FairseqEncoder):
             self.layernorm_porjected_embedding = None
 
         self.proj_len = args.projection_length
-        self.dynamic_projection = not args.fixed_projection_length
+        self.dynamic_projection = not args.fix_projection_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
         if not args.no_token_positional_embeddings and not args.encoder_learned_pos:
@@ -944,7 +942,7 @@ def base_architecture(args):
     args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
 
     args.projection_length = getattr(args, 'projection_length', 32)
-    args.fixed_projection_length = getattr(args, "fixed_projection_length", False)
+    args.fix_projection_length = getattr(args, "fix_projection_length", False)
 
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
