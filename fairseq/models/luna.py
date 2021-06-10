@@ -122,7 +122,7 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='apply layernorm before each decoder block')
         parser.add_argument('--projection-length', type=int, metavar='N',
                             help='projected length of encoder as key')
-        parser.add_argument('--fixed-projection-length', action='store_true',
+        parser.add_argument('--fix-projection-length', action='store_true',
                             help='fixed projection length for all input sequences')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
