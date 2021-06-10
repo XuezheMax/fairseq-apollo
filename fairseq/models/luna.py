@@ -336,8 +336,8 @@ class LunaEncoder(FairseqEncoder):
             dropout=args.attention_dropout,
             self_attention=False,
             encoder_decoder_attention=False,
-            q_noise=self.quant_noise,
-            qn_block_size=self.quant_noise_block_size,
+            q_noise=getattr(args, "quant_noise_pq", 0),
+            qn_block_size=getattr(args, "quant_noise_pq_block_size", 8),
         )
 
     def build_encoder_layer(self, layer_id, args):
