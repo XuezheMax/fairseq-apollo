@@ -410,7 +410,7 @@ class LunaEncoder(FairseqEncoder):
             px = self.init_layer_norm(px)
 
         px, _ = self.init_layer(query=px, key=x, value=x,
-                               key_padding_mask=encoder_projected_padding_mask)
+                               key_padding_mask=encoder_padding_mask)
 
         px = self.dropout_module(px)
         px = presidual + px
