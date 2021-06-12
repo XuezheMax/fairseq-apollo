@@ -390,7 +390,6 @@ class LunaEncoder(FairseqEncoder):
         x = x.transpose(0, 1)
         # L x C -> L x B x C
         px = px.unsqueeze(1).expand(len, bsz, dim)
-        px = self.projection_dropout_module(px)
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -407,6 +406,7 @@ class LunaEncoder(FairseqEncoder):
 
         # encoder layers
         for layer in self.layers:
+            px = self.projection_dropout_module(px)
             x, px = layer(x, px, encoder_padding_mask, encoder_projected_padding_mask)
             if return_all_hiddens:
                 assert encoder_states is not None
@@ -547,6 +547,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         self._future_mask = torch.empty(0)
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.projection_dropout_module = FairseqFeatureDropout(args.projection_dropout, module_name=self.__class__.__name__)
         self.decoder_layerdrop = args.decoder_layerdrop
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
@@ -773,6 +774,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
+            px = self.projection_dropout_module(px)
             x, px, layer_attn, _ = layer(x, px,
                                          encoder_out.encoder_out if encoder_out is not None else None,
                                          encoder_out.encoder_padding_mask if encoder_out is not None else None,
