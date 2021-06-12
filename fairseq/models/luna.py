@@ -20,6 +20,7 @@ from fairseq.models import (
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
+    FairseqFeatureDropout,
     LayerDropModuleList,
     LayerNorm,
     PositionalEmbedding,
@@ -79,6 +80,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='activation function to use')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
+        parser.add_argument('--projection-dropout', type=float, metavar='D',
+                            help='dropout probability of projection')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
@@ -276,6 +279,7 @@ class LunaEncoder(FairseqEncoder):
         self.register_buffer("version", torch.Tensor([3]))
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.projection_dropout_module = FairseqFeatureDropout(args.projection_dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
 
         embed_dim = embed_tokens.embedding_dim
@@ -386,6 +390,7 @@ class LunaEncoder(FairseqEncoder):
         x = x.transpose(0, 1)
         # L x C -> L x B x C
         px = px.unsqueeze(1).expand(len, bsz, dim)
+        px = self.projection_dropout_module(px)
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
@@ -948,6 +953,7 @@ def base_architecture(args):
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     args.activation_fn = getattr(args, "activation_fn", "relu")
     args.dropout = getattr(args, "dropout", 0.1)
+    args.projection_dropout = getattr(args, "projection_dropout", 0.0)
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
