@@ -80,8 +80,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='activation function to use')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
-        parser.add_argument('--projection-dropout', type=float, metavar='D',
-                            help='dropout probability of projection')
+        parser.add_argument('--word-dropout', type=float, metavar='D',
+                            help='dropout probability of words')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
@@ -279,7 +279,7 @@ class LunaEncoder(FairseqEncoder):
         self.register_buffer("version", torch.Tensor([3]))
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.projection_dropout_module = FairseqFeatureDropout(args.projection_dropout, module_name=self.__class__.__name__)
+        self.dropword_module = FairseqFeatureDropout(args.word_dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
 
         embed_dim = embed_tokens.embedding_dim
@@ -341,6 +341,7 @@ class LunaEncoder(FairseqEncoder):
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
+        x = self.dropword_module(x)
         if self.embed_positions is not None:
             x = x + self.embed_positions(src_tokens)
         if self.layernorm_embedding is not None:
@@ -406,7 +407,6 @@ class LunaEncoder(FairseqEncoder):
 
         # encoder layers
         for layer in self.layers:
-            px = self.projection_dropout_module(px)
             x, px = layer(x, px, encoder_padding_mask, encoder_projected_padding_mask)
             if return_all_hiddens:
                 assert encoder_states is not None
@@ -547,7 +547,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         self._future_mask = torch.empty(0)
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.projection_dropout_module = FairseqFeatureDropout(args.projection_dropout, module_name=self.__class__.__name__)
+        self.dropword_module = FairseqFeatureDropout(args.word_dropout, module_name=self.__class__.__name__)
         self.decoder_layerdrop = args.decoder_layerdrop
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
@@ -748,6 +748,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         # embed tokens and positions
         x = self.embed_tokens(prev_output_tokens) * self.embed_scale
+        x = self.dropword_module(x)
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
         if positions is not None:
@@ -774,7 +775,6 @@ class LunaDecoder(FairseqIncrementalDecoder):
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
-            px = self.projection_dropout_module(px)
             x, px, layer_attn, _ = layer(x, px,
                                          encoder_out.encoder_out if encoder_out is not None else None,
                                          encoder_out.encoder_padding_mask if encoder_out is not None else None,
@@ -955,7 +955,7 @@ def base_architecture(args):
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     args.activation_fn = getattr(args, "activation_fn", "relu")
     args.dropout = getattr(args, "dropout", 0.1)
-    args.projection_dropout = getattr(args, "projection_dropout", 0.0)
+    args.word_dropout = getattr(args, "word_dropout", 0.0)
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.layernorm_embedding = getattr(args, "layernorm_embedding", False)
