@@ -99,7 +99,8 @@ class LunaSentenceEncoderLayer(nn.Module):
         self,
         x: torch.Tensor,
         px: torch.Tensor,
-        self_attn_padding_mask: Optional[torch.Tensor] = None,
+        x_padding_mask: Optional[torch.Tensor] = None,
+        px_padding_mask: Optional[torch.Tensor] = None,
     ):
         """
         LayerNorm is applied either before or after the self-attention/ffn
@@ -113,7 +114,8 @@ class LunaSentenceEncoderLayer(nn.Module):
             px = self.self_atten_proj_layer_norm(px)
 
         x, px, attn = self.self_attn(query=x, pquery=px, context=x,
-                                     context_padding_mask=self_attn_padding_mask,
+                                     context_padding_mask=x_padding_mask,
+                                     pcontext_padding_mask=px_padding_mask,
                                      need_weights=False)
         # apply dropout
         x = self.dropout_module(x)
@@ -221,6 +223,7 @@ class LunaSentenceEncoder(nn.Module):
         offset_positions_by_padding: bool = True,
         layernorm_embedding: bool = False,
         normalize_before: bool = False,
+        dynamic_projection: bool = True,
         apply_bert_init: bool = False,
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
@@ -237,6 +240,7 @@ class LunaSentenceEncoder(nn.Module):
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
         self.proj_len = projection_length
+        self.dynamic_projection = dynamic_projection
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
@@ -389,12 +393,13 @@ class LunaSentenceEncoder(nn.Module):
     ) -> Tuple[List[Tuple[torch.Tensor, torch.Tensor]], torch.Tensor, torch.Tensor]:
 
         # compute padding mask. This is needed for multi-head attention
-        padding_mask = tokens.eq(self.padding_idx)
-        if not self.traceable and not self.tpu and not padding_mask.any():
-            padding_mask = None
+        # B x T
+        x_padding_mask = tokens.eq(self.padding_idx)
+        lengths = tokens.size(1) - x_padding_mask.sum(1)
+        max_len = lengths.max() if self.dynamic_projection else self.proj_len
 
         x = self.embed_tokens(tokens)
-        px = self.projected_embeddings
+        px = self.projected_embeddings[:max_len]
 
         if self.embed_scale is not None:
             x *= self.embed_scale
@@ -403,7 +408,7 @@ class LunaSentenceEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
         if self.projected_positions is not None:
-            px += self.projected_positions
+            px += self.projected_positions[:max_len]
 
         if self.segment_embeddings is not None and segment_labels is not None:
             x += self.segment_embeddings(segment_labels)
@@ -415,26 +420,46 @@ class LunaSentenceEncoder(nn.Module):
             x = self.emb_layer_norm(x)
             px = self.proj_emb_layer_norm(px)
 
+        bsz = x.size(0)
+        len, dim = px.size()
+        # L x C -> B x L x C
+        px = px.unsqueeze(0).expand(bsz, len, dim)
+
+        if self.dynamic_projection:
+            pidx = torch.arange(len).unsqueeze(0).to(x.device)
+            # B x L
+            px_padding_mask = pidx.ge(lengths.unsqueeze(1))
+        else:
+            px_padding_mask = None
+
+        if not self.traceable and not self.tpu:
+            if not x_padding_mask.any():
+                x_padding_mask = None
+            if px_padding_mask is not None and not px_padding_mask.any():
+                px_padding_mask = None
+
         x = self.dropout_module(x)
         px = self.dropout_module(px)
 
         # account for padding while computing the representation
-        if padding_mask is not None:
-            x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+        if x_padding_mask is not None:
+            x *= 1 - x_padding_mask.unsqueeze(-1).type_as(x)
+        if px_padding_mask is not None:
+            px *= 1 - px_padding_mask.unsqueeze(-1).type_as(px)
 
-        bsz = x.size(0)
-        len, dim = px.size()
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
-        # L x C -> L x B x C
-        px = px.unsqueeze(1).expand(len, bsz, dim)
+        # B x L x C -> L x B x C
+        px = px.transpose(0, 1)
 
         inner_states = []
         if not last_state_only:
             inner_states.append((x, px))
 
         for layer in self.layers:
-            x, px, _ = layer(x, px, self_attn_padding_mask=padding_mask)
+            x, px, _ = layer(x, px,
+                             x_padding_mask=x_padding_mask,
+                             px_padding_mask=px_padding_mask)
             if not last_state_only:
                 inner_states.append((x, px))
 

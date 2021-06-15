@@ -88,6 +88,8 @@ class LunaBertModel(FairseqEncoderModel):
         # args for Luna
         parser.add_argument('--projection-length', type=int, default=128,
                             help='Luna projection length')
+        parser.add_argument('--fix-projection-length', action='store_true',
+                            help='fix projection length for all input sequences')
 
     @classmethod
     def build_model(cls, args, task):
@@ -284,6 +286,7 @@ class LunaBertEncoder(FairseqEncoder):
             layerdrop=args.encoder_layerdrop,
             normalize_before=False,
             layernorm_embedding=True,
+            dynamic_projection=not args.fix_projection_length,
             max_seq_len=args.max_positions,
             num_segments=0,
             apply_bert_init=True,
@@ -349,6 +352,7 @@ def base_architecture(args):
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
     args.projection_length = getattr(args, 'projection_length', 128)
+    args.fix_projection_length = getattr(args, "fix_projection_length", False)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
