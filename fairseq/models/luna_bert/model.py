@@ -53,12 +53,18 @@ class LunaBertModel(FairseqEncoderModel):
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='A',
                             help='num encoder attention heads')
+        # args for Luna
+        parser.add_argument('--projection-length', type=int, help='Luna projection length')
+        parser.add_argument('--fix-projection-length', action='store_true',
+                            help='fix projection length for all input sequences')
+        # args for FFN
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use')
         parser.add_argument('--pooler-activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use for pooler layer')
+        # args for dropout
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
@@ -85,11 +91,6 @@ class LunaBertModel(FairseqEncoderModel):
                             help='scalar quantization noise and scalar quantization at training time')
         parser.add_argument('--untie-weights-luna', action='store_true',
                             help='Untie weights between embeddings and classifiers in Luna')
-        # args for Luna
-        parser.add_argument('--projection-length', type=int, default=128,
-                            help='Luna projection length')
-        parser.add_argument('--fix-projection-length', action='store_true',
-                            help='fix projection length for all input sequences')
 
     @classmethod
     def build_model(cls, args, task):
@@ -351,6 +352,7 @@ def base_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
+    args.max_positions = getattr(args, 'max_positions', 512)
     args.projection_length = getattr(args, 'projection_length', 128)
     args.fix_projection_length = getattr(args, "fix_projection_length", False)
 
@@ -372,6 +374,7 @@ def luna_base_architecture_512(args):
 
 @register_model_architecture('luna_bert', 'luna_base_2048')
 def luna_base_architecture_2048(args):
+    args.max_positions = getattr(args, 'max_positions', 2048)
     args.projection_length = getattr(args, 'projection_length', 256)
     base_architecture(args)
 
