@@ -366,18 +366,18 @@ def base_architecture(args):
 
 
 @register_model_architecture('luna_bert', 'luna_base_512')
-def luna_base_architecture(args):
+def luna_base_architecture_512(args):
     base_architecture(args)
 
 
 @register_model_architecture('luna_bert', 'luna_base_2048')
-def luna_base_architecture(args):
+def luna_base_architecture_2048(args):
     args.projection_length = getattr(args, 'projection_length', 256)
     base_architecture(args)
 
 
 @register_model_architecture('luna_bert', 'luna_large_512')
-def roberta_large_architecture(args):
+def luna_large_architecture_512(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
@@ -386,7 +386,7 @@ def roberta_large_architecture(args):
 
 
 @register_model_architecture('luna_bert', 'luna_large_2048')
-def roberta_large_architecture(args):
+def luna_large_architecture_2048(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
