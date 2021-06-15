@@ -443,9 +443,9 @@ class LunaSentenceEncoder(nn.Module):
 
         # account for padding while computing the representation
         if x_padding_mask is not None:
-            x *= 1 - x_padding_mask.unsqueeze(-1).type_as(x)
+            x = x * (1 - x_padding_mask.unsqueeze(-1).type_as(x))
         if px_padding_mask is not None:
-            px *= 1 - px_padding_mask.unsqueeze(-1).type_as(px)
+            px = px * (1 - px_padding_mask.unsqueeze(-1).type_as(px))
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
