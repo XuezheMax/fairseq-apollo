@@ -342,7 +342,7 @@ class LunaAttentionClassificationHead(nn.Module):
         # B x L x C -> L x B x C
         px = px.transpose(0, 1)
         # 1 x B x C
-        x = self.attn(query=x, key=px, value=px, key_padding_mask=px_padding_mask)
+        x, _ = self.attn(query=x, key=px, value=px, key_padding_mask=px_padding_mask)
         x = self.layernorm(x)
         # B x C
         x = x.squeeze(0)
