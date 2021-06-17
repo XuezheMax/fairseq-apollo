@@ -135,15 +135,26 @@ class LunaBertModel(FairseqEncoderModel):
                         name, num_classes, prev_num_classes, inner_dim, prev_inner_dim
                     )
                 )
-        self.classification_heads[name] = LunaClassificationHead(
-            self.args.encoder_embed_dim,
-            inner_dim or self.args.encoder_embed_dim,
-            num_classes,
-            self.args.pooler_activation_fn,
-            self.args.pooler_dropout,
-            self.args.quant_noise_pq,
-            self.args.quant_noise_pq_block_size,
-        )
+        if name == 'pack_classification_head':
+            self.classification_heads[name] = LunaPackClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
+        else:
+            self.classification_heads[name] = LunaCLSClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
 
     @property
     def supported_targets(self):
@@ -240,7 +251,7 @@ class LunaLMHead(nn.Module):
         return x
 
 
-class LunaClassificationHead(nn.Module):
+class LunaCLSClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
     def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
@@ -254,6 +265,32 @@ class LunaClassificationHead(nn.Module):
 
     def forward(self, features, **kwargs):
         x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
+        x = self.dropout(x)
+        x = self.dense(x)
+        x = self.activation_fn(x)
+        x = self.dropout(x)
+        x = self.out_proj(x)
+        return x
+
+
+class LunaPackClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
+        super().__init__()
+        self.in_proj = nn.Linear(input_dim, input_dim)
+        self.dense = nn.Linear(input_dim, inner_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = apply_quant_noise_(
+            nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
+        )
+
+    def forward(self, features, **kwargs):
+        # B x L x C
+        x = self.in_proj(features)
+        # B x C
+        x = x.mean(dim=1)
         x = self.dropout(x)
         x = self.dense(x)
         x = self.activation_fn(x)
