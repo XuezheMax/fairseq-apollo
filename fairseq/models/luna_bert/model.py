@@ -323,8 +323,8 @@ class LunaAttentionClassificationHead(nn.Module):
         self.attn = MultiheadAttention(
             input_dim,
             num_heads,
-            q_noise=self.quant_noise,
-            qn_block_size=self.quant_noise_block_size,
+            q_noise=q_noise,
+            qn_block_size=qn_block_size,
         )
         self.layernorm = LayerNorm(input_dim)
         self.dense = nn.Linear(input_dim, inner_dim)
