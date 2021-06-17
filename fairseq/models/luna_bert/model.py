@@ -17,6 +17,7 @@ from fairseq.models import (
 )
 from fairseq.modules import (
     LayerNorm,
+    MultiheadAttention,
     LunaSentenceEncoder
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
@@ -112,7 +113,8 @@ class LunaBertModel(FairseqEncoderModel):
         x, px, extra = self.encoder(src_tokens, features_only, return_all_hiddens, **kwargs)
 
         if classification_head_name is not None:
-            x = self.classification_heads[classification_head_name](x)
+            px_padding_mask = extra['padding_masks'][1]
+            x = self.classification_heads[classification_head_name](x, px, px_padding_mask=px_padding_mask)
         return x, extra
 
     def get_normalized_probs(self, net_output, log_probs, sample=None):
@@ -135,11 +137,22 @@ class LunaBertModel(FairseqEncoderModel):
                         name, num_classes, prev_num_classes, inner_dim, prev_inner_dim
                     )
                 )
-        if name == 'pack_classification_head':
-            self.classification_heads[name] = LunaPackClassificationHead(
+        if name == 'pooling_classification_head':
+            self.classification_heads[name] = LunaPoolingClassificationHead(
                 self.args.encoder_embed_dim,
                 inner_dim or self.args.encoder_embed_dim,
                 num_classes,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
+        elif name == 'attention_classification_head':
+            self.classification_heads[name] = LunaAttentionClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.encoder_attention_heads,
                 self.args.pooler_activation_fn,
                 self.args.pooler_dropout,
                 self.args.quant_noise_pq,
@@ -263,8 +276,8 @@ class LunaCLSClassificationHead(nn.Module):
             nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
         )
 
-    def forward(self, features, **kwargs):
-        x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
+    def forward(self, x, px, **kwargs):
+        x = x[:, 0, :]  # take <s> token (equiv. to [CLS])
         x = self.dropout(x)
         x = self.dense(x)
         x = self.activation_fn(x)
@@ -273,7 +286,7 @@ class LunaCLSClassificationHead(nn.Module):
         return x
 
 
-class LunaPackClassificationHead(nn.Module):
+class LunaPoolingClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
     def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
@@ -286,11 +299,54 @@ class LunaPackClassificationHead(nn.Module):
             nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
         )
 
-    def forward(self, features, **kwargs):
+    def forward(self, x, px, px_padding_mask=None, **kwargs):
         # B x L x C
-        x = self.in_proj(features)
+        px = self.in_proj(px)
         # B x C
-        x = x.mean(dim=1)
+        if px_padding_mask is not None:
+            px = px.masked_fill(px_padding_mask.unsqueeze(2), float('-inf'))
+        x, _ = px.max(dim=1)
+
+        x = self.dropout(x)
+        x = self.dense(x)
+        x = self.activation_fn(x)
+        x = self.dropout(x)
+        x = self.out_proj(x)
+        return x
+
+
+class LunaAttentionClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, input_dim, inner_dim, num_classes, num_heads, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
+        super().__init__()
+        self.attn = MultiheadAttention(
+            input_dim,
+            num_heads,
+            q_noise=self.quant_noise,
+            qn_block_size=self.quant_noise_block_size,
+        )
+        self.layernorm = LayerNorm(input_dim)
+        self.dense = nn.Linear(input_dim, inner_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = apply_quant_noise_(
+            nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
+        )
+
+    def forward(self, x, px, px_padding_mask=None, **kwargs):
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+        # 1 x B x C
+        x = x[:1] # take <s> token (equiv. to [CLS])
+        # B x L x C -> L x B x C
+        px = px.transpose(0, 1)
+        # 1 x B x C
+        x = self.attn(query=x, key=px, value=px, key_padding_mask=px_padding_mask)
+        x = self.layernorm(x)
+        # B x C
+        x = x.squeeze(0)
+
         x = self.dropout(x)
         x = self.dense(x)
         x = self.activation_fn(x)
@@ -365,7 +421,7 @@ class LunaBertEncoder(FairseqEncoder):
         return x, px, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
-        inner_states, _, _ = self.sentence_encoder(
+        inner_states, _, padding_masks = self.sentence_encoder(
             src_tokens,
             last_state_only=not return_all_hiddens,
         )
@@ -373,7 +429,8 @@ class LunaBertEncoder(FairseqEncoder):
         features = inner_states[-1]
         x = features[0].transpose(0, 1)  # T x B x C -> B x T x C
         px = features[1].transpose(0, 1) # L x B x C -> B x L x C
-        return x, px, {'inner_states': inner_states if return_all_hiddens else None}
+        return x, px, {'inner_states': inner_states if return_all_hiddens else None,
+                       'padding_masks': padding_masks}
 
     def output_layer(self, features, masked_tokens=None, **unused):
         return self.lm_head(features, masked_tokens)
