@@ -22,7 +22,6 @@ from fairseq.modules import (
     FairseqDropout,
     FairseqFeatureDropout,
     LayerDropModuleList,
-    MultiheadAttention,
     LayerNorm,
     PositionalEmbedding,
     SinusoidalPositionalEmbedding,
@@ -97,6 +96,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
+        parser.add_argument('--encoder-projected-attention-heads', type=int, metavar='N',
+                            help='num encoder projected attention heads')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--encoder-normalize-before', action='store_true',
@@ -111,6 +112,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='num decoder layers')
         parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
                             help='num decoder attention heads')
+        parser.add_argument('--decoder-projected-attention-heads', type=int, metavar='N',
+                            help='num decoder projected attention heads')
         parser.add_argument('--decoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the decoder')
         parser.add_argument('--decoder-output-dim', type=int, metavar='N',
@@ -318,10 +321,6 @@ class LunaEncoder(FairseqEncoder):
             projected_positions = None
         self.register_buffer('projected_positions', projected_positions)
 
-        self.normalize_before = args.encoder_normalize_before
-        self.init_layer = self.build_init_attn_layer(embed_dim, args)
-        self.init_layer_norm = LayerNorm(embed_dim)
-
         if self.encoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.encoder_layerdrop)
         else:
@@ -335,17 +334,6 @@ class LunaEncoder(FairseqEncoder):
         else:
             self.layer_norm = None
             self.proj_layer_norm = None
-
-    def build_init_attn_layer(self, embed_dim, args):
-        return MultiheadAttention(
-            embed_dim,
-            args.encoder_attention_heads,
-            dropout=args.attention_dropout,
-            self_attention=False,
-            encoder_decoder_attention=False,
-            q_noise=getattr(args, "quant_noise_pq", 0),
-            qn_block_size=getattr(args, "quant_noise_pq_block_size", 8),
-        )
 
     def build_encoder_layer(self, layer_id, args):
         return LunaEncoderLayer(args, layer_id)
@@ -362,7 +350,7 @@ class LunaEncoder(FairseqEncoder):
         return x, embed
 
     def forward_projected_embedding(self, src_lengths):
-        max_len = src_lengths.max()
+        max_len = src_lengths.max() if self.dynamic_projection else self.proj_len
         px = proj_embed = self.embed_scale * self.projected_embeddings[:max_len]
         if self.projected_positions is not None:
             px = px + self.projected_positions[:max_len]
@@ -409,24 +397,15 @@ class LunaEncoder(FairseqEncoder):
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
-        pidx= torch.arange(len).unsqueeze(0).to(x.device)
-        encoder_projected_padding_mask = pidx.ge(src_lengths.unsqueeze(1))
+        if self.dynamic_projection:
+            pidx= torch.arange(len).unsqueeze(0).to(x.device)
+            encoder_projected_padding_mask = pidx.ge(src_lengths.unsqueeze(1))
+        else:
+            encoder_projected_padding_mask = None
 
-        # init attention layer
-        presidual = px
-        if self.normalize_before:
-            px = self.init_layer_norm(px)
-
-        px, _ = self.init_layer(query=px, key=x, value=x,
-                               key_padding_mask=encoder_padding_mask)
-
-        px = self.dropout_module(px)
-        px = presidual + px
-        if not self.normalize_before:
-            px = self.init_layer_norm(px)
+        encoder_states = [] if return_all_hiddens else None
 
         # encoder layers
-        encoder_states = [] if return_all_hiddens else None
         for layer in self.layers:
             x, px = layer(x, px, encoder_padding_mask, encoder_projected_padding_mask)
             if return_all_hiddens:
@@ -616,8 +595,10 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         if args.decoder_normalize_before:
             self.layer_norm = LayerNorm(embed_dim)
+            self.proj_layer_norm = LayerNorm(embed_dim)
         else:
             self.layer_norm = None
+            self.proj_layer_norm = None
 
         self.project_out_dim = (
             Linear(embed_dim, self.output_embed_dim, bias=False)
@@ -754,10 +735,16 @@ class LunaDecoder(FairseqIncrementalDecoder):
             else None
         )
 
+        static_px = False
         if incremental_state is not None:
             prev_output_tokens = prev_output_tokens[:, -1:]
             if positions is not None:
                 positions = positions[:, -1:]
+            projected_input_buffer = self._get_projected_input_buffer(incremental_state)
+            if "prev_projected_input" in projected_input_buffer:
+                static_px = True
+        else:
+            projected_input_buffer = None
 
         # embed tokens and positions
         x = self.embed_tokens(prev_output_tokens) * self.embed_scale
@@ -774,6 +761,12 @@ class LunaDecoder(FairseqIncrementalDecoder):
         x = x.transpose(0, 1)
         x = self.dropout_module(x)
 
+        if not static_px:
+            # L x B x C
+            px = encoder_out.encoder_projected_out
+        else:
+            px = None
+
         self_attn_padding_mask: Optional[Tensor] = None
         if prev_output_tokens.eq(self.padding_idx).any():
             self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
@@ -782,12 +775,14 @@ class LunaDecoder(FairseqIncrementalDecoder):
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
-            x, layer_attn, _ = layer(x, encoder_out.encoder_projected_out,
-                                     encoder_out.encoder_projected_padding_mask,
-                                     incremental_state,
-                                     self_attn_padding_mask=self_attn_padding_mask,
-                                     need_attn=bool(idx == alignment_layer),
-                                     need_head_weights=bool(idx == alignment_layer))
+            x, px, layer_attn, _ = layer(x, px,
+                                         encoder_out.encoder_out if encoder_out is not None else None,
+                                         encoder_out.encoder_padding_mask if encoder_out is not None else None,
+                                         encoder_out.encoder_projected_padding_mask if encoder_out is not None else None,
+                                         incremental_state,
+                                         self_attn_padding_mask=self_attn_padding_mask,
+                                         need_attn=bool(idx == alignment_layer),
+                                         need_head_weights=bool(idx == alignment_layer))
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
@@ -801,13 +796,42 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         if self.layer_norm is not None:
             x = self.layer_norm(x)
+            if not static_px:
+                px = self.proj_layer_norm(px)
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
+        # L x B x C -> B x L x C
+        if not static_px:
+            px = px.transpose(0, 1)
+            if projected_input_buffer is not None:
+                projected_input_buffer["prev_projected_input"] = px
+                incremental_state = self._set_projected_input_buffer(incremental_state, projected_input_buffer)
+        else:
+            px = projected_input_buffer["prev_projected_input"]
+
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
         return x, {"attn": [attn], "inner_states": inner_states}
+
+    def _get_projected_input_buffer(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]
+    ) -> Dict[str, Optional[Tensor]]:
+        result = self.get_incremental_state(incremental_state, "px_state")
+        if result is not None:
+            return result
+        else:
+            empty_result: Dict[str, Optional[Tensor]] = {}
+            return empty_result
+
+    def _set_projected_input_buffer(
+        self,
+        incremental_state: Dict[str, Dict[str, Optional[Tensor]]],
+        buffer: Dict[str, Optional[Tensor]],
+    ):
+        return self.set_incremental_state(incremental_state, "px_state", buffer)
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
@@ -911,6 +935,7 @@ def base_architecture(args):
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_projected_attention_heads = getattr(args, "encoder_projected_attention_heads", args.encoder_attention_heads)
     args.encoder_learned_pos = getattr(args, "encoder_learned_pos", False)
     args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
 
@@ -919,12 +944,13 @@ def base_architecture(args):
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    args.decoder_projected_attention_heads = getattr(args, "decoder_projected_attention_heads", args.decoder_attention_heads)
     args.decoder_learned_pos = getattr(args, "decoder_learned_pos", False)
     args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
 
     args.projection_length = getattr(args, 'projection_length', 32)
     args.fix_projection_length = getattr(args, "fix_projection_length", False)
-    
+
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     args.activation_fn = getattr(args, "activation_fn", "relu")

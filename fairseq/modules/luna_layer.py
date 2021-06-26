@@ -8,8 +8,7 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 from fairseq import utils
-from fairseq.modules import LayerNorm, MultiheadAttention
-from fairseq.modules import LunarMultiheadAttention, LunarCausalAttention
+from fairseq.modules import LayerNorm, LunarMultiheadAttention, LunarCausalAttention
 from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
@@ -43,6 +42,7 @@ class LunaEncoderLayer(nn.Module):
 
         self.self_attn = self.build_self_attention(self.embed_dim, args)
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
+        self.self_atten_proj_layer_norm = LayerNorm(self.embed_dim)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -53,11 +53,7 @@ class LunaEncoderLayer(nn.Module):
 
         self.fc1 = self.build_fc1(self.embed_dim, args.encoder_ffn_embed_dim, self.quant_noise, self.quant_noise_block_size)
         self.fc2 = self.build_fc2(args.encoder_ffn_embed_dim, self.embed_dim, self.quant_noise, self.quant_noise_block_size)
-        self.ffn_layer_norm = LayerNorm(self.embed_dim)
-
-        self.luna_attn = self.build_luna_attention(self.embed_dim, args)
         self.final_layer_norm = LayerNorm(self.embed_dim)
-        self.final_proj_layer_norm = LayerNorm(self.embed_dim)
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
@@ -66,20 +62,10 @@ class LunaEncoderLayer(nn.Module):
         return quant_noise(nn.Linear(input_dim, output_dim), p=q_noise, block_size=qn_block_size)
 
     def build_self_attention(self, embed_dim, args):
-        return MultiheadAttention(
-            embed_dim,
-            args.encoder_attention_heads,
-            dropout=args.attention_dropout,
-            self_attention=True,
-            q_noise=self.quant_noise,
-            qn_block_size=self.quant_noise_block_size,
-        )
-
-    def build_luna_attention(self, embed_dim, args):
         return LunarMultiheadAttention(
             embed_dim,
             args.encoder_attention_heads,
-            args.encoder_attention_heads,
+            args.encoder_projected_attention_heads,
             dropout=args.attention_dropout,
             self_attention=True,
             q_noise=self.quant_noise,
@@ -114,51 +100,15 @@ class LunaEncoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
             projected output of shape `(proj_len, batch, embed_dim)`
         """
-        #######################################################################
-        # Self-Attention
-        presidual = px
-        if self.normalize_before:
-            px = self.self_attn_layer_norm(px)
 
-        px, _ = self.self_attn(query=px, key=px, value=px,
-                               key_padding_mask=encoder_projected_padding_mask)
-        # apply dropout
-        px = self.dropout_module(px)
-        # residual
-        px = presidual + px
-        if not self.normalize_before:
-            px = self.self_attn_layer_norm(px)
-
-
-        #######################################################################
-        # Feed-Forward Network
-        presidual = px
-        # apply prev layer norm
-        if self.normalize_before:
-            px = self.ffn_layer_norm(px)
-
-        px = self.activation_fn(self.fc1(px))
-        px = self.activation_dropout_module(px)
-        px = self.fc2(px)
-        # apply dropout
-        px = self.dropout_module(px)
-        # residual
-        px = presidual + px
-
-        # apply post layer norm
-        if not self.normalize_before:
-            px = self.ffn_layer_norm(px)
-
-        #######################################################################
-        # Luna Attention
         residual = x
         presidual = px
         # apply prev layer norm
         if self.normalize_before:
-            x = self.final_layer_norm(x)
-            px = self.final_proj_layer_norm(px)
+            x = self.self_attn_layer_norm(x)
+            px = self.self_atten_proj_layer_norm(px)
 
-        x, px, _ = self.luna_attn(query=x, pquery=px, context=x,
+        x, px, _ = self.self_attn(query=x, pquery=px, context=x,
                                   context_padding_mask=encoder_padding_mask,
                                   pcontext_padding_mask=encoder_projected_padding_mask)
         # apply dropout
@@ -170,8 +120,27 @@ class LunaEncoderLayer(nn.Module):
 
         # apply post layer norm
         if not self.normalize_before:
+            x = self.self_attn_layer_norm(x)
+            px = self.self_atten_proj_layer_norm(px)
+
+        #######################################################################
+        # Feed-Forward Network
+        residual = x
+        # apply prev layer norm
+        if self.normalize_before:
             x = self.final_layer_norm(x)
-            px = self.final_proj_layer_norm(px)
+
+        x = self.activation_fn(self.fc1(x))
+        x = self.activation_dropout_module(x)
+        x = self.fc2(x)
+        # apply dropout
+        x = self.dropout_module(x)
+        # residual
+        x = residual + x
+
+        # apply post layer norm
+        if not self.normalize_before:
+            x = self.final_layer_norm(x)
         return x, px
 
 
@@ -213,6 +182,7 @@ class LunaDecoderLayer(nn.Module):
 
         self.encoder_attn = self.build_encoder_attention(self.embed_dim, args)
         self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
+        self.encoder_atten_proj_layer_norm = LayerNorm(self.embed_dim, export=export)
 
         self.activation_fn = utils.get_activation_fn(activation=getattr(args, "activation_fn", "relu"))
         activation_dropout_p = getattr(args, "activation_dropout", 0)
@@ -244,11 +214,10 @@ class LunaDecoderLayer(nn.Module):
         )
 
     def build_encoder_attention(self, embed_dim, args):
-        return MultiheadAttention(
+        return LunarMultiheadAttention(
             embed_dim,
             args.decoder_attention_heads,
-            kdim=getattr(args, "encoder_embed_dim", None),
-            vdim=getattr(args, "encoder_embed_dim", None),
+            args.decoder_projected_attention_heads,
             dropout=args.attention_dropout,
             encoder_decoder_attention=True,
             q_noise=self.quant_noise,
@@ -261,7 +230,9 @@ class LunaDecoderLayer(nn.Module):
     def forward(
         self,
         x,
-        encoder_projected_out,
+        px,
+        encoder_out,
+        encoder_padding_mask: Optional[torch.Tensor] = None,
         encoder_projected_padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         self_attn_padding_mask: Optional[torch.Tensor] = None,
@@ -271,7 +242,11 @@ class LunaDecoderLayer(nn.Module):
         """
         Args:
             x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
-            encoder_projected_out (Tensor): projected output from encoder `(proj_len, batch, embed_dim)`
+            px (Tensor): projected input to the layer of shape `(proj_len, batch, embed_dim)`
+            encoder_out (Tensor): output from encoder of shape `(encoder_seq_len, batch, embed_dim)`
+            encoder_padding_mask (ByteTensor, optional): binary
+                ByteTensor of shape `(batch, src_len)` where padding
+                elements are indicated by ``1``.
             encoder_projected_padding_mask (ByteTensor, optional): binary
                 ByteTensor of shape `(batch, proj_len)` where padding
                 elements are indicated by ``1``.
@@ -286,11 +261,13 @@ class LunaDecoderLayer(nn.Module):
         if need_head_weights:
             need_attn = True
 
+        static_px = px is None
+
         residual = x
         if self.normalize_before:
             x = self.self_attn_layer_norm(x)
 
-        x, attn = self.self_attn(query=x, pquery=encoder_projected_out,
+        x, attn = self.self_attn(query=x, pquery=px,
                                  key_padding_mask=self_attn_padding_mask,
                                  pkey_padding_mask=encoder_projected_padding_mask,
                                  incremental_state=incremental_state,
@@ -302,20 +279,27 @@ class LunaDecoderLayer(nn.Module):
             x = self.self_attn_layer_norm(x)
 
         residual = x
+        presidual = px
         if self.normalize_before:
             x = self.encoder_attn_layer_norm(x)
+            px = self.encoder_atten_proj_layer_norm(px) if not static_px else None
 
-        x, attn = self.encoder_attn(query=x, key=encoder_projected_out, value=encoder_projected_out,
-                                    key_padding_mask=encoder_projected_padding_mask,
-                                    incremental_state=incremental_state,
-                                    static_kv=True,
-                                    need_weights=need_attn or (not self.training and self.need_attn),
-                                    need_head_weights=need_head_weights)
-
+        x, px, attn = self.encoder_attn(query=x, pquery=px, context=encoder_out,
+                                        context_padding_mask=encoder_padding_mask,
+                                        pcontext_padding_mask=encoder_projected_padding_mask,
+                                        incremental_state=incremental_state,
+                                        static_context=True,
+                                        need_weights=need_attn or (not self.training and self.need_attn),
+                                        need_head_weights=need_head_weights)
+        # apply dropout
         x = self.dropout_module(x)
+        px = self.dropout_module(px) if not static_px else None
+
         x = residual + x
+        px = presidual + px if not static_px else None
         if not self.normalize_before:
             x = self.encoder_attn_layer_norm(x)
+            px = self.encoder_atten_proj_layer_norm(px) if not static_px else None
 
         residual = x
         if self.normalize_before:
@@ -340,8 +324,8 @@ class LunaDecoderLayer(nn.Module):
                 ]
             else:
                 self_attn_state = [saved_state["prev_key"], saved_state["prev_value"]]
-            return x, attn, self_attn_state
-        return x, attn, None
+            return x, px, attn, self_attn_state
+        return x, px, attn, None
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):
         self.need_attn = need_attn
