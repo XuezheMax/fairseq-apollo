@@ -23,6 +23,7 @@ from fairseq.modules import (
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 
+from .hub_interface import LunaHubInterface
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,10 @@ class LunaBertModel(FairseqEncoderModel):
         if classification_head_name is not None:
             px_padding_mask = extra['padding_masks'][1]
             x = self.classification_heads[classification_head_name](x, px, px_padding_mask=px_padding_mask)
-        return x, extra
+            return x, extra
+        else:
+            extra['packed_features'] = px
+            return x, extra
 
     def get_normalized_probs(self, net_output, log_probs, sample=None):
         """Get normalized probabilities (or log probs) from a net's output."""
@@ -175,7 +179,17 @@ class LunaBertModel(FairseqEncoderModel):
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, checkpoint_file='model.pt', data_name_or_path='.', bpe='gpt2', **kwargs):
-        return None
+        from fairseq import hub_utils
+        x = hub_utils.from_pretrained(
+            model_name_or_path,
+            checkpoint_file,
+            data_name_or_path,
+            archive_map=cls.hub_models(),
+            bpe=bpe,
+            load_checkpoint_heads=True,
+            **kwargs,
+        )
+        return LunaHubInterface(x['args'], x['task'], x['models'][0])
 
     def upgrade_state_dict_named(self, state_dict, name):
         prefix = name + '.' if name != '' else ''
