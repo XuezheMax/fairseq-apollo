@@ -20,6 +20,7 @@ from fairseq.models import (
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
+    FairseqFeatureDropout,
     LayerDropModuleList,
     MultiheadAttention,
     LayerNorm,
@@ -80,6 +81,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='activation function to use')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
+        parser.add_argument('--word-dropout', type=float, metavar='D',
+                            help='dropout probability of words')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
         parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
@@ -117,6 +120,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='apply layernorm before each decoder block')
         parser.add_argument('--projection-length', type=int, metavar='N',
                             help='projected length of encoder as key')
+        parser.add_argument('--fix-projection-length', action='store_true',
+                            help='fix projection length for all input sequences')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -271,6 +276,7 @@ class LunaEncoder(FairseqEncoder):
         self.register_buffer("version", torch.Tensor([3]))
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.dropword_module = FairseqFeatureDropout(args.word_dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
 
         embed_dim = embed_tokens.embedding_dim
@@ -303,6 +309,7 @@ class LunaEncoder(FairseqEncoder):
             self.layernorm_porjected_embedding = None
 
         self.proj_len = args.projection_length
+        self.dynamic_projection = not args.fix_projection_length
         self.projected_embeddings = Parameter(torch.Tensor(self.proj_len, embed_dim))
         nn.init.normal_(self.projected_embeddings, mean=0., std=embed_dim ** -0.5)
         if not args.no_token_positional_embeddings and not args.encoder_learned_pos:
@@ -346,6 +353,7 @@ class LunaEncoder(FairseqEncoder):
     def forward_embedding(self, src_tokens):
         # embed tokens and positions
         x = embed = self.embed_scale * self.embed_tokens(src_tokens)
+        x = self.dropword_module(x)
         if self.embed_positions is not None:
             x = x + self.embed_positions(src_tokens)
         if self.layernorm_embedding is not None:
@@ -560,6 +568,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
         self._future_mask = torch.empty(0)
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.dropword_module = FairseqFeatureDropout(args.word_dropout, module_name=self.__class__.__name__)
         self.decoder_layerdrop = args.decoder_layerdrop
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
@@ -752,6 +761,7 @@ class LunaDecoder(FairseqIncrementalDecoder):
 
         # embed tokens and positions
         x = self.embed_tokens(prev_output_tokens) * self.embed_scale
+        x = self.dropword_module(x)
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
         if positions is not None:
@@ -913,11 +923,13 @@ def base_architecture(args):
     args.decoder_normalize_before = getattr(args, "decoder_normalize_before", False)
 
     args.projection_length = getattr(args, 'projection_length', 32)
-
+    args.fix_projection_length = getattr(args, "fix_projection_length", False)
+    
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     args.activation_fn = getattr(args, "activation_fn", "relu")
     args.dropout = getattr(args, "dropout", 0.1)
+    args.word_dropout = getattr(args, "word_dropout", 0.0)
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
     args.layernorm_embedding = getattr(args, "layernorm_embedding", False)

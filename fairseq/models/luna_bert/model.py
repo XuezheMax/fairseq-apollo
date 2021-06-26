@@ -17,6 +17,7 @@ from fairseq.models import (
 )
 from fairseq.modules import (
     LayerNorm,
+    MultiheadAttention,
     LunaSentenceEncoder
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
@@ -53,12 +54,18 @@ class LunaBertModel(FairseqEncoderModel):
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='A',
                             help='num encoder attention heads')
+        # args for Luna
+        parser.add_argument('--projection-length', type=int, help='Luna projection length')
+        parser.add_argument('--fix-projection-length', action='store_true',
+                            help='fix projection length for all input sequences')
+        # args for FFN
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use')
         parser.add_argument('--pooler-activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use for pooler layer')
+        # args for dropout
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
@@ -85,9 +92,6 @@ class LunaBertModel(FairseqEncoderModel):
                             help='scalar quantization noise and scalar quantization at training time')
         parser.add_argument('--untie-weights-luna', action='store_true',
                             help='Untie weights between embeddings and classifiers in Luna')
-        # args for Luna
-        parser.add_argument('--projection-length', type=int, default=128,
-                            help='Luna projection length')
 
     @classmethod
     def build_model(cls, args, task):
@@ -109,7 +113,8 @@ class LunaBertModel(FairseqEncoderModel):
         x, px, extra = self.encoder(src_tokens, features_only, return_all_hiddens, **kwargs)
 
         if classification_head_name is not None:
-            x = self.classification_heads[classification_head_name](x)
+            px_padding_mask = extra['padding_masks'][1]
+            x = self.classification_heads[classification_head_name](x, px, px_padding_mask=px_padding_mask)
         return x, extra
 
     def get_normalized_probs(self, net_output, log_probs, sample=None):
@@ -132,15 +137,37 @@ class LunaBertModel(FairseqEncoderModel):
                         name, num_classes, prev_num_classes, inner_dim, prev_inner_dim
                     )
                 )
-        self.classification_heads[name] = LunaClassificationHead(
-            self.args.encoder_embed_dim,
-            inner_dim or self.args.encoder_embed_dim,
-            num_classes,
-            self.args.pooler_activation_fn,
-            self.args.pooler_dropout,
-            self.args.quant_noise_pq,
-            self.args.quant_noise_pq_block_size,
-        )
+        if name == 'pooling_classification_head':
+            self.classification_heads[name] = LunaPoolingClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
+        elif name == 'attention_classification_head':
+            self.classification_heads[name] = LunaAttentionClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.encoder_attention_heads,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
+        else:
+            self.classification_heads[name] = LunaCLSClassificationHead(
+                self.args.encoder_embed_dim,
+                inner_dim or self.args.encoder_embed_dim,
+                num_classes,
+                self.args.pooler_activation_fn,
+                self.args.pooler_dropout,
+                self.args.quant_noise_pq,
+                self.args.quant_noise_pq_block_size,
+            )
 
     @property
     def supported_targets(self):
@@ -237,7 +264,7 @@ class LunaLMHead(nn.Module):
         return x
 
 
-class LunaClassificationHead(nn.Module):
+class LunaCLSClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
     def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
@@ -249,8 +276,77 @@ class LunaClassificationHead(nn.Module):
             nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
         )
 
-    def forward(self, features, **kwargs):
-        x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
+    def forward(self, x, px, **kwargs):
+        x = x[:, 0, :]  # take <s> token (equiv. to [CLS])
+        x = self.dropout(x)
+        x = self.dense(x)
+        x = self.activation_fn(x)
+        x = self.dropout(x)
+        x = self.out_proj(x)
+        return x
+
+
+class LunaPoolingClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, input_dim, inner_dim, num_classes, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
+        super().__init__()
+        self.in_proj = nn.Linear(input_dim, input_dim)
+        self.dense = nn.Linear(input_dim, inner_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = apply_quant_noise_(
+            nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
+        )
+
+    def forward(self, x, px, px_padding_mask=None, **kwargs):
+        # B x L x C
+        px = self.in_proj(px)
+        # B x C
+        if px_padding_mask is not None:
+            px = px.masked_fill(px_padding_mask.unsqueeze(2), float('-inf'))
+        x, _ = px.max(dim=1)
+
+        x = self.dropout(x)
+        x = self.dense(x)
+        x = self.activation_fn(x)
+        x = self.dropout(x)
+        x = self.out_proj(x)
+        return x
+
+
+class LunaAttentionClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, input_dim, inner_dim, num_classes, num_heads, activation_fn, pooler_dropout, q_noise=0, qn_block_size=8):
+        super().__init__()
+        self.attn = MultiheadAttention(
+            input_dim,
+            num_heads,
+            q_noise=q_noise,
+            qn_block_size=qn_block_size,
+        )
+        self.layernorm = LayerNorm(input_dim)
+        self.dense = nn.Linear(input_dim, inner_dim)
+        self.activation_fn = utils.get_activation_fn(activation_fn)
+        self.dropout = nn.Dropout(p=pooler_dropout)
+        self.out_proj = apply_quant_noise_(
+            nn.Linear(inner_dim, num_classes), q_noise, qn_block_size
+        )
+
+    def forward(self, x, px, px_padding_mask=None, **kwargs):
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+        # 1 x B x C
+        x = x[:1] # take <s> token (equiv. to [CLS])
+        # B x L x C -> L x B x C
+        px = px.transpose(0, 1)
+        # 1 x B x C
+        x, _ = self.attn(query=x, key=px, value=px, key_padding_mask=px_padding_mask)
+        x = self.layernorm(x)
+        # B x C
+        x = x.squeeze(0)
+
         x = self.dropout(x)
         x = self.dense(x)
         x = self.activation_fn(x)
@@ -284,6 +380,7 @@ class LunaBertEncoder(FairseqEncoder):
             layerdrop=args.encoder_layerdrop,
             normalize_before=False,
             layernorm_embedding=True,
+            dynamic_projection=not args.fix_projection_length,
             max_seq_len=args.max_positions,
             num_segments=0,
             apply_bert_init=True,
@@ -324,7 +421,7 @@ class LunaBertEncoder(FairseqEncoder):
         return x, px, extra
 
     def extract_features(self, src_tokens, return_all_hiddens=False, **unused):
-        inner_states, _, _ = self.sentence_encoder(
+        inner_states, _, padding_masks = self.sentence_encoder(
             src_tokens,
             last_state_only=not return_all_hiddens,
         )
@@ -332,7 +429,8 @@ class LunaBertEncoder(FairseqEncoder):
         features = inner_states[-1]
         x = features[0].transpose(0, 1)  # T x B x C -> B x T x C
         px = features[1].transpose(0, 1) # L x B x C -> B x L x C
-        return x, px, {'inner_states': inner_states if return_all_hiddens else None}
+        return x, px, {'inner_states': inner_states if return_all_hiddens else None,
+                       'padding_masks': padding_masks}
 
     def output_layer(self, features, masked_tokens=None, **unused):
         return self.lm_head(features, masked_tokens)
@@ -348,7 +446,9 @@ def base_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
+    args.max_positions = getattr(args, 'max_positions', 512)
     args.projection_length = getattr(args, 'projection_length', 128)
+    args.fix_projection_length = getattr(args, "fix_projection_length", False)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
@@ -362,18 +462,19 @@ def base_architecture(args):
 
 
 @register_model_architecture('luna_bert', 'luna_base_512')
-def luna_base_architecture(args):
+def luna_base_architecture_512(args):
     base_architecture(args)
 
 
 @register_model_architecture('luna_bert', 'luna_base_2048')
-def luna_base_architecture(args):
+def luna_base_architecture_2048(args):
+    args.max_positions = getattr(args, 'max_positions', 2048)
     args.projection_length = getattr(args, 'projection_length', 256)
     base_architecture(args)
 
 
 @register_model_architecture('luna_bert', 'luna_large_512')
-def roberta_large_architecture(args):
+def luna_large_architecture_512(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
@@ -382,7 +483,7 @@ def roberta_large_architecture(args):
 
 
 @register_model_architecture('luna_bert', 'luna_large_2048')
-def roberta_large_architecture(args):
+def luna_large_architecture_2048(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
