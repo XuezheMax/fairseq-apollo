@@ -36,6 +36,7 @@ from .pad_dataset import LeftPadDataset, PadDataset, RightPadDataset
 from .prepend_dataset import PrependDataset
 from .prepend_token_dataset import PrependTokenDataset
 from .raw_label_dataset import RawLabelDataset
+from .repeat_block_dataset import RepeatBlockDataset
 from .replace_dataset import ReplaceDataset
 from .resampling_dataset import ResamplingDataset
 from .roll_dataset import RollDataset
@@ -97,6 +98,7 @@ __all__ = [
     'RollDataset',
     'FileAudioDataset',
     'RawLabelDataset',
+    'RepeatBlockDataset',
     'ResamplingDataset',
     'RightPadDataset',
     'RoundRobinZipDatasets',

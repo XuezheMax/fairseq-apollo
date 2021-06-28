@@ -20,6 +20,7 @@ from fairseq.data import (
     OffsetTokensDataset,
     PrependTokenDataset,
     RawLabelDataset,
+    RepeatBlockDataset,
     RightPadDataset,
     RollDataset,
     SortDataset,
@@ -132,9 +133,6 @@ class SentencePredictionTask2(FairseqTask):
         assert input0 is not None, 'could not find dataset: {}'.format(get_path(type, split))
         input1 = make_dataset('input1', self.source_dictionary)
 
-        if self.args.init_token is not None:
-            input0 = PrependTokenDataset(input0, self.args.init_token)
-
         if input1 is None:
             src_tokens = input0
         else:
@@ -142,6 +140,16 @@ class SentencePredictionTask2(FairseqTask):
                 input1 = PrependTokenDataset(input1, self.args.separator_token)
 
             src_tokens = ConcatSentencesDataset(input0, input1)
+
+        src_tokens = RepeatBlockDataset(
+            src_tokens,
+            src_tokens.sizes,
+            self.args.tokens_per_sample - 1,  # one less for <s>
+            eos=self.source_dictionary.eos()
+        )
+
+        if self.args.init_token is not None:
+            src_tokens = PrependTokenDataset(src_tokens, self.args.init_token)
 
         with data_utils.numpy_seed(self.args.seed):
             shuffle = np.random.permutation(len(src_tokens))
