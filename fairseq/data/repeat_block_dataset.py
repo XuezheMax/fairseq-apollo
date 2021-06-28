@@ -47,7 +47,7 @@ class RepeatBlockDataset(FairseqDataset):
 
     def __getitem__(self, index):
         item = self.dataset[index]
-        repeat_time = self.repeat_times(index)
+        repeat_time = self.repeat_times[index]
         if repeat_time > 0:
             repeat_item = torch.cat([item.new([self.eos]), item]).repeat(repeat_time)
             item = torch.cat([item, repeat_item])
