@@ -31,7 +31,6 @@ class TestTokenBlockDataset(unittest.TestCase):
         ]
         ds = self._build_dataset(data, block_sizes=[4, 8, 16], pad=0, eos=1)
         print(len(ds))
-        print(ds.sizes)
         for i in range(len(ds)):
             print(i, ds[i])
         self.assertEqual(ds[0].tolist(), [3, 4, 1])
@@ -40,6 +39,7 @@ class TestTokenBlockDataset(unittest.TestCase):
         print(ds.number_of_inst_in_block)
         with data_utils.numpy_seed(1):
             shuffle = np.random.permutation(len(ds))
+        print(ds.sizes)
         print(shuffle)
         sds = SortDataset(ds, sort_order=[shuffle, ds.sizes])
         print(sds.ordered_indices())
