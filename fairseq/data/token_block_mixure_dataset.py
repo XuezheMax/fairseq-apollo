@@ -129,6 +129,9 @@ class TokenBlockMixtureDataset(FairseqDataset):
 
         return item
 
+    def num_tokens(self, index):
+        return self.sizes[index]
+
     def __len__(self):
         return len(self.slice_indices)
 

@@ -5,9 +5,10 @@
 
 import unittest
 
+import numpy as np
 import torch
 
-from fairseq.data import TokenBlockMixtureDataset
+from fairseq.data import TokenBlockMixtureDataset, SortDataset, data_utils
 
 import tests.utils as test_utils
 
@@ -30,13 +31,18 @@ class TestTokenBlockDataset(unittest.TestCase):
         ]
         ds = self._build_dataset(data, block_sizes=[4, 8, 16], pad=0, eos=1)
         print(len(ds))
+        print(ds.sizes)
         for i in range(len(ds)):
             print(i, ds[i])
         self.assertEqual(ds[0].tolist(), [3, 4, 1])
         self.assertEqual(ds[1].tolist(), [5, 4, 3, 2, 1])
 
         print(ds.number_of_inst_in_block)
-        print(ds.shuffle(1))
+        with data_utils.numpy_seed(1):
+            shuffle = np.random.permutation(len(ds))
+        print(shuffle)
+        sds = SortDataset(ds, sort_order=[shuffle, ds.sizes])
+        print(sds.ordered_indices())
 
 if __name__ == "__main__":
     unittest.main()
