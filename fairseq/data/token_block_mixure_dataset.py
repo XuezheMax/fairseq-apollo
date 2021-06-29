@@ -6,7 +6,7 @@
 import numpy as np
 import torch
 
-from fairseq.data import FairseqDataset, plasma_utils
+from fairseq.data import FairseqDataset, plasma_utils, data_utils
 
 
 class TokenBlockMixtureDataset(FairseqDataset):
@@ -14,17 +14,8 @@ class TokenBlockMixtureDataset(FairseqDataset):
 
     Args:
         dataset (~torch.utils.data.Dataset): dataset to break into blocks
-        sizes (List[int]): sentence lengths (required for 'complete' and 'eos')
-        block_size (int): maximum block size (ignored in 'eos' break mode)
-        break_mode (str, optional): Mode used for breaking tokens. Values can
-            be one of:
-            - 'none': break tokens into equally sized blocks (up to block_size)
-            - 'complete': break tokens into blocks (up to block_size) such that
-                blocks contains complete sentences, although block_size may be
-                exceeded if some sentences exceed block_size
-            - 'complete_doc': similar to 'complete' mode, but do not
-                cross document boundaries
-            - 'eos': each block contains one sentence (block_size is ignored)
+        sizes (List[int]): sentence lengths
+        block_sizes (List[int]): maximum block sizes
         include_targets (bool, optional): return next tokens as targets
             (default: False).
         document_sep_len (int, optional): document separator size (required for
@@ -35,11 +26,9 @@ class TokenBlockMixtureDataset(FairseqDataset):
         self,
         dataset,
         sizes,
-        block_size,
+        block_sizes,
         pad,
         eos,
-        break_mode=None,
-        include_targets=False,
         document_sep_len=1,
     ):
         try:
@@ -57,7 +46,6 @@ class TokenBlockMixtureDataset(FairseqDataset):
         self.dataset = dataset
         self.pad = pad
         self.eos = eos
-        self.include_targets = include_targets
 
         assert len(dataset) == len(sizes)
         assert len(dataset) > 0
@@ -69,36 +57,43 @@ class TokenBlockMixtureDataset(FairseqDataset):
                 sizes = sizes.numpy()
             sizes = sizes.astype(np.int64)
 
-        break_mode = break_mode if break_mode is not None else 'none'
+        assert min(block_sizes) > 0
+        block_sizes = [0] + block_sizes
+        slice_indices_list = []
+        sizes_list = []
+        block_to_dataset_index_list = []
+        number_of_inst_in_block = []
+        for block_size in block_sizes:
+            break_mode = "eos" if block_size == 0 else "complete"
+            slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len)
+            slice_indices_list.append(slice_indices)
+            sizes_list.append(slice_indices[:, 1] - slice_indices[:, 0])
+            number_of_inst_in_block.append(len(slice_indices))
 
-        # For "eos" break-mode, block_size is not required parameters.
-        if break_mode == "eos" and block_size is None:
-            block_size = 0
+            # build index mapping block indices to the underlying dataset indices
+            if break_mode == "eos":
+                # much faster version for eos break mode
+                block_to_dataset_index = np.stack(
+                    [
+                        np.arange(len(sizes)),  # starting index in dataset
+                        np.zeros(len(sizes), dtype=np.long),  # starting offset within starting index
+                        np.arange(len(sizes)),  # ending index in dataset
+                    ],
+                    1,
+                )
+            else:
+                block_to_dataset_index = _get_block_to_dataset_index_fast(sizes, slice_indices)
+            block_to_dataset_index_list.append(block_to_dataset_index)
 
-        slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len)
-        self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
+        self._sizes = np.concatenate(sizes_list)
+        self._slice_indices = np.concatenate(slice_indices_list, axis=0)
+        self._block_to_dataset_index = np.concatenate(block_to_dataset_index_list, axis=0)
+        self._number_of_inst_in_block = np.array(number_of_inst_in_block, dtype=np.int64)
 
-        # build index mapping block indices to the underlying dataset indices
-        if break_mode == "eos":
-            # much faster version for eos break mode
-            block_to_dataset_index = np.stack(
-                [
-                    np.arange(len(sizes)),  # starting index in dataset
-                    np.zeros(
-                        len(sizes), dtype=np.long
-                    ),  # starting offset within starting index
-                    np.arange(len(sizes)),  # ending index in dataset
-                ],
-                1,
-            )
-        else:
-            block_to_dataset_index = _get_block_to_dataset_index_fast(
-                sizes,
-                slice_indices,
-            )
-        self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
+        self._slice_indices = plasma_utils.PlasmaArray(self._slice_indices)
         self._sizes = plasma_utils.PlasmaArray(self._sizes)
-        self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
+        self._block_to_dataset_index = plasma_utils.PlasmaArray(self._block_to_dataset_index)
+        self._number_of_inst_in_block = plasma_utils.PlasmaArray(self._number_of_inst_in_block)
 
     @property
     def slice_indices(self):
@@ -111,6 +106,10 @@ class TokenBlockMixtureDataset(FairseqDataset):
     @property
     def block_to_dataset_index(self):
         return self._block_to_dataset_index.array
+
+    @property
+    def number_of_inst_in_block(self):
+        return self._number_of_inst_in_block.array
 
     def attr(self, attr: str, index: int):
         start_ds_idx, _, _ = self.block_to_dataset_index[index]
@@ -128,28 +127,21 @@ class TokenBlockMixtureDataset(FairseqDataset):
         s, e = start_offset, start_offset + length
         item = buffer[s:e]
 
-        if self.include_targets:
-            # *target* is the original sentence (=item)
-            # *source* is shifted right by 1 (maybe left-padded with eos)
-            # *past_target* is shifted right by 2 (left-padded as needed)
-            if s == 0:
-                source = torch.cat([item.new([self.eos]), buffer[0 : e - 1]])
-                past_target = torch.cat(
-                    [item.new([self.pad, self.eos]), buffer[0 : e - 2]]
-                )
-            else:
-                source = buffer[s - 1 : e - 1]
-                if s == 1:
-                    past_target = torch.cat([item.new([self.eos]), buffer[0 : e - 2]])
-                else:
-                    past_target = buffer[s - 2 : e - 2]
-
-            return source, item, past_target
-
         return item
 
     def __len__(self):
         return len(self.slice_indices)
+
+    def shuffle(self, seed: int):
+        with data_utils.numpy_seed(seed):
+            bucket_offsets = np.cumsum(self.number_of_inst_in_block) - self.number_of_inst_in_block
+            num_buckets = len(self.number_of_inst_in_block)
+            shuffled_bucket_indices = np.random.permutation(num_buckets)
+            shuffles = []
+            for bid in shuffled_bucket_indices:
+                shuffle = np.random.permutation(self.number_of_inst_in_block[bid]) + bucket_offsets[bid]
+                shuffles.append(shuffle)
+            return np.concatenate(shuffles)
 
     @property
     def supports_prefetch(self):
