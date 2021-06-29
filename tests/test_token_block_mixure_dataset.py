@@ -25,8 +25,10 @@ class TestTokenBlockDataset(unittest.TestCase):
             torch.tensor([5, 4, 3, 2, 1], dtype=torch.long),
             torch.tensor([8, 7, 6, 1], dtype=torch.long),
             torch.tensor([9, 1], dtype=torch.long),
+            torch.tensor([4, 1], dtype=torch.long),
+            torch.tensor([3, 4, 6, 7, 8, 1], dtype=torch.long),
         ]
-        ds = self._build_dataset(data, block_sizes=[4, 8], pad=0, eos=1)
+        ds = self._build_dataset(data, block_sizes=[4, 8, 16], pad=0, eos=1)
         print(len(ds))
         for i in range(len(ds)):
             print(i, ds[i])
