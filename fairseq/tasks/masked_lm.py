@@ -20,11 +20,13 @@ from fairseq.data import (
     PrependTokenDataset,
     SortDataset,
     TokenBlockDataset,
+    TokenBlockMixtureDataset,
 )
 from fairseq.data.shorten_dataset import maybe_shorten_dataset
 from fairseq.tasks import FairseqTask, register_task
 from fairseq.data.encoders.utils import get_whole_word_mask
 from fairseq import utils
+from fairseq.options import eval_str_list
 
 
 logger = logging.getLogger(__name__)
@@ -40,15 +42,17 @@ class MaskedLMTask(FairseqTask):
         parser.add_argument('data', help='colon separated path to data directories list, \
                             will be iterated upon during epochs in round-robin manner')
         parser.add_argument('--sample-break-mode', default='complete',
-                            choices=['none', 'complete', 'complete_doc', 'eos'],
+                            choices=['none', 'complete', 'complete_doc', 'eos', 'mixture'],
                             help='If omitted or "none", fills each sample with tokens-per-sample '
                                  'tokens. If set to "complete", splits samples only at the end '
                                  'of sentence, but may include multiple sentences per sample. '
                                  '"complete_doc" is similar but respects doc boundaries. '
                                  'If set to "eos", includes only one sentence per sample.')
-        parser.add_argument('--tokens-per-sample', default=512, type=int,
+        parser.add_argument('--tokens-per-sample', type=int,
                             help='max number of total tokens over all segments '
                                  'per sample for BERT dataset')
+        parser.add_argument('--block-sizes', default='512',
+                            help='comma separated list of block sizes')
         parser.add_argument('--mask-prob', default=0.15, type=float,
                             help='probability of replacing a token with mask')
         parser.add_argument('--leave-unmasked-prob', default=0.1, type=float,
@@ -112,14 +116,29 @@ class MaskedLMTask(FairseqTask):
         )
 
         # create continuous blocks of tokens
-        dataset = TokenBlockDataset(
-            dataset,
-            dataset.sizes,
-            self.args.tokens_per_sample - 1,  # one less for <s>
-            pad=self.source_dictionary.pad(),
-            eos=self.source_dictionary.eos(),
-            break_mode=self.args.sample_break_mode,
-        )
+        if self.args.sample_break_mode == 'mixture':
+            block_sizes = eval_str_list(self.args.block_sizes, type=int)
+            if not hasattr(self.args, 'tokens_per_sample'):
+                self.args.tokens_per_sample = max(block_sizes)
+            else:
+                assert self.args.tokens_per_sample == max(block_sizes)
+
+            dataset = TokenBlockMixtureDataset(
+                dataset,
+                dataset.sizes,
+                block_sizes=[bs - 1 for bs in block_sizes], # one less for <s>
+                pad=self.source_dictionary.pad(),
+                eos=self.source_dictionary.eos(),
+            )
+        else:
+            dataset = TokenBlockDataset(
+                dataset,
+                dataset.sizes,
+                self.args.tokens_per_sample - 1,  # one less for <s>
+                pad=self.source_dictionary.pad(),
+                eos=self.source_dictionary.eos(),
+                break_mode=self.args.sample_break_mode,
+            )
         logger.info('loaded {} blocks from: {}'.format(len(dataset), split_path))
 
         # prepend beginning-of-sentence token (<s>, equiv. to [CLS] in BERT)

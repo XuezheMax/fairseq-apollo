@@ -44,7 +44,7 @@ from .sort_dataset import SortDataset
 from .strip_token_dataset import StripTokenDataset
 from .subsample_dataset import SubsampleDataset
 from .token_block_dataset import TokenBlockDataset
-from .token_block_mixure_dataset import TokenBlockMixtureDataset
+from .token_block_mixture_dataset import TokenBlockMixtureDataset
 from .transform_eos_dataset import TransformEosDataset
 from .transform_eos_lang_pair_dataset import TransformEosLangPairDataset
 from .shorten_dataset import TruncateDataset, RandomCropDataset
