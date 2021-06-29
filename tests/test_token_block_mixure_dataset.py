@@ -30,10 +30,11 @@ class TestTokenBlockDataset(unittest.TestCase):
         print(len(ds))
         for i in range(len(ds)):
             print(i, ds[i])
-        self.assertEqual(ds[0].tolist(), [5, 4, 3, 2, 1])
-        self.assertEqual(ds[1].tolist(), [8, 7, 6, 1, 9, 1])
+        self.assertEqual(ds[0].tolist(), [3, 4, 1])
+        self.assertEqual(ds[1].tolist(), [5, 4, 3, 2, 1])
 
-
+        print(ds.number_of_inst_in_block)
+        print(ds.shuffle(1))
 
 if __name__ == "__main__":
     unittest.main()
