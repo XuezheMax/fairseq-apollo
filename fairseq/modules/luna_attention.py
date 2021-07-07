@@ -400,8 +400,8 @@ class LunarCausalAttention(nn.Module):
 
         self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.pc_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -426,22 +426,22 @@ class LunarCausalAttention(nn.Module):
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
         if self.q_proj.bias is not None:
             nn.init.constant_(self.q_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
-        if self.k_proj.bias is not None:
-            nn.init.constant_(self.k_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
-        if self.v_proj.bias is not None:
-            nn.init.constant_(self.v_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
+        if self.pc_proj.bias is not None:
+            nn.init.constant_(self.pc_proj.bias, 0.)
+        nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
+        if self.c_proj.bias is not None:
+            nn.init.constant_(self.c_proj.bias, 0.)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    def _compute_pattention(self, pq, key, key_padding_mask):
+    def _compute_pattention(self, pq, context, key_padding_mask):
         # N x B x D
-        len, bsz, dim = key.size()
+        len, bsz, dim = context.size()
         # N x B x D -> N x B*H x K
-        k = key.contiguous().view(len, bsz * self.num_heads, self.head_dim)
+        k = self.c_proj(context).view(len, bsz * self.num_heads, self.head_dim)
         # N x B*H x K -> B*H x N x K
         k = k.transpose(0, 1)
         # B x H x L x K -> B*H x L x K -> B*H x K x L
@@ -508,14 +508,11 @@ class LunarCausalAttention(nn.Module):
         pattn_weights = self._compute_pattention(pq, query, key_padding_mask)
         pattn_weights = self.dropout_module(pattn_weights)
 
+        # N x B x D -> B*H x N x K
         q = self.q_proj(query) * self.scaling
-        k = self.k_proj(query)
-        v = self.v_proj(query)
-
-        # B*H x N x K
         q = q.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        k = k.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        v = v.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        # N x B x D -> B*H x N x K
+        k = v = self.pc_proj(query).view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         efficient_causal_attention = efficient_causal_attention_parallel if self.parallel else efficient_causal_attention_seq
 
