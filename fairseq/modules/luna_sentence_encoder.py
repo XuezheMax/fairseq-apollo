@@ -179,7 +179,7 @@ def init_bert_params(module):
     if isinstance(module, LunarMultiheadAttention):
         module.pq_proj.weight.data.normal_(mean=0.0, std=0.02)
         module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
-        if module.tie_kv:
+        if module.pc_proj is not None:
             module.pc_proj.weight.data.normal_(mean=0.0, std=0.02)
             module.c_proj.weight.data.normal_(mean=0.0, std=0.02)
         else:
