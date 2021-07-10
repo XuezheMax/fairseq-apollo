@@ -59,6 +59,8 @@ class LunaBertModel(FairseqEncoderModel):
         parser.add_argument('--projection-length', type=int, help='Luna projection length')
         parser.add_argument('--fix-projection-length', action='store_true',
                             help='fix projection length for all input sequences')
+        parser.add_argument('--untie-luna-kv', action='store_true',
+                            help='Untie key and value parameters in Luna attention')
         # args for FFN
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
@@ -395,6 +397,7 @@ class LunaBertEncoder(FairseqEncoder):
             normalize_before=False,
             layernorm_embedding=True,
             dynamic_projection=not args.fix_projection_length,
+            tie_kv=not args.untie_luna_kv,
             max_seq_len=args.max_positions,
             num_segments=0,
             apply_bert_init=True,
@@ -463,6 +466,7 @@ def base_architecture(args):
     args.max_positions = getattr(args, 'max_positions', 512)
     args.projection_length = getattr(args, 'projection_length', 128)
     args.fix_projection_length = getattr(args, "fix_projection_length", False)
+    args.untie_luna_kv = getattr(args, "untie_luna_kv", False)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
@@ -477,6 +481,12 @@ def base_architecture(args):
 
 @register_model_architecture('luna_bert', 'luna_base_512')
 def luna_base_architecture_512(args):
+    base_architecture(args)
+
+
+@register_model_architecture('luna_bert', 'luna_base_untied_512')
+def luna_base_architecture_512(args):
+    args.untie_luna_kv = getattr(args, "untie_luna_kv", True)
     base_architecture(args)
 
 

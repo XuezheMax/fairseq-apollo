@@ -30,6 +30,7 @@ class LunarMultiheadAttention(nn.Module):
         bias=True,
         self_attention=False,
         encoder_decoder_attention=False,
+        tie_kv=True,
         q_noise=0.0,
         qn_block_size=8,
     ):
@@ -51,8 +52,18 @@ class LunarMultiheadAttention(nn.Module):
 
         self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.pc_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        if tie_kv:
+            self.pc_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.pk_proj = self.k_proj = None
+            self.pv_proj = self.v_proj = None
+        else:
+            self.pk_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.pv_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.pc_proj = self.c_proj = None
+
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -72,68 +83,56 @@ class LunarMultiheadAttention(nn.Module):
         # the scaled initialization
         gain = 1.0 / math.sqrt(2.0)
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
-        if self.pq_proj.bias is not None:
-            nn.init.constant_(self.pq_proj.bias, 0.)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
-        if self.q_proj.bias is not None:
-            nn.init.constant_(self.q_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
-        if self.pc_proj.bias is not None:
-            nn.init.constant_(self.pc_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
-        if self.c_proj.bias is not None:
-            nn.init.constant_(self.c_proj.bias, 0.)
+
+        if self.pc_proj is not None:
+            nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
+        else:
+            nn.init.xavier_uniform_(self.pk_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.pv_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.constant_(self.out_proj.bias, 0.)
 
-    def _compute_pcontext_singlehead(self, pquery, context, context_padding_mask):
-        c = self.c_proj(context)
-        # N x B x D -> B x D x N
-        k = c.permute(1, 2, 0)
-        # N x B x D -> B x N x D
-        v = c.transpose(0, 1)
-
-        # L x B x D -> B x L x D
-        pq = self.pq_proj(pquery).transpose(0, 1) * self.pscaling
-        # B x L x N
-        pqc = pq.matmul(k)
-        if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
-        pqc = F.softmax(pqc, dim=-1)
-        pqc = self.dropout_module(pqc)
-        # B x L x D -> L x B x D
-        pc = torch.bmm(pqc, v).transpose(0, 1)
-        return pc
-
-    def _compute_pcontext_multiheads(self, pquery, context, context_padding_mask):
+    def _compute_pcontext(self, pquery, context, context_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
-        c = self.c_proj(context)
-        # N x B x D -> N x B x H x K
-        k = v = c.view(len, bsz, self.num_pheads, self.phead_dim)
-        # N x B x H x K -> B x H x K x N
-        k = k.permute(1, 2, 3, 0)
-        # N x B x H x K -> B x H x N x K
-        v = v.permute(1, 2, 0, 3)
+        if self.pc_proj is not None:
+            c = self.pc_proj(context)
+            # N x B x D -> N x B*H x K
+            k = v = c.view(len, bsz * self.num_pheads, self.phead_dim)
+        else:
+            # N x B x D -> N x B*H x K
+            k = self.pk_proj(context).view(len, bsz * self.num_pheads, self.phead_dim)
+            v = self.pv_proj(context).view(len, bsz * self.num_pheads, self.phead_dim)
+
+        # N x B*H x K -> B*H x K x N
+        k = k.permute(1, 2, 0)
+        # N x B*H x K -> B*H x N x K
+        v = v.transpose(0, 1)
 
         plen = pquery.size(0)
-        # L x B x D -> L x B x H x K
-        pq = self.pq_proj(pquery).view(plen, -1, self.num_pheads, self.phead_dim)
-        # L x B x H x K -> B x H x L x K
-        pq = pq.permute(1, 2, 0, 3) * self.pscaling
-        # B x H x L x N
-        pqc = pq.matmul(k)
+        # L x B x D -> L x B*H x K
+        pq = self.pq_proj(pquery).view(plen, bsz * self.num_pheads, self.phead_dim)
+        # L x B*H x K -> B*H x L x K
+        pq = pq.transpose(0, 1) * self.pscaling
+        # B*H x L x N
+        pqk = torch.bmm(pq, k)
         if context_padding_mask is not None:
-            pqc = pqc.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
-        pqc = F.softmax(pqc, dim=-1)
-        pqc = self.dropout_module(pqc)
-        # B x H x L x K
-        pc = torch.matmul(pqc, v)
-        # B x H x L x K -> L x B x H x K
-        pc = pc.permute(2, 0, 1, 3).contiguous()
-        pc = pc.view(plen, bsz, dim)
+            pqk = pqk.view(bsz, self.num_pheads, plen, len)
+            pqk = pqk.masked_fill(context_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf"))
+            pqk = pqk.view(bsz * self.num_pheads, plen, len)
+
+        pqk = F.softmax(pqk, dim=-1)
+        pqk = self.dropout_module(pqk)
+        # B*H x L x K
+        pc = torch.bmm(pqk, v)
+        # B*H x L x K -> L x B*H x K -> L x B x D
+        pc = pc.transpose(0, 1).contiguous().view(plen, bsz, dim)
         return pc
 
     def compute_pcontext(self,
@@ -148,10 +147,7 @@ class LunarMultiheadAttention(nn.Module):
         if context is None:
             return context
         else:
-            if self.num_pheads == 1:
-                return self._compute_pcontext_singlehead(pquery, context, context_padding_mask)
-            else:
-                return self._compute_pcontext_multiheads(pquery, context, context_padding_mask)
+            return self._compute_pcontext(pquery, context, context_padding_mask)
 
     def forward(
         self,
@@ -208,8 +204,11 @@ class LunarMultiheadAttention(nn.Module):
         if pcontext is None:
             assert context is None
             k = v = None
+        elif self.c_proj is not None:
+            k = v = self.c_proj(pcontext).view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         else:
-            k = v = self.pc_proj(pcontext).view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            k = self.k_proj(pcontext).view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            v = self.v_proj(pcontext).view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         q = q * self.scaling
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -384,6 +383,7 @@ class LunarCausalAttention(nn.Module):
         num_heads,
         dropout=0.0,
         bias=True,
+        tie_kv=True,
         q_noise=0.0,
         qn_block_size=8,
         parallel=True,
@@ -401,7 +401,14 @@ class LunarCausalAttention(nn.Module):
         self.pq_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.q_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.pc_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
-        self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+        if tie_kv:
+            self.c_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.k_proj = self.v_proj = None
+        else:
+            self.k_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.v_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
+            self.c_proj = None
+
         self.out_proj = quant_noise(nn.Linear(embed_dim, embed_dim, bias=bias), q_noise, qn_block_size)
         self.reset_parameters()
 
@@ -421,17 +428,13 @@ class LunarCausalAttention(nn.Module):
         # the scaled initialization
         gain = 1.0 / math.sqrt(2.0)
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
-        if self.pq_proj.bias is not None:
-            nn.init.constant_(self.pq_proj.bias, 0.)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
-        if self.q_proj.bias is not None:
-            nn.init.constant_(self.q_proj.bias, 0.)
         nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
-        if self.pc_proj.bias is not None:
-            nn.init.constant_(self.pc_proj.bias, 0.)
-        nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
-        if self.c_proj.bias is not None:
-            nn.init.constant_(self.c_proj.bias, 0.)
+        if self.c_proj is not None:
+            nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
+        else:
+            nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
+            nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -440,10 +443,11 @@ class LunarCausalAttention(nn.Module):
     def _compute_pattention(self, pq, context, key_padding_mask):
         # N x B x D
         len, bsz, dim = context.size()
-        # N x B x D -> N x B*H x K
-        k = self.c_proj(context).view(len, bsz * self.num_heads, self.head_dim)
+        # N x B x D
+        k = self.pc_proj(context)
         # N x B*H x K -> B*H x N x K
-        k = k.transpose(0, 1)
+        k = k.view(len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+
         # B x H x L x K -> B*H x L x K -> B*H x K x L
         pq = pq.view(bsz * self.num_heads, -1, self.head_dim).transpose(1, 2)
         # B*H x N x L
@@ -512,7 +516,11 @@ class LunarCausalAttention(nn.Module):
         q = self.q_proj(query) * self.scaling
         q = q.view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         # N x B x D -> B*H x N x K
-        k = v = self.pc_proj(query).view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        if self.c_proj is not None:
+            k = v = self.c_proj(query).view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+        else:
+            k = self.k_proj(query).view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            v = self.v_proj(query).view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         efficient_causal_attention = efficient_causal_attention_parallel if self.parallel else efficient_causal_attention_seq
 

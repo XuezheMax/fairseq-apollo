@@ -33,6 +33,7 @@ class LunaSentenceEncoderLayer(nn.Module):
         activation_dropout: float = 0.1,
         activation_fn: str = 'relu',
         normalize_before: bool = False,
+        tie_kv = True,
         export: bool = False,
         q_noise: float = 0.0,
         qn_block_size: int = 8,
@@ -55,6 +56,7 @@ class LunaSentenceEncoderLayer(nn.Module):
             num_attention_heads,
             num_projected_attention_heads,
             dropout=attention_dropout,
+            tie_kv=tie_kv,
             q_noise=q_noise,
             qn_block_size=qn_block_size,
         )
@@ -82,6 +84,7 @@ class LunaSentenceEncoderLayer(nn.Module):
         num_attention_heads,
         num_projected_attention_heads,
         dropout,
+        tie_kv,
         q_noise,
         qn_block_size,
     ):
@@ -91,6 +94,7 @@ class LunaSentenceEncoderLayer(nn.Module):
             num_projected_attention_heads,
             dropout=dropout,
             self_attention=True,
+            tie_kv=tie_kv,
             q_noise=q_noise,
             qn_block_size=qn_block_size,
         )
@@ -173,10 +177,16 @@ def init_bert_params(module):
         if module.padding_idx is not None:
             module.weight.data[module.padding_idx].zero_()
     if isinstance(module, LunarMultiheadAttention):
-        module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
         module.pq_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.c_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.pc_proj.weight.data.normal_(mean=0.0, std=0.02)
+        module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
+        if module.tie_kv:
+            module.pc_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.c_proj.weight.data.normal_(mean=0.0, std=0.02)
+        else:
+            module.pk_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.pv_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.k_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.v_proj.weight.data.normal_(mean=0.0, std=0.02)
 
 
 class LunaSentenceEncoder(nn.Module):
@@ -224,6 +234,7 @@ class LunaSentenceEncoder(nn.Module):
         layernorm_embedding: bool = False,
         normalize_before: bool = False,
         dynamic_projection: bool = True,
+        tie_kv=True,
         apply_bert_init: bool = False,
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
@@ -303,6 +314,7 @@ class LunaSentenceEncoder(nn.Module):
                 activation_dropout=activation_dropout,
                 activation_fn=activation_fn,
                 normalize_before=normalize_before,
+                tie_kv=tie_kv,
                 export=export,
                 q_noise=q_noise,
                 qn_block_size=qn_block_size,
@@ -362,6 +374,7 @@ class LunaSentenceEncoder(nn.Module):
         activation_dropout,
         activation_fn,
         normalize_before,
+        tie_kv,
         export,
         q_noise,
         qn_block_size,
@@ -376,6 +389,7 @@ class LunaSentenceEncoder(nn.Module):
             activation_dropout=activation_dropout,
             activation_fn=activation_fn,
             normalize_before=normalize_before,
+            tie_kv=tie_kv,
             export=export,
             q_noise=q_noise,
             qn_block_size=qn_block_size,

@@ -125,6 +125,8 @@ class LunaModel(FairseqEncoderDecoderModel):
                             help='projected length of encoder as key')
         parser.add_argument('--fix-projection-length', action='store_true',
                             help='fix projection length for all input sequences')
+        parser.add_argument('--untie-luna-kv', action='store_true',
+                            help='Untie key and value parameters in Luna attention')
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
@@ -950,6 +952,7 @@ def base_architecture(args):
 
     args.projection_length = getattr(args, 'projection_length', 32)
     args.fix_projection_length = getattr(args, "fix_projection_length", False)
+    args.untie_luna_kv = getattr(args, "untie_luna_kv", False)
 
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
@@ -970,3 +973,14 @@ def base_architecture(args):
 
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
+
+
+@register_model_architecture("luna", "luna_base")
+def luna_base_tied(args):
+    base_architecture(args)
+
+
+@register_model_architecture("luna", "luna_base_untied")
+def luna_base_untied(args):
+    args.untie_luna_kv = getattr(args, "untie_luna_kv", True)
+    base_architecture(args)

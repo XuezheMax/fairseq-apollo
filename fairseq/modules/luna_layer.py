@@ -68,6 +68,7 @@ class LunaEncoderLayer(nn.Module):
             args.encoder_projected_attention_heads,
             dropout=args.attention_dropout,
             self_attention=True,
+            tie_kv=not args.untie_luna_kv,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
@@ -209,6 +210,7 @@ class LunaDecoderLayer(nn.Module):
             embed_dim,
             args.decoder_attention_heads,
             dropout=args.attention_dropout,
+            tie_kv=not args.untie_luna_kv,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
@@ -220,6 +222,7 @@ class LunaDecoderLayer(nn.Module):
             args.decoder_projected_attention_heads,
             dropout=args.attention_dropout,
             encoder_decoder_attention=True,
+            tie_kv=not args.untie_luna_kv,
             q_noise=self.quant_noise,
             qn_block_size=self.quant_noise_block_size,
         )
