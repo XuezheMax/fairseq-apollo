@@ -109,18 +109,21 @@ class LunaBertModel(FairseqEncoderModel):
         encoder = LunaBertEncoder(args, task.source_dictionary)
         return cls(args, encoder)
 
-    def forward(self, src_tokens, features_only=False, return_all_hiddens=False, classification_head_name=None, **kwargs):
+    def forward(self, src_tokens, features_only=False, return_packed_features=False, return_all_hiddens=False,
+                classification_head_name=None, **kwargs):
         if classification_head_name is not None:
             features_only = True
 
         x, px, extra = self.encoder(src_tokens, features_only, return_all_hiddens, **kwargs)
+
+        if return_packed_features:
+            extra['packed_features'] = px
 
         if classification_head_name is not None:
             px_padding_mask = extra['padding_masks'][1]
             x = self.classification_heads[classification_head_name](x, px, px_padding_mask=px_padding_mask)
             return x, extra
         else:
-            extra['packed_features'] = px
             return x, extra
 
     def get_normalized_probs(self, net_output, log_probs, sample=None):

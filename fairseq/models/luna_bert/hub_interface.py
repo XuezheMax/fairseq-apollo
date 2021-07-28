@@ -86,6 +86,7 @@ class LunaHubInterface(nn.Module):
         features, extra = self.model(
             tokens.to(device=self.device),
             features_only=True,
+            return_packed_features=True,
             return_all_hiddens=return_all_hiddens,
         )
         if return_all_hiddens:
