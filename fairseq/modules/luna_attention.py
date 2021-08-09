@@ -463,7 +463,7 @@ class LunarCausalAttention(nn.Module):
         pq = pq.view(bsz * self.num_heads, -1, self.head_dim).transpose(1, 2)
         # B*H x N x L
         pattn = k.bmm(pq)
-        pattn = F.elu(pattn) + 1.0
+        pattn = F.softplus(pattn, beta=math.log(2.0))
         return pattn
 
     def forward(
