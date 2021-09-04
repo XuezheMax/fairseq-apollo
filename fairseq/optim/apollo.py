@@ -126,6 +126,7 @@ class Apollo(Optimizer):
                     grad = grad.add(p, alpha=group['weight_decay'])
 
                 beta = group['beta']
+                eps = group['eps']
                 exp_avg_grad = state['exp_avg_grad']
                 B = state['approx_hessian']
                 d_p = state['update']
@@ -139,12 +140,13 @@ class Apollo(Optimizer):
                 if group['rebound'] == 'belief':
                     rebound = delta_grad.norm(p=np.inf)
                 else:
-                    rebound = 1.0
+                    rebound = 0.01
+                    eps = eps / rebound
 
                 # Update the running average grad
                 exp_avg_grad.add_(delta_grad, alpha=alpha)
 
-                denom = d_p.norm(p=4).add(group['eps'])
+                denom = d_p.norm(p=4).add(eps)
                 d_p.div_(denom)
                 v_sq = d_p.mul(d_p)
                 delta = delta_grad.div_(denom).mul_(d_p).sum().mul(-alpha) - B.mul(v_sq).sum()
@@ -154,7 +156,7 @@ class Apollo(Optimizer):
 
                 # calc direction of parameter updates
                 if group['rebound'] == 'belief':
-                    denom = torch.max(B.abs(), rebound).add_(group['eps'] / alpha)
+                    denom = torch.max(B.abs(), rebound).add_(eps / alpha)
                 else:
                     denom = B.abs().clamp_(min=rebound)
 
