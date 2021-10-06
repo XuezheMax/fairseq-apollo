@@ -84,26 +84,15 @@ class LunarMultiheadAttention(nn.Module):
         gain = 1.0 / math.sqrt(2.0)
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
-        if self.pq_proj.bias is not None:
-            nn.init.constant_(self.pq_proj.bias, 0.0)
-            nn.init.constant_(self.q_proj.bias, 0.0)
 
         if self.pc_proj is not None:
             nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
             nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
-            if self.pc_proj.bias is not None:
-                nn.init.constant_(self.pc_proj.bias, 0.0)
-                nn.init.constant_(self.c_proj.bias, 0.0)
         else:
             nn.init.xavier_uniform_(self.pk_proj.weight, gain=gain)
             nn.init.xavier_uniform_(self.pv_proj.weight, gain=gain)
             nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
             nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
-            if self.pk_proj.bias is not None:
-                nn.init.constant_(self.pk_proj.bias, 0.0)
-                nn.init.constant_(self.pv_proj.bias, 0.0)
-                nn.init.constant_(self.k_proj.bias, 0.0)
-                nn.init.constant_(self.v_proj.bias, 0.0)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
@@ -441,20 +430,11 @@ class LunarCausalAttention(nn.Module):
         nn.init.xavier_uniform_(self.pq_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.q_proj.weight, gain=gain)
         nn.init.xavier_uniform_(self.pc_proj.weight, gain=gain)
-        if self.pq_proj.bias is not None:
-            nn.init.constant_(self.pq_proj.bias, 0.0)
-            nn.init.constant_(self.q_proj.bias, 0.0)
-            nn.init.constant_(self.pc_proj.bias, 0.0)
         if self.c_proj is not None:
             nn.init.xavier_uniform_(self.c_proj.weight, gain=gain)
-            if self.c_proj.bias is not None:
-                nn.init.constant_(self.c_proj.bias, 0.0)
         else:
             nn.init.xavier_uniform_(self.k_proj.weight, gain=gain)
             nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
-            if self.k_proj.bias is not None:
-                nn.init.constant_(self.k_proj.bias, 0.0)
-                nn.init.constant_(self.v_proj.bias, 0.0)
 
         nn.init.xavier_uniform_(self.out_proj.weight)
         if self.out_proj.bias is not None:
