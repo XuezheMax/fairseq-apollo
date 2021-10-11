@@ -8,13 +8,13 @@ This is the code we used in the following papers. This folder is based on the [f
 
 >[Luna: Linear Unified Nested Attention](https://arxiv.org/abs/2106.01540)
 
->Xuezhe Ma, Eduard Hovy
+>Xuezhe Ma, Xiang Kong, Sinong Wang, Chunting Zhou, Jonathan May, Hao Ma, Luke Zettlemoyer
 
 > NeurIPS 2021 
 
 ## Examples and pre-trained models
 
-* [Neural Machine Translation with Apollo Optimizer (Ma, 2020)]()
+* [Neural Machine Translation with Apollo Optimizer (Ma, 2020)](https://github.com/XuezheMax/fairseq-apollo/tree/master/examples/apollo)
 
-* [Luna: Linear Unified Nested Attention (Ma et al., 2021)]()
+* [Luna: Linear Unified Nested Attention (Ma et al., 2021)](https://github.com/XuezheMax/fairseq-apollo/tree/master/examples/luna)
 
