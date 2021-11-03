@@ -13,13 +13,11 @@ from fairseq.models import (
 )
 from fairseq.modules import (
     LayerNorm,
-    SinusoidalPositionalEmbedding,
-    TransformerSentenceEncoder,
-    LunaSentenceEncoder
+    SinusoidalPositionalEmbedding
 )
+from fairseq.models.luna_lra.luna_lra_encoder import LunaLRAEncoder
+from fairseq.models.luna_lra.transformer_lra_encoder import TransformerLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
-from fairseq.models.transformer import TransformerEncoder
-from fairseq.models.luna import LunaEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +175,6 @@ class LRAModel(FairseqEncoderModel):
             concat_rep = []
             concat_rep.append(sentence1_rep)
             concat_rep.append(sentence_rep)
-            # concat_rep.append(sentence1_rep + sentence_rep)
-            # concat_rep.append(sentence1_rep * sentence_rep)
             sentence_rep = torch.cat(concat_rep, dim=-1)
         for layer in self.classifier:
             sentence_rep = self.classifier_activation(layer(sentence_rep))
@@ -217,18 +213,18 @@ class LRAModel(FairseqEncoderModel):
             args.decoder_embed_dim = args.encoder_embed_dim
         embed_tokens = cls.build_embedding(args, task.dictionary, args.encoder_embed_dim)
         logger.info(args)
-        encoder = TransformerLRAEncoder(args, task)
+        encoder = LRAEncoder(args, task)
         return cls(args, encoder, task)
 
 
-class TransformerLRAEncoder(FairseqEncoder):
-    """RoBERTa encoder."""
+class LRAEncoder(FairseqEncoder):
+    """LRA encoder."""
 
     def __init__(self, args, task):
         super().__init__(task.dictionary)
         self.args = args
         if args.layer_type == 'transformer':
-            self.encoder = TransformerSentenceEncoder(
+            self.encoder = TransformerLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
                 padding_idx=task.dictionary.pad_index,
                 vocab_size=len(task.dictionary),
@@ -247,11 +243,10 @@ class TransformerLRAEncoder(FairseqEncoder):
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
                 learned_pos_embedding=True,
-                normalize_before=False,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         else:
-            self.encoder = LunaSentenceEncoder(
+            self.encoder = LunaLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
                 projection_length=args.encoder_projection_length,
                 padding_idx=task.dictionary.pad_index,
@@ -373,6 +368,7 @@ def luna_lra_aan_architecture(args):
 
 @register_model_architecture('lra', 'transformer_lra_cifar10')
 def transformer_lra_cifar10(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 1)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
