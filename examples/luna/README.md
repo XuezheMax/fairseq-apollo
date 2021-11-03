@@ -2,7 +2,7 @@
 
 https://arxiv.org/abs/2106.01540
 
-## On LAR Tasks
+## On long range arena tasks
 
 To run a task, run the train file in the long_range_arena example folder. For example, for the listops task,
 ```
