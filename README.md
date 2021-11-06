@@ -18,3 +18,22 @@ This is the code we used in the following papers. This folder is based on the [f
 
 * [Luna: Linear Unified Nested Attention (Ma et al., 2021)](https://github.com/XuezheMax/fairseq-apollo/tree/master/examples/luna)
 
+
+## Citation
+
+```bibtex
+@article{ma2020apollo,
+  title={Apollo: An adaptive parameter-wise diagonal quasi-newton method for nonconvex stochastic optimization},
+  author={Ma, Xuezhe},
+  journal={arXiv preprint arXiv:2009.13586},
+  year={2020}
+}
+
+@inproceedings{ma2021luna,
+  title={Luna: Linear Unified Nested Attention},
+  author={Ma, Xuezhe and Kong, Xiang and Wang, Sinong and Zhou, Chunting and May, Jonathan and Ma, Hao and Zettlemoyer, Luke},
+  booktitle = {Advances in Neural Information Processing Systems},
+  publisher = {Curran Associates, Inc.},
+  year={2021}
+}
+```

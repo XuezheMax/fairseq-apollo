@@ -980,6 +980,12 @@ def luna_base_tied(args):
     base_architecture(args)
 
 
+@register_model_architecture("luna", "luna_base_tied")
+def luna_base_tied(args):
+    args.untie_luna_kv = getattr(args, "untie_luna_kv", False)
+    base_architecture(args)
+
+
 @register_model_architecture("luna", "luna_base_untied")
 def luna_base_untied(args):
     args.untie_luna_kv = getattr(args, "untie_luna_kv", True)
