@@ -255,6 +255,7 @@ class LRAEncoder(FairseqEncoder):
                 embedding_dim=args.encoder_embed_dim,
                 ffn_embedding_dim=args.encoder_ffn_embed_dim,
                 num_attention_heads=args.encoder_attention_heads,
+                num_projected_attention_heads=args.encoder_attention_heads,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 activation_dropout=args.act_dropout,
@@ -401,15 +402,11 @@ def transformer_lra_pf32(args):
 @register_model_architecture('lra', 'luna_lra_pf32')
 def luna_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    # args.dropout = getattr(args, 'dropout', 0.2)
-    # args.attention_dropout = getattr(args, 'attention_dropout', 0.2)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
 
 @register_model_architecture('lra', 'luna_lra_pf128')
 def luna_lra_pf32(args):
     args.max_positions = getattr(args, 'max_positions', 128*128+2)
-    # args.dropout = getattr(args, 'dropout', 0.2)
-    # args.attention_dropout = getattr(args, 'attention_dropout', 0.2)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
