@@ -1,6 +1,8 @@
 # Traning Luna on Machine Translation
 
 ## WMT-14 English-German
+Each experiment is conducted on 8 NVIDIA Tesla V100 GPUs. 
+To use less GPUs, please increase `--update-freq` accordingly to ensure the same total batch size.
 
 ```bash
 src=en
