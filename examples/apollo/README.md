@@ -14,7 +14,7 @@ https://arxiv.org/abs/2009.13586
 
 We use the Transformer-base models.
 Some key hyper-parameters are listed in the following table.
-We also provide a training [recipe](/recipe.md) for more details of the experiments.
+We also provide a training [recipe](/examples/apollo/recipe.md) for more details of the experiments.
 
 **Transformer-base on WMT-14 En-De**
 
