@@ -9,8 +9,8 @@ See the associated paper for more details.
 ## Pre-trained models
 Model | Description | # params | Download
 ---|---|---|---
-`luna.base.tied` | Luna with sharing key and value parameters | 132M | [luna.base.tied.tar.gz]()
-`luna.base.untied` | Luna without sharing key and value parameters | 147M | [luna.base.untied.tar.gz]()
+`luna.base.tied` | Luna with sharing key and value parameters | 132M | [luna.base.tied.zip](https://drive.google.com/file/d/1i6W08zkuys2TSCcEkLxUpKew1w864oDy/view?usp=sharing)
+`luna.base.untied` | Luna without sharing key and value parameters | 147M | [luna.base.untied.zip](https://drive.google.com/file/d/1LshYhY1xrlnivHn0dutDwLfyxkaR-qAa/view?usp=sharing)
 
 
 ## Experiments
