@@ -239,7 +239,7 @@ class LRAEncoder(FairseqEncoder):
                 num_segments=0,
                 use_position_embeddings=True,
                 offset_positions_by_padding=True,
-                encoder_normalize_before=True,
+                encoder_normalize_before=getattr(args, "encoder_normalize_before", False),
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
                 learned_pos_embedding=True,
@@ -262,7 +262,7 @@ class LRAEncoder(FairseqEncoder):
                 max_seq_len=args.max_positions,
                 use_position_embeddings=True,
                 offset_positions_by_padding=True,
-                layernorm_embedding=True,
+                layernorm_embedding=getattr(args, "encoder_normalize_before", False),
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 tie_kv=getattr(args, 'tie_kv', False),
                 activation_fn=args.activation_fn,
@@ -300,7 +300,7 @@ def base_architecture(args):
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'relu')
-    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
+    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.adaptive_input = getattr(args, "adaptive_input", False)
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
