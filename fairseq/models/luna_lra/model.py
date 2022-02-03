@@ -49,7 +49,7 @@ class LRAModel(FairseqEncoderModel):
             self.sentence_out_dim,
             bias=False
         )
-        self.sen_rep_type = getattr(args, "sen_rep_type", "first")
+        self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
         self.layer_type = args.layer_type
 
         # if specified then apply bert initialization on the model. We need
@@ -134,7 +134,7 @@ class LRAModel(FairseqEncoderModel):
         )
         parser.add_argument(
             '--sen-rep-type',
-            choices=['first', 'mp']
+            choices=['cls', 'mp']
         )
         parser.add_argument(
             '--encoder-projection-length', type=int, metavar='N',
@@ -151,8 +151,8 @@ class LRAModel(FairseqEncoderModel):
 
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
-        if self.use_p:
-            assert self.layer_type == 'luna'
+        if self.use_p or self.sen_rep_type == 'mp':
+            assert self.layer_type == 'luna' or not self.use_p
             src_tokens = src_tokens[:, 1:]
         sentence_rep = self.encoder(src_tokens)
         if not self.use_p:
