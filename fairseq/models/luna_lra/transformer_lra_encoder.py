@@ -132,7 +132,7 @@ class TransformerLRAEncoder(nn.Module):
             self.quant_noise = None
 
         self.segment_embeddings = (
-            nn.Embedding(self.num_segments, self.embedding_dim, padding_idx=None)
+            Embedding(self.num_segments, self.embedding_dim, padding_idx=None)
             if self.num_segments > 0
             else None
         )
@@ -174,7 +174,7 @@ class TransformerLRAEncoder(nn.Module):
         ])
 
         if encoder_normalize_before:
-            self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
+            self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=False, export=export)
         else:
             self.emb_layer_norm = None
 
@@ -197,7 +197,7 @@ class TransformerLRAEncoder(nn.Module):
             freeze_module_params(self.layers[layer])
 
     def build_embedding(self, vocab_size, embedding_dim, padding_idx):
-        return nn.Embedding(vocab_size, embedding_dim, padding_idx)
+        return Embedding(vocab_size, embedding_dim, padding_idx)
 
     def build_transformer_sentence_encoder_layer(
         self,
@@ -293,3 +293,10 @@ class TransformerLRAEncoder(nn.Module):
             return torch.stack(inner_states), sentence_rep
         else:
             return inner_states, sentence_rep
+
+
+def Embedding(num_embeddings, embedding_dim, padding_idx):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+    nn.init.constant_(m.weight[padding_idx], 0)
+    return m

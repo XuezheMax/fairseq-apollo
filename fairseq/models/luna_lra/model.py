@@ -23,6 +23,14 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 logger = logging.getLogger(__name__)
 
 
+def Linear(in_features, out_features, bias=True):
+    m = nn.Linear(in_features, out_features, bias)
+    nn.init.xavier_uniform_(m.weight)
+    if bias:
+        nn.init.constant_(m.bias, 0.0)
+    return m
+
+
 @register_model('lra')
 class LRAModel(FairseqEncoderModel):
     """
@@ -39,15 +47,15 @@ class LRAModel(FairseqEncoderModel):
         self.lm_output_learned_bias = None
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.classifier = nn.ModuleList([])
-        self.classifier.append(nn.Sequential(nn.Linear(args.classifier_in_dim, args.classifier_out_dim),
+        self.classifier.append(nn.Sequential(Linear(args.classifier_in_dim, args.classifier_out_dim),
                                              self.dropout_module))
         self.classifier.extend([
-            nn.Sequential(nn.Linear(args.classifier_out_dim, args.classifier_out_dim), self.dropout_module)
+            nn.Sequential(Linear(args.classifier_out_dim, args.classifier_out_dim), self.dropout_module)
             for _ in range(args.classifier_layers - 1)
         ])
         # self.classifier = nn.Linear(args.classifier_in_dim, args.classifier_out_dim)
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
-        self.sentence_projection_layer = nn.Linear(
+        self.sentence_projection_layer = Linear(
             args.classifier_out_dim,
             self.sentence_out_dim,
             bias=False
