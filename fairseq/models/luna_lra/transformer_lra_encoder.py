@@ -91,6 +91,7 @@ class TransformerLRAEncoder(nn.Module):
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
         embed_scale: float = None,
+        layer_norm_affine = False,
         freeze_embeddings: bool = False,
         n_trans_layers_to_freeze: int = 0,
         export: bool = False,
@@ -166,6 +167,7 @@ class TransformerLRAEncoder(nn.Module):
                 attention_dropout=attention_dropout,
                 activation_dropout=activation_dropout,
                 activation_fn=activation_fn,
+                layer_norm_affine=layer_norm_affine,
                 export=export,
                 q_noise=q_noise,
                 qn_block_size=qn_block_size,
@@ -174,7 +176,7 @@ class TransformerLRAEncoder(nn.Module):
         ])
 
         if encoder_normalize_before:
-            self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=False, export=export)
+            self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=layer_norm_affine, export=export)
         else:
             self.emb_layer_norm = None
 
@@ -208,6 +210,7 @@ class TransformerLRAEncoder(nn.Module):
         attention_dropout,
         activation_dropout,
         activation_fn,
+        layer_norm_affine,
         export,
         q_noise,
         qn_block_size,
@@ -220,6 +223,7 @@ class TransformerLRAEncoder(nn.Module):
             attention_dropout=attention_dropout,
             activation_dropout=activation_dropout,
             activation_fn=activation_fn,
+            layer_norm_affine=layer_norm_affine,
             export=export,
             q_noise=q_noise,
             qn_block_size=qn_block_size,

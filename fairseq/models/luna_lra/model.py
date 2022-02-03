@@ -129,6 +129,8 @@ class LRAModel(FairseqEncoderModel):
                             help='Which activation function to use for classifier layer.')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
+        parser.add_argument('--layernorm-affine', action='store_true',
+                            help='add affine to layernorm')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
         parser.add_argument('--no-scale-embedding', action='store_true',
@@ -254,6 +256,7 @@ class LRAEncoder(FairseqEncoder):
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
                 learned_pos_embedding=True,
+                layer_norm_affine=getattr(args, 'layernorm_affine', False),
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         else:
