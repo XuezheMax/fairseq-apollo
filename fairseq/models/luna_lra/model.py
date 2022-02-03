@@ -12,6 +12,7 @@ from fairseq.models import (
     register_model_architecture,
 )
 from fairseq.modules import (
+    FairseqDropout,
     LayerNorm,
     SinusoidalPositionalEmbedding
 )
@@ -36,10 +37,12 @@ class LRAModel(FairseqEncoderModel):
         self.padding_idx = task.dictionary.pad()
         self.sentence_out_dim = args.sentence_class_num
         self.lm_output_learned_bias = None
+        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.classifier = nn.ModuleList([])
-        self.classifier.append(nn.Linear(args.classifier_in_dim, args.classifier_out_dim))
+        self.classifier.append(nn.Sequential(nn.Linear(args.classifier_in_dim, args.classifier_out_dim),
+                                             self.dropout_module))
         self.classifier.extend([
-            nn.Linear(args.classifier_out_dim, args.classifier_out_dim)
+            nn.Sequential(nn.Linear(args.classifier_out_dim, args.classifier_out_dim), self.dropout_module)
             for _ in range(args.classifier_layers - 1)
         ])
         # self.classifier = nn.Linear(args.classifier_in_dim, args.classifier_out_dim)
