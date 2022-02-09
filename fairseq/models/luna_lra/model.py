@@ -102,8 +102,8 @@ class LRAModel(FairseqEncoderModel):
                             action='store_true',
                             help='if set, disables positional embeddings'
                             ' (outside self attention)')
-        parser.add_argument('--num-segment', type=int, metavar='N',
-                            help='num segment in the input')
+
+        parser.add_argument('--input-type', choices=['text', 'image'])
         parser.add_argument('--max-positions', type=int,
                             help='number of positional embeddings to learn')
 
@@ -129,8 +129,6 @@ class LRAModel(FairseqEncoderModel):
                             help='Which activation function to use for classifier layer.')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
-        parser.add_argument('--layernorm-affine', action='store_true',
-                            help='add affine to layernorm')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
         parser.add_argument('--no-scale-embedding', action='store_true',
@@ -141,26 +139,16 @@ class LRAModel(FairseqEncoderModel):
                             help='block size of quantization noise at training time')
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
-        parser.add_argument(
-            '--layer-type',
-            choices=['transformer', 'luna']
-        )
-        parser.add_argument(
-            '--sen-rep-type',
-            choices=['cls', 'mp']
-        )
-        parser.add_argument(
-            '--encoder-projection-length', type=int, metavar='N',
-            help='projected length of encoder as key'
-        )
-        parser.add_argument(
-            '--encoder-projected-attention-heads', type=int, metavar='N',
-            help='num encoder projected attention heads'
-        )
-        parser.add_argument(
-            '--decoder-projected-attention-heads', type=int, metavar='N',
-            help='num decoder projected attention heads'
-        )
+
+        parser.add_argument('--layer-type', choices=['transformer', 'luna'])
+        parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
+
+        parser.add_argument('--encoder-projection-length', type=int, metavar='N',
+                            help='projected length of encoder as key')
+        parser.add_argument('--encoder-projected-attention-heads', type=int, metavar='N',
+                            help='num encoder projected attention heads')
+        parser.add_argument('--decoder-projected-attention-heads', type=int, metavar='N',
+                            help='num decoder projected attention heads')
 
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
@@ -234,14 +222,25 @@ class LRAEncoder(FairseqEncoder):
     """LRA encoder."""
 
     def __init__(self, args, task):
-        super().__init__(task.dictionary)
+        if args.input_type == 'text':
+            dictionary = task.dictionary
+            vocab_size = len(dictionary)
+            padding_idx = dictionary.pad_index
+            embedding_type = 'sparse'
+        else:
+            dictionary = None
+            vocab_size = None
+            padding_idx = None
+            embedding_type = 'linear'
+        super().__init__(dictionary)
         self.args = args
         if args.layer_type == 'transformer':
             self.encoder = TransformerLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
-                padding_idx=task.dictionary.pad_index,
-                vocab_size=len(task.dictionary),
+                padding_idx=padding_idx,
+                vocab_size=vocab_size,
                 num_encoder_layers=args.encoder_layers,
+                embedding_type=embedding_type,
                 embedding_dim=args.encoder_embed_dim,
                 ffn_embedding_dim=args.encoder_ffn_embed_dim,
                 num_attention_heads=args.encoder_attention_heads,
@@ -249,23 +248,22 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 activation_dropout=args.act_dropout,
                 max_seq_len=args.max_positions,
-                num_segments=0,
                 use_position_embeddings=True,
                 offset_positions_by_padding=True,
                 encoder_normalize_before=getattr(args, "encoder_normalize_before", False),
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
                 learned_pos_embedding=True,
-                layer_norm_affine=getattr(args, 'layernorm_affine', False),
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         else:
             self.encoder = LunaLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
                 projection_length=args.encoder_projection_length,
-                padding_idx=task.dictionary.pad_index,
-                vocab_size=len(task.dictionary),
+                padding_idx=padding_idx,
+                vocab_size=vocab_size,
                 num_encoder_layers=args.encoder_layers,
+                embedding_type=embedding_type,
                 embedding_dim=args.encoder_embed_dim,
                 ffn_embedding_dim=args.encoder_ffn_embed_dim,
                 num_attention_heads=args.encoder_attention_heads,
@@ -277,6 +275,7 @@ class LRAEncoder(FairseqEncoder):
                 use_position_embeddings=True,
                 offset_positions_by_padding=True,
                 layernorm_embedding=getattr(args, "encoder_normalize_before", False),
+                normalize_before=False,
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 tie_kv=getattr(args, 'tie_kv', False),
                 activation_fn=args.activation_fn,
@@ -303,7 +302,6 @@ def base_architecture(args):
     args.share_encoder_input_output_embed = getattr(args, 'share_encoder_input_output_embed', False)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', True)
     args.no_token_positional_embeddings = getattr(args, 'no_token_positional_embeddings', False)
-    args.num_segment = getattr(args, 'num_segment', 0)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2048)
 
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)

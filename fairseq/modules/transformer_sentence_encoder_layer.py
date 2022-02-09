@@ -33,7 +33,6 @@ class TransformerSentenceEncoderLayer(nn.Module):
         attention_dropout: float = 0.1,
         activation_dropout: float = 0.1,
         activation_fn: str = 'relu',
-        layer_norm_affine = True,
         export: bool = False,
         q_noise: float = 0.0,
         qn_block_size: int = 8,
@@ -61,7 +60,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         )
 
         # layer norm associated with the self attention layer
-        self.self_attn_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=layer_norm_affine, export=export)
+        self.self_attn_layer_norm = LayerNorm(self.embedding_dim, export=export)
 
         self.fc1 = self.build_fc1(
             self.embedding_dim,
@@ -77,7 +76,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         )
 
         # layer norm associated with the position wise feed-forward NN
-        self.final_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=layer_norm_affine, export=export)
+        self.final_layer_norm = LayerNorm(self.embedding_dim, export=export)
 
     def build_fc1(self, input_dim, output_dim, q_noise, qn_block_size):
         return quant_noise(

@@ -5,17 +5,15 @@ import torch
 import torch.nn as nn
 from torch.nn import Parameter
 
-from fairseq import utils
 from fairseq.modules import (
     LayerNorm,
     LayerDropModuleList,
     PositionalEmbedding,
-    LunarMultiheadAttention,
 )
-from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
-from fairseq.modules.luna_sentence_encoder import LunaSentenceEncoderLayer, init_bert_params
+from fairseq.modules.luna_sentence_encoder import LunaSentenceEncoderLayer, init_bert_params, get_sinusoidal_positional_embedding
+
 
 class LunaLRAEncoder(nn.Module):
     """
@@ -47,6 +45,7 @@ class LunaLRAEncoder(nn.Module):
         vocab_size: int,
         projection_length: int,
         num_encoder_layers: int = 6,
+        embedding_type: str = "sparse",
         embedding_dim: int = 768,
         ffn_embedding_dim: int = 3072,
         num_attention_heads: int = 8,
@@ -56,7 +55,6 @@ class LunaLRAEncoder(nn.Module):
         activation_dropout: float = 0.1,
         layerdrop: float = 0.0,
         max_seq_len: int = 256,
-        num_segments: int = 0,
         use_position_embeddings: bool = True,
         offset_positions_by_padding: bool = True,
         layernorm_embedding: bool = False,
@@ -85,8 +83,8 @@ class LunaLRAEncoder(nn.Module):
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
+        self.embedding_type = embedding_type
         self.embedding_dim = embedding_dim
-        self.num_segments = num_segments
         self.use_position_embeddings = use_position_embeddings
         self.apply_bert_init = apply_bert_init
         self.learned_pos_embedding = learned_pos_embedding
@@ -95,19 +93,14 @@ class LunaLRAEncoder(nn.Module):
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
 
-        self.embed_tokens = self.build_embedding(self.vocab_size, self.embedding_dim, self.padding_idx)
+        assert embedding_type in ['sparse', 'linear']
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
         self.embed_scale = embed_scale
 
         if q_noise > 0:
             self.quant_noise = apply_quant_noise_(nn.Linear(self.embedding_dim, self.embedding_dim, bias=False), q_noise, qn_block_size)
         else:
             self.quant_noise = None
-
-        if self.num_segments > 0:
-            self.segment_embeddings = nn.Embedding(self.num_segments, self.embedding_dim, padding_idx=None)
-            nn.init.normal_(self.segment_embeddings.weight, mean=0.0, std=self.embedding_dim ** -0.5)
-        else:
-            self.segment_embeddings = None
 
         self.embed_positions = (
             PositionalEmbedding(
@@ -134,6 +127,7 @@ class LunaLRAEncoder(nn.Module):
             self.layers = LayerDropModuleList(p=self.layerdrop)
         else:
             self.layers = nn.ModuleList([])
+
         self.num_layers = num_encoder_layers
         real_num_layes = 1 if self.tie_layer_weights else num_encoder_layers
         self.layers.extend([
@@ -191,10 +185,15 @@ class LunaLRAEncoder(nn.Module):
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
 
-    def build_embedding(self, vocab_size, embedding_dim, padding_idx):
-        embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
-        return embed_tokens
+    def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
+        if embedding_type == 'sparse':
+            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+        else:
+            embed_tokens = nn.Linear(1, embedding_type, bias=False)
+            nn.init.xavier_uniform_(embed_tokens.weight)
+            return embed_tokens
 
     def build_luna_sentence_encoder_layer(
         self,
@@ -234,7 +233,6 @@ class LunaLRAEncoder(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
-        segment_labels: torch.Tensor = None,
         last_state_only: bool = False,
         positions: Optional[torch.Tensor] = None,
     ) -> Tuple[List[Tuple[torch.Tensor, torch.Tensor]],
@@ -243,11 +241,17 @@ class LunaLRAEncoder(nn.Module):
 
         # compute padding mask. This is needed for multi-head attention
         # B x T
-        x_padding_mask = tokens.eq(self.padding_idx)
+        if self.embedding_type == 'sparse':
+            x_padding_mask = tokens.eq(self.padding_idx)
+            # B x T -> B x T x D
+            x = self.embed_tokens(tokens)
+        else:
+            # B x T -> B x T x 1 -> B x T x D
+            x = self.embed_tokens(tokens.unsqueeze(2))
+            x_padding_mask = None
         lengths = tokens.size(1) - x_padding_mask.sum(1)
         max_len = lengths.max() if self.dynamic_projection else self.proj_len
 
-        x = self.embed_tokens(tokens)
         px = self.projected_embeddings[:max_len]
 
         if self.embed_scale is not None:
@@ -258,9 +262,6 @@ class LunaLRAEncoder(nn.Module):
             x += self.embed_positions(tokens, positions=positions)
         if self.projected_positions is not None:
             px += self.projected_positions[:max_len]
-
-        if self.segment_embeddings is not None and segment_labels is not None:
-            x += self.segment_embeddings(segment_labels)
 
         if self.quant_noise is not None:
             x = self.quant_noise(x)
@@ -274,7 +275,7 @@ class LunaLRAEncoder(nn.Module):
         # L x C -> B x L x C
         px = px.unsqueeze(0).expand(bsz, len, dim)
 
-        if self.dynamic_projection:
+        if self.dynamic_projection and self.embedding_type == 'sparse':
             pidx = torch.arange(len).unsqueeze(0).to(x.device)
             # B x L
             px_padding_mask = pidx.ge(lengths.unsqueeze(1))

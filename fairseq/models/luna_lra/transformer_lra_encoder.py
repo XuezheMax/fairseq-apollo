@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Optional, Tuple
+import math
 
 import torch
 import torch.nn as nn
@@ -75,6 +76,7 @@ class TransformerLRAEncoder(nn.Module):
         padding_idx: int,
         vocab_size: int,
         num_encoder_layers: int = 6,
+        embedding_type: str = "sparse",
         embedding_dim: int = 768,
         ffn_embedding_dim: int = 3072,
         num_attention_heads: int = 8,
@@ -83,7 +85,6 @@ class TransformerLRAEncoder(nn.Module):
         activation_dropout: float = 0.1,
         layerdrop: float = 0.0,
         max_seq_len: int = 256,
-        num_segments: int = 2,
         use_position_embeddings: bool = True,
         offset_positions_by_padding: bool = True,
         encoder_normalize_before: bool = False,
@@ -91,7 +92,6 @@ class TransformerLRAEncoder(nn.Module):
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
         embed_scale: float = None,
-        layer_norm_affine = False,
         freeze_embeddings: bool = False,
         n_trans_layers_to_freeze: int = 0,
         export: bool = False,
@@ -109,8 +109,8 @@ class TransformerLRAEncoder(nn.Module):
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
+        self.embedding_type = embedding_type
         self.embedding_dim = embedding_dim
-        self.num_segments = num_segments
         self.use_position_embeddings = use_position_embeddings
         self.apply_bert_init = apply_bert_init
         self.learned_pos_embedding = learned_pos_embedding
@@ -118,9 +118,8 @@ class TransformerLRAEncoder(nn.Module):
         self.tpu = False  # whether we're on TPU
         self.tie_layer_weights = tie_layer_weights
 
-        self.embed_tokens = self.build_embedding(
-            self.vocab_size, self.embedding_dim, self.padding_idx
-        )
+        assert embedding_type in ['sparse', 'linear']
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
         self.embed_scale = embed_scale
 
         if q_noise > 0:
@@ -132,12 +131,6 @@ class TransformerLRAEncoder(nn.Module):
         else:
             self.quant_noise = None
 
-        self.segment_embeddings = (
-            Embedding(self.num_segments, self.embedding_dim, padding_idx=None)
-            if self.num_segments > 0
-            else None
-        )
-
         self.embed_positions = (
             PositionalEmbedding(
                 self.max_seq_len,
@@ -148,6 +141,9 @@ class TransformerLRAEncoder(nn.Module):
             if self.use_position_embeddings
             else None
         )
+        if self.use_position_embeddings and not self.learned_pos_embedding:
+            if self.embed_scale is None:
+                self.embed_scale = math.sqrt(self.embedding_dim)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -167,7 +163,6 @@ class TransformerLRAEncoder(nn.Module):
                 attention_dropout=attention_dropout,
                 activation_dropout=activation_dropout,
                 activation_fn=activation_fn,
-                layer_norm_affine=layer_norm_affine,
                 export=export,
                 q_noise=q_noise,
                 qn_block_size=qn_block_size,
@@ -176,7 +171,7 @@ class TransformerLRAEncoder(nn.Module):
         ])
 
         if encoder_normalize_before:
-            self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=layer_norm_affine, export=export)
+            self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
         else:
             self.emb_layer_norm = None
 
@@ -198,8 +193,15 @@ class TransformerLRAEncoder(nn.Module):
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
 
-    def build_embedding(self, vocab_size, embedding_dim, padding_idx):
-        return Embedding(vocab_size, embedding_dim, padding_idx)
+    def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
+        if embedding_type == 'sparse':
+            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+        else:
+            embed_tokens = nn.Linear(1, embedding_type, bias=False)
+            nn.init.xavier_uniform_(embed_tokens.weight)
+            return embed_tokens
 
     def build_transformer_sentence_encoder_layer(
         self,
@@ -210,7 +212,6 @@ class TransformerLRAEncoder(nn.Module):
         attention_dropout,
         activation_dropout,
         activation_fn,
-        layer_norm_affine,
         export,
         q_noise,
         qn_block_size,
@@ -223,7 +224,6 @@ class TransformerLRAEncoder(nn.Module):
             attention_dropout=attention_dropout,
             activation_dropout=activation_dropout,
             activation_fn=activation_fn,
-            layer_norm_affine=layer_norm_affine,
             export=export,
             q_noise=q_noise,
             qn_block_size=qn_block_size,
@@ -235,26 +235,28 @@ class TransformerLRAEncoder(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
-        segment_labels: torch.Tensor = None,
         last_state_only: bool = False,
         positions: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # compute padding mask. This is needed for multi-head attention
-        padding_mask = tokens.eq(self.padding_idx)
+        if self.embedding_type == 'sparse':
+            padding_mask = tokens.eq(self.padding_idx)
+            # B x T -> B x T x D
+            x = self.embed_tokens(tokens)
+        else:
+            padding_mask = None
+            # B x T -> B x T x 1 -> B x T x D
+            x = self.embed_tokens(tokens.unsqueeze(2))
+
         if not self.traceable and not self.tpu and not padding_mask.any():
             padding_mask = None
-
-        x = self.embed_tokens(tokens)
 
         if self.embed_scale is not None:
             x *= self.embed_scale
 
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
-
-        if self.segment_embeddings is not None and segment_labels is not None:
-            x += self.segment_embeddings(segment_labels)
 
         if self.quant_noise is not None:
             x = self.quant_noise(x)
@@ -297,10 +299,3 @@ class TransformerLRAEncoder(nn.Module):
             return torch.stack(inner_states), sentence_rep
         else:
             return inner_states, sentence_rep
-
-
-def Embedding(num_embeddings, embedding_dim, padding_idx):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
-    nn.init.constant_(m.weight[padding_idx], 0)
-    return m
