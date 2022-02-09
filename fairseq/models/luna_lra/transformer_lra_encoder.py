@@ -199,8 +199,8 @@ class TransformerLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = nn.Linear(1, embedding_type, bias=False)
-            nn.init.xavier_uniform_(embed_tokens.weight)
+            embed_tokens = nn.Linear(1, embedding_dim, bias=False)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
 
     def build_transformer_sentence_encoder_layer(
