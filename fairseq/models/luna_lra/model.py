@@ -212,12 +212,14 @@ class LRAEncoder(FairseqEncoder):
             dictionary = task.dictionary
             vocab_size = len(dictionary)
             padding_idx = dictionary.pad_index
+            offset_positions_by_padding = True
             embedding_type = 'sparse'
         else:
             assert args.sen_rep_type == 'mp'
             dictionary = None
             vocab_size = None
             padding_idx = None
+            offset_positions_by_padding = False
             embedding_type = 'linear'
         super().__init__(dictionary)
         self.args = args
@@ -236,7 +238,7 @@ class LRAEncoder(FairseqEncoder):
                 activation_dropout=args.act_dropout,
                 max_seq_len=args.max_positions,
                 use_position_embeddings=True,
-                offset_positions_by_padding=True,
+                offset_positions_by_padding=offset_positions_by_padding,
                 encoder_normalize_before=getattr(args, "encoder_normalize_before", False),
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
@@ -260,7 +262,7 @@ class LRAEncoder(FairseqEncoder):
                 activation_dropout=args.act_dropout,
                 max_seq_len=args.max_positions,
                 use_position_embeddings=True,
-                offset_positions_by_padding=True,
+                offset_positions_by_padding=offset_positions_by_padding,
                 layernorm_embedding=getattr(args, "encoder_normalize_before", False),
                 normalize_before=False,
                 apply_bert_init=getattr(args, "apply_bert_init", False),
