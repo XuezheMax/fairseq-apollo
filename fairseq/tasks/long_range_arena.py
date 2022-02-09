@@ -269,10 +269,7 @@ class LRAImageTask(FairseqTask):
         dataset = {
             'id': IdDataset(),
             'net_input': {
-                'src_tokens': RightPadDataset(
-                    src_tokens,
-                    pad_idx=self.source_dictionary.pad(),
-                ),
+                'src_tokens': src_tokens,
                 'src_lengths': NumelDataset(src_tokens, reduce=False),
             },
             'nsentences': NumSamplesDataset(),
