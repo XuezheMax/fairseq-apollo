@@ -43,9 +43,12 @@ class LearnedPositionalEmbedding(nn.Embedding):
             if incremental_state is not None:
                 # positions is the same for every token when decoding a single step
                 # Without the int() cast, it doesn't work in some cases when exporting to ONNX
+                pos = input.size(1)
+                if self.padding_idx is not None:
+                    pos = pos + self.padding_idx
                 positions = torch.zeros(
                     (1, 1), device=input.device, dtype=input.dtype
-                ).fill_(int(self.padding_idx + input.size(1)))
+                ).fill_(int(pos))
             else:
                 positions = utils.make_positions(
                     input, self.padding_idx, onnx_trace=self.onnx_trace
