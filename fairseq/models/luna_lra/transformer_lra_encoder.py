@@ -242,15 +242,14 @@ class TransformerLRAEncoder(nn.Module):
         # compute padding mask. This is needed for multi-head attention
         if self.embedding_type == 'sparse':
             padding_mask = tokens.eq(self.padding_idx)
+            if not self.traceable and not self.tpu and not padding_mask.any():
+                padding_mask = None
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
         else:
             padding_mask = None
             # B x T -> B x T x 1 -> B x T x D
             x = self.embed_tokens(tokens.unsqueeze(2))
-
-        if not self.traceable and not self.tpu and not padding_mask.any():
-            padding_mask = None
 
         if self.embed_scale is not None:
             x *= self.embed_scale

@@ -243,13 +243,19 @@ class LunaLRAEncoder(nn.Module):
         # B x T
         if self.embedding_type == 'sparse':
             x_padding_mask = tokens.eq(self.padding_idx)
+            if not self.traceable and not self.tpu:
+                if not x_padding_mask.any():
+                    x_padding_mask = None
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
         else:
             # B x T -> B x T x 1 -> B x T x D
             x = self.embed_tokens(tokens.unsqueeze(2))
             x_padding_mask = None
-        lengths = tokens.size(1) - x_padding_mask.sum(1)
+
+        lengths = tokens.size(1)
+        if x_padding_mask is not None:
+            lengths = lengths - x_padding_mask.sum(1)
         max_len = lengths.max() if self.dynamic_projection else self.proj_len
 
         px = self.projected_embeddings[:max_len]
@@ -279,14 +285,10 @@ class LunaLRAEncoder(nn.Module):
             pidx = torch.arange(len).unsqueeze(0).to(x.device)
             # B x L
             px_padding_mask = pidx.ge(lengths.unsqueeze(1))
+            if not self.traceable and not self.tpu and not px_padding_mask.any():
+                px_padding_mask = None
         else:
             px_padding_mask = None
-
-        if not self.traceable and not self.tpu:
-            if not x_padding_mask.any():
-                x_padding_mask = None
-            if px_padding_mask is not None and not px_padding_mask.any():
-                px_padding_mask = None
 
         x = self.dropout_module(x)
         px = self.dropout_module(px)
