@@ -18,6 +18,7 @@ from fairseq.data import (
     NumSamplesDataset,
     NumelDataset,
     OffsetTokensDataset,
+    PixelSequenceDataset,
     PrependTokenDataset,
     RawLabelDataset,
     RightPadDataset,
@@ -257,13 +258,7 @@ class LRAImageTask(FairseqTask):
 
         def make_dataset(type):
             split_path = get_path(type, split)
-
-            dataset = data_utils.load_indexed_dataset(
-                split_path,
-                dictionary,
-                self.args.dataset_impl,
-                combine=combine,
-            )
+            dataset = PixelSequenceDataset(split_path + '.src')
             return dataset
 
         src_ds = make_dataset('input')
@@ -284,17 +279,10 @@ class LRAImageTask(FairseqTask):
             'ntokens': NumelDataset(src_tokens, reduce=True),
         }
 
-        label_dataset = make_dataset('label')
-        if label_dataset is not None:
-            dataset.update(
-                target=OffsetTokensDataset(
-                    StripTokenDataset(
-                        label_dataset,
-                        id_to_strip=self.label_dictionary.eos(),
-                    ),
-                    offset=-self.label_dictionary.nspecial,
-                )
-            )
+        label_path = get_path('label', split) + '.label'
+        if os.path.exists(label_path):
+            label_dataset = RawLabelDataset([int(line.strip()) for i, line in enumerate(open(label_path).readlines())])
+            dataset.update(target=label_dataset)
 
         nested_dataset = NestedDictionaryDataset(
             dataset,
@@ -321,15 +309,3 @@ class LRAImageTask(FairseqTask):
 
     def max_positions(self):
         return self._max_positions
-
-    @property
-    def source_dictionary(self):
-        return self.dictionary
-
-    @property
-    def target_dictionary(self):
-        return self.dictionary
-
-    @property
-    def label_dictionary(self):
-        return self._label_dictionary

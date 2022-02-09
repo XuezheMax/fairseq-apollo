@@ -228,6 +228,7 @@ class LRAEncoder(FairseqEncoder):
             padding_idx = dictionary.pad_index
             embedding_type = 'sparse'
         else:
+            assert args.sen_rep_type == 'mp'
             dictionary = None
             vocab_size = None
             padding_idx = None
