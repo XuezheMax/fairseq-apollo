@@ -284,7 +284,7 @@ class LRAImageTask(FairseqTask):
             'ntokens': NumelDataset(src_tokens, reduce=True),
         }
 
-        label_dataset = make_dataset('label-bin', self.label_dictionary)
+        label_dataset = make_dataset('label')
         if label_dataset is not None:
             dataset.update(
                 target=OffsetTokensDataset(
