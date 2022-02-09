@@ -242,7 +242,7 @@ class LRAEncoder(FairseqEncoder):
                 encoder_normalize_before=getattr(args, "encoder_normalize_before", False),
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 activation_fn=args.activation_fn,
-                learned_pos_embedding=True,
+                learned_pos_embedding=args.encoder_learned_pos,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         else:
@@ -268,7 +268,7 @@ class LRAEncoder(FairseqEncoder):
                 apply_bert_init=getattr(args, "apply_bert_init", False),
                 tie_kv=getattr(args, 'tie_kv', False),
                 activation_fn=args.activation_fn,
-                learned_pos_embedding=True,
+                learned_pos_embedding=args.encoder_learned_pos,
                 embed_scale=None,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
@@ -289,7 +289,7 @@ def base_architecture(args):
 
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
     args.share_encoder_input_output_embed = getattr(args, 'share_encoder_input_output_embed', False)
-    args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', True)
+    args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.no_token_positional_embeddings = getattr(args, 'no_token_positional_embeddings', False)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2048)
 
