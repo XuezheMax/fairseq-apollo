@@ -229,6 +229,9 @@ class LRAImageTask(FairseqTask):
 
     def __init__(self, args):
         super().__init__(args)
+        delattr(LRAImageTask, 'source_dictionary')
+        delattr(LRAImageTask, 'target_dictionary')
+        
         if not hasattr(args, 'max_positions'):
             self._max_positions = (
                 args.max_source_positions,
