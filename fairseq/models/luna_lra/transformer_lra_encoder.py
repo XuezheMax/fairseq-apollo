@@ -235,6 +235,7 @@ class TransformerLRAEncoder(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
+        src_lengths: torch.Tensor,
         last_state_only: bool = False,
         positions: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:

@@ -9,11 +9,13 @@ import math
 import torch
 import torch.nn as nn
 
+from fairseq.modules import FairseqDropout, LayerNorm
+from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 
-class TransformerLRAEncoder(nn.Module):
+
+class LSTMLRAEncoder(nn.Module):
     """
-    Implementation for a Bi-directional Transformer based Sentence Encoder used
-    in BERT/XLM style pre-trained models.
+    Implementation for a Bi-directional LSTM based Sentence Encoder.
 
     This first computes the token embedding using the token embedding matrix,
     position embeddings (if specified) and segment embeddings
@@ -38,45 +40,130 @@ class TransformerLRAEncoder(nn.Module):
         self,
         padding_idx: int,
         vocab_size: int,
-        num_encoder_layers: int = 6,
+        num_layers: int = 6,
+        bidirectional=False,
         embedding_type: str = "sparse",
         embedding_dim: int = 768,
-        ffn_embedding_dim: int = 3072,
-        num_attention_heads: int = 8,
-        dropout: float = 0.1,
-        attention_dropout: float = 0.1,
-        activation_dropout: float = 0.1,
-        layerdrop: float = 0.0,
+        hidden_dim: int = 3072,
+        output_dropout: float = 0.0,
+        input_dropout: float = 0.0,
         max_seq_len: int = 256,
-        use_position_embeddings: bool = True,
-        offset_positions_by_padding: bool = True,
-        encoder_normalize_before: bool = False,
-        apply_bert_init: bool = False,
-        activation_fn: str = "relu",
-        learned_pos_embedding: bool = True,
-        embed_scale: float = None,
         freeze_embeddings: bool = False,
-        n_trans_layers_to_freeze: int = 0,
         export: bool = False,
         traceable: bool = False,
-        tie_layer_weights: bool = False,
         q_noise: float = 0.0,
         qn_block_size: int = 8,
         sen_rep_type: str = 'cls'
     ) -> None:
 
         super().__init__()
+        self.num_layers = num_layers
+        self.bidirectional = bidirectional
+        self.hidden_dim = hidden_dim
         self.sen_rep_type = sen_rep_type
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.layerdrop = layerdrop
+        self.dropout_in_module = FairseqDropout(input_dropout, module_name=self.__class__.__name__)
+        self.dropout_out_module = FairseqDropout(output_dropout, module_name=self.__class__.__name__)
         self.max_seq_len = max_seq_len
         self.embedding_type = embedding_type
         self.embedding_dim = embedding_dim
-        self.use_position_embeddings = use_position_embeddings
-        self.apply_bert_init = apply_bert_init
-        self.learned_pos_embedding = learned_pos_embedding
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
-        self.tie_layer_weights = tie_layer_weights
+
+        assert embedding_type in ['sparse', 'linear']
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
+
+        if q_noise > 0:
+            self.quant_noise = apply_quant_noise_(
+                nn.Linear(self.embedding_dim, self.embedding_dim, bias=False),
+                q_noise,
+                qn_block_size,
+            )
+        else:
+            self.quant_noise = None
+
+        self.lstm = LSTM(
+            input_size=embedding_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            dropout=self.dropout_out_module.p if num_layers > 1 else 0.,
+            bidirectional=bidirectional,
+        )
+
+        def freeze_module_params(m):
+            if m is not None:
+                for p in m.parameters():
+                    p.requires_grad = False
+
+        if freeze_embeddings:
+            freeze_module_params(self.embed_tokens)
+
+    def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
+        if embedding_type == 'sparse':
+            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+        else:
+            embed_tokens = nn.Linear(1, embedding_dim, bias=False)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+
+    def prepare_for_tpu_(self, **kwargs):
+        self.tpu = True
+
+    def forward(
+            self,
+            tokens: torch.Tensor,
+            src_lengths: torch.Tensor,
+            enforce_sorted: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        bsz, seqlen = tokens.size()
+        # compute padding mask. This is needed for multi-head attention
+        if self.embedding_type == 'sparse':
+            padding_mask = tokens.eq(self.padding_idx)
+            if not self.traceable and not self.tpu and not padding_mask.any():
+                padding_mask = None
+            # B x T -> B x T x D
+            x = self.embed_tokens(tokens)
+        else:
+            padding_mask = None
+            # B x T -> B x T x 1 -> B x T x D
+            x = self.embed_tokens(tokens.unsqueeze(2))
+
+        if self.quant_noise is not None:
+            x = self.quant_noise(x)
+
+        x = self.dropout_in_module(x)
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+
+        if padding_mask is not None:
+            # pack embedded source tokens into a PackedSequence
+            packed_x = nn.utils.rnn.pack_padded_sequence(x, src_lengths.data, enforce_sorted=enforce_sorted)
+        else:
+            packed_x = x
+
+        x, (h, c) = self.lstm(packed_x)
+
+        if padding_mask is not None:
+            # unpack outputs and apply dropout
+            x, _ = nn.utils.rnn.pad_packed_sequence(x, padding_value=self.padding_idx * 1.0)
+
+        if self.sen_rep_type == 'mp':
+            sentence_rep = x.mean(dim=0)
+        else:
+            sentence_rep = h[-2:] if self.bidirectional else h[-1:]
+            sentence_rep = sentence_rep.transpose(0, 1).reshape(bsz, -1)
+
+        return x, sentence_rep
+
+
+def LSTM(input_size, hidden_size, **kwargs):
+    m = nn.LSTM(input_size, hidden_size, **kwargs)
+    for name, param in m.named_parameters():
+        if 'weight' in name or 'bias' in name:
+            nn.init.xavier_uniform_(param)
+    return m

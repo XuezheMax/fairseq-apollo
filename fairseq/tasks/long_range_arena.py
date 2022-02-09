@@ -144,12 +144,14 @@ class LRATextTask(FairseqTask):
         }
         if src1_ds is not None:
             dataset.update(
-                net_input1=RightPadDataset(
-                    src1_tokens,
-                    pad_idx=self.source_dictionary.pad(),
-                )
+                net_input1={
+                    'src_tokens': RightPadDataset(
+                        src1_tokens,
+                        pad_idx=self.source_dictionary.pad(),
+                    ),
+                    'src_lengths': NumelDataset(src1_tokens, reduce=False),
+                },
             )
-
 
         label_dataset = make_dataset('label-bin', self.label_dictionary)
         if label_dataset is not None:

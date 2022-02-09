@@ -18,6 +18,7 @@ from fairseq.modules import (
 )
 from fairseq.models.luna_lra.luna_lra_encoder import LunaLRAEncoder
 from fairseq.models.luna_lra.transformer_lra_encoder import TransformerLRAEncoder
+from fairseq.models.luna_lra.lstm_lra_encoder import LSTMLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
 
-        parser.add_argument('--layer-type', choices=['transformer', 'luna'])
+        parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
@@ -151,10 +152,11 @@ class LRAModel(FairseqEncoderModel):
 
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
+        src_lengths = sample['net_input']['src_lengths']
         if self.use_p or self.sen_rep_type == 'mp':
             assert self.layer_type == 'luna' or not self.use_p
             src_tokens = src_tokens[:, 1:]
-        sentence_rep = self.encoder(src_tokens)
+        sentence_rep = self.encoder(src_tokens, src_lengths)
         if not self.use_p:
             if self.layer_type == 'transformer':
                 sentence_rep = sentence_rep[1]
@@ -163,8 +165,9 @@ class LRAModel(FairseqEncoderModel):
         else:
             sentence_rep = sentence_rep[1][1].mean(dim=0)
         if 'net_input1' in sample:
-            src1_tokens = sample['net_input1']
-            sentence1_rep = self.encoder(src1_tokens)
+            src1_tokens = sample['net_input1']['src_tokens']
+            src1_lengths = sample['net_input1']['src_lengths']
+            sentence1_rep = self.encoder(src1_tokens, src1_lengths)
             if not self.use_p:
                 if self.layer_type == 'transformer':
                     sentence1_rep = sentence1_rep[1]
@@ -245,6 +248,20 @@ class LRAEncoder(FairseqEncoder):
                 learned_pos_embedding=args.encoder_learned_pos,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
+        elif args.layer_type == 'lstm':
+            self.encoder = LSTMLRAEncoder(
+                padding_idx=padding_idx,
+                vocab_size=vocab_size,
+                num_layers=args.encoder_layers,
+                bidirectional=True,
+                embedding_type=embedding_type,
+                embedding_dim=args.encoder_embed_dim,
+                hidden_dim=args.encoder_ffn_embed_dim,
+                input_dropout=args.dropout,
+                output_dropout=args.act_dropout,
+                max_seq_len=args.max_positions,
+                sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
+            )
         else:
             self.encoder = LunaLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
@@ -273,9 +290,9 @@ class LRAEncoder(FairseqEncoder):
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
     
-    def forward(self, src_tokens):
+    def forward(self, src_tokens, src_lengths):
 
-        return self.encoder(src_tokens)
+        return self.encoder(src_tokens, src_lengths)
 
 @register_model_architecture('lra', 'lra')
 def base_architecture(args):
@@ -304,7 +321,7 @@ def base_architecture(args):
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.adaptive_input = getattr(args, "adaptive_input", False)
-    args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
+    args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim * 2 if args.layer_type == 'lstm' else args.encoder_embed_dim)
 
 
 @register_model_architecture('lra', 'transformer_lra_listop')
@@ -377,6 +394,17 @@ def transformer_lra_cifar10(args):
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.max_positions = getattr(args, 'max_positions', 1025)
+    base_architecture(args)
+
+@register_model_architecture('lra', 'lstm_lra_cifar10')
+def transformer_lra_cifar10(args):
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
+    args.encoder_layers = getattr(args, 'encoder_layers', 3)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
