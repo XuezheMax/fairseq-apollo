@@ -42,7 +42,6 @@ class LRAModel(FairseqEncoderModel):
         self.args = args
         self.use_p = args.use_p
         self._max_positions = args.max_positions
-        self.padding_idx = task.dictionary.pad()
         self.sentence_out_dim = args.sentence_class_num
         self.lm_output_learned_bias = None
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
@@ -188,18 +187,6 @@ class LRAModel(FairseqEncoderModel):
     def max_positions(self):
         """Maximum output length supported by the encoder."""
         return self._max_positions
-    
-    @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, path=None):
-        num_embeddings = len(dictionary)
-        padding_idx = dictionary.pad()
-
-        emb = nn.Embedding(num_embeddings, embed_dim, padding_idx)
-        # if provided, load from preloaded dictionaries
-        if path:
-            embed_dict = utils.parse_embedding(path)
-            utils.load_embedding(embed_dict, dictionary, emb)
-        return emb
 
     @classmethod
     def build_model(cls, args, task):
@@ -212,7 +199,6 @@ class LRAModel(FairseqEncoderModel):
             args.max_source_positions = args.max_positions
         if not hasattr(args, 'decoder_embed_dim'):
             args.decoder_embed_dim = args.encoder_embed_dim
-        embed_tokens = cls.build_embedding(args, task.dictionary, args.encoder_embed_dim)
         logger.info(args)
         encoder = LRAEncoder(args, task)
         return cls(args, encoder, task)
