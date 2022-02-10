@@ -164,6 +164,8 @@ class LSTMLRAEncoder(nn.Module):
 def LSTM(input_size, hidden_size, **kwargs):
     m = nn.LSTM(input_size, hidden_size, **kwargs)
     for name, param in m.named_parameters():
-        if 'weight' in name or 'bias' in name:
+        if 'weight' in name:
             nn.init.xavier_uniform_(param)
+        if 'bias' in name:
+            nn.init.constant_(param, 0.)
     return m
