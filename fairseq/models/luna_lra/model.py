@@ -400,6 +400,7 @@ def transformer_lra_cifar10(args):
 
 @register_model_architecture('lra', 'lstm_lra_cifar10')
 def transformer_lra_cifar10(args):
+    args.layer_type = getattr(args, 'layer_type', 'lstm')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 3)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
