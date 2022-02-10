@@ -403,7 +403,7 @@ def transformer_lra_cifar10(args):
     args.layer_type = getattr(args, 'layer_type', 'lstm')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 3)
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
