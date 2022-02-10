@@ -158,7 +158,7 @@ class LRAModel(FairseqEncoderModel):
             src_tokens = src_tokens[:, 1:]
         sentence_rep = self.encoder(src_tokens, src_lengths)
         if not self.use_p:
-            if self.layer_type == 'transformer':
+            if self.layer_type in ['transformer', 'lstm']:
                 sentence_rep = sentence_rep[1]
             elif self.layer_type == 'luna':
                 sentence_rep = sentence_rep[1][0]
@@ -169,7 +169,7 @@ class LRAModel(FairseqEncoderModel):
             src1_lengths = sample['net_input1']['src_lengths']
             sentence1_rep = self.encoder(src1_tokens, src1_lengths)
             if not self.use_p:
-                if self.layer_type == 'transformer':
+                if self.layer_type in ['transformer', 'lstm']:
                     sentence1_rep = sentence1_rep[1]
                 elif self.layer_type == 'luna':
                     sentence1_rep = sentence1_rep[1][0]
