@@ -218,7 +218,7 @@ class LRAEncoder(FairseqEncoder):
             offset_positions_by_padding = True
             embedding_type = 'sparse'
         else:
-            assert args.sen_rep_type == 'mp'
+            assert args.sen_rep_type == 'mp' or args.layer_type == 'lstm'
             dictionary = None
             vocab_size = None
             padding_idx = None
@@ -321,7 +321,7 @@ def base_architecture(args):
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.adaptive_input = getattr(args, "adaptive_input", False)
-    args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim * 2 if args.layer_type == 'lstm' else args.encoder_embed_dim)
+    args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_ffn_embed_dim * 2 if args.layer_type == 'lstm' else args.encoder_embed_dim)
 
 
 @register_model_architecture('lra', 'transformer_lra_listop')
