@@ -105,8 +105,9 @@ class LSTMLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = nn.Linear(1, embedding_dim, bias=False)
-            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            embed_tokens = nn.Linear(1, embedding_dim, bias=True)
+            nn.init.xavier_normal_(embed_tokens.weight)
+            nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
 
     def prepare_for_tpu_(self, **kwargs):
@@ -129,6 +130,7 @@ class LSTMLRAEncoder(nn.Module):
             x = self.embed_tokens(tokens)
         else:
             padding_mask = None
+            tokens = (tokens - 0.5) / 0.5
             # B x T -> B x T x 1 -> B x T x D
             x = self.embed_tokens(tokens.unsqueeze(2))
 
