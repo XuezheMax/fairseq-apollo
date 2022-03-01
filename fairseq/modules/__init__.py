@@ -26,7 +26,9 @@ from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
 from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
-from .luna_sentence_encoder import LunaSentenceEncoder
+from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
+from .gated_attention_unit import GatedAttentionUnit
+from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
@@ -64,7 +66,6 @@ __all__ = [
     'LightweightConv',
     'LinearizedConvolution',
     'MultiheadAttention',
-    'LinearMultiheadAttention',
     'LunarMultiheadAttention',
     'LunarCausalAttention',
     'PositionalEmbedding',
@@ -77,8 +78,10 @@ __all__ = [
     'TransformerEncoderLayer',
     'LunaEncoderLayer',
     'LunaDecoderLayer',
-    'MoonDecoderLayer',
-    'MoonEncoderLayer',
+    'LunaSentenceEncoder',
+    'LunaSentenceEncoderLayer',
+    'GatedAttentionUnit',
+    'FlashSentenceEncoderLayer',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',
