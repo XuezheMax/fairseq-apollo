@@ -1,9 +1,8 @@
-from typing import Callable, Optional, Tuple, List, Union
+from typing import Optional, Tuple, List, Union
 import math
 
 import torch
 import torch.nn as nn
-from torch.nn import Parameter
 
 from fairseq.modules import (
     LayerNorm,
@@ -12,8 +11,6 @@ from fairseq.modules import (
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
-from fairseq.modules.luna_sentence_encoder import get_sinusoidal_positional_embedding
 
 
 class FlashLRAEncoder(nn.Module):
@@ -77,6 +74,7 @@ class FlashLRAEncoder(nn.Module):
         self.learned_pos_embedding = learned_pos_embedding
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
+        self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
@@ -102,3 +100,130 @@ class FlashLRAEncoder(nn.Module):
         else:
             self.layers = nn.ModuleList([])
         self.num_layers = num_encoder_layers
+
+        self.layers.extend([
+            self.build_flash_sentence_encoder_layer(
+                embedding_dim=self.embedding_dim,
+                hidden_dim=hidden_dim,
+                z_dim=z_dim,
+                dropout=dropout,
+                attention_dropout=attention_dropout,
+                hidden_dropout=hidden_dropout,
+                max_positions=self.max_seq_len,
+                export=export
+            )
+            for _ in range(self.num_layers)
+        ])
+
+        self.layer_norm = LayerNorm(self.embedding_dim, export=export)
+
+        def freeze_module_params(m):
+            if m is not None:
+                for p in m.parameters():
+                    p.requires_grad = False
+
+        if freeze_embeddings:
+            self.projected_embeddings.requires_grad = False
+            freeze_module_params(self.embed_tokens)
+            freeze_module_params(self.segment_embeddings)
+            freeze_module_params(self.embed_positions)
+            freeze_module_params(self.emb_layer_norm)
+            freeze_module_params(self.proj_emb_layer_norm)
+
+        for layer in range(n_trans_layers_to_freeze):
+            freeze_module_params(self.layers[layer])
+
+    def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
+        if embedding_type == 'sparse':
+            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+        else:
+            embed_tokens = nn.Linear(1, embedding_dim, bias=True)
+            nn.init.xavier_normal_(embed_tokens.weight)
+            nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
+            return embed_tokens
+
+    def build_flash_sentence_encoder_layer(
+        self,
+        embedding_dim,
+        hidden_dim,
+        z_dim,
+        dropout,
+        attention_dropout,
+        hidden_dropout,
+        max_positions,
+        export,
+    ):
+        return FlashSentenceEncoderLayer(
+            embedding_dim=embedding_dim,
+            hidden_dim=hidden_dim,
+            z_dim=z_dim,
+            dropout=dropout,
+            attention_dropout=attention_dropout,
+            hidden_dropout=hidden_dropout,
+            max_positions=max_positions,
+            export=export
+        )
+
+    def forward(
+            self,
+            tokens: torch.Tensor,
+            src_lengths: torch.Tensor,
+            last_state_only: bool = False,
+            positions: Optional[torch.Tensor] = None,
+    ) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], torch.Tensor]:
+
+        # compute padding mask. This is needed for multi-head attention
+        if self.embedding_type == 'sparse':
+            padding_mask = tokens.eq(self.padding_idx)
+            if not self.traceable and not self.tpu and not padding_mask.any():
+                padding_mask = None
+            # B x T -> B x T x D
+            x = self.embed_tokens(tokens)
+        else:
+            padding_mask = None
+            tokens = (tokens - 0.5) / 0.5
+            # B x T -> B x T x 1 -> B x T x D
+            x = self.embed_tokens(tokens.unsqueeze(2))
+
+        if self.embed_scale is not None:
+            x *= self.embed_scale
+
+        if self.embed_positions is not None:
+            x += self.embed_positions(tokens, positions=positions)
+
+        x = self.dropout_module(x)
+
+        # account for padding while computing the representation
+        if padding_mask is not None:
+            x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+
+        inner_states = []
+        if not last_state_only:
+            inner_states.append(x)
+
+        for i in range(self.num_layers):
+            if self.tie_layer_weights:
+                j = 0
+            else:
+                j = i
+            x, _ = self.layers[j](x, self_attn_padding_mask=padding_mask)
+            if not last_state_only:
+                inner_states.append(x)
+
+        if self.sen_rep_type == 'mp':
+            sentence_rep = x.mean(dim=0)
+        else:
+            sentence_rep = x[0, :, :]
+
+        if last_state_only:
+            inner_states = [x]
+
+        if self.traceable:
+            return torch.stack(inner_states), sentence_rep
+        else:
+            return inner_states, sentence_rep

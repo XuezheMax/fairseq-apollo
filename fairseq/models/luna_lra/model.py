@@ -16,9 +16,7 @@ from fairseq.modules import (
     LayerNorm,
     SinusoidalPositionalEmbedding
 )
-from fairseq.models.luna_lra.luna_lra_encoder import LunaLRAEncoder
-from fairseq.models.luna_lra.transformer_lra_encoder import TransformerLRAEncoder
-from fairseq.models.luna_lra.lstm_lra_encoder import LSTMLRAEncoder
+from fairseq.models.luna_lra import FlashLRAEncoder, LunaLRAEncoder, TransformerLRAEncoder, LSTMLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 logger = logging.getLogger(__name__)
@@ -140,7 +138,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
 
-        parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm'])
+        parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
@@ -262,6 +260,24 @@ class LRAEncoder(FairseqEncoder):
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
+        elif args.layer_type == 'flash':
+            self.encoder = FlashLRAEncoder(
+                padding_idx=padding_idx,
+                vocab_size=vocab_size,
+                num_encoder_layers=args.encoder_layers,
+                embedding_type=embedding_type,
+                embedding_dim=args.encoder_embed_dim,
+                hidden_dim=args.encoder_ffn_embed_dim,
+                z_dim=args.z_dim,
+                dropout=args.dropout,
+                attention_dropout=args.attention_dropout,
+                hidden_dropout=args.act_dropout,
+                max_seq_len=args.max_positions,
+                use_position_embeddings=(not args.no_token_positional_embeddings),
+                offset_positions_by_padding=offset_positions_by_padding,
+                learned_pos_embedding=args.encoder_learned_pos,
+                sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
+            )
         else:
             self.encoder = LunaLRAEncoder(
                 tie_layer_weights=getattr(args, 'tie_layer_weights', False),
@@ -290,9 +306,9 @@ class LRAEncoder(FairseqEncoder):
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
     
-    def forward(self, src_tokens, src_lengths):
+    def forward(self, src_tokens, src_lengths=None, **kwargs):
+        return self.encoder(src_tokens, src_lengths, last_state_only=True)
 
-        return self.encoder(src_tokens, src_lengths)
 
 @register_model_architecture('lra', 'lra')
 def base_architecture(args):

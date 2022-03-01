@@ -193,7 +193,7 @@ class GatedAttentionUnit(nn.Module):
         # B x N x E -> N x B x E
         out = torch.bmm(kernel, v).transpose(0, 1)
         # N x B x D
-        out = self.out_proj(out)
+        out = self.out_proj(out * u)
 
         if need_weights:
             return out, attn_weights
