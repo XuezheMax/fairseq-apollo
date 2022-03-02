@@ -83,6 +83,8 @@ class LRAModel(FairseqEncoderModel):
         # Arguments related to hidden states and self-attention
         parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension for FFN')
+        parser.add_argument('--z-dim', type=int, metavar='N',
+                            help='encoder z dimension for FLASH')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
@@ -317,6 +319,7 @@ def base_architecture(args):
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
 
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
+    args.z_dim = getattr(args, 'z_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
 
@@ -408,6 +411,19 @@ def transformer_lra_cifar10(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 3)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.max_positions = getattr(args, 'max_positions', 1025)
+    base_architecture(args)
+
+@register_model_architecture('lra', 'flash_lra_cifar10')
+def flash_lra_cifar10(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 128)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
