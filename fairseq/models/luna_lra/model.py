@@ -16,7 +16,10 @@ from fairseq.modules import (
     LayerNorm,
     SinusoidalPositionalEmbedding
 )
-from fairseq.models.luna_lra import FlashLRAEncoder, LunaLRAEncoder, TransformerLRAEncoder, LSTMLRAEncoder
+from fairseq.models.luna_lra.transformer_lra_encoder import TransformerLRAEncoder
+from fairseq.models.luna_lra.luna_lra_encoder import LunaLRAEncoder
+from fairseq.models.luna_lra.lstm_lra_encoder import LSTMLRAEncoder
+from fairseq.models.luna_lra.flash_lra_encoder import FlashLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 logger = logging.getLogger(__name__)
