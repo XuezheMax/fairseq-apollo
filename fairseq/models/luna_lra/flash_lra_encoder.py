@@ -60,8 +60,6 @@ class FlashLRAEncoder(nn.Module):
         offset_positions_by_padding: bool = True,
         learned_pos_embedding: bool = True,
         embed_scale: float = None,
-        freeze_embeddings: bool = False,
-        n_trans_layers_to_freeze: int = 0,
         export: bool = False,
         traceable: bool = False,
         sen_rep_type: str = 'cls',
@@ -121,20 +119,6 @@ class FlashLRAEncoder(nn.Module):
         ])
 
         self.layer_norm = LayerNorm(self.embedding_dim, export=export)
-
-        def freeze_module_params(m):
-            if m is not None:
-                for p in m.parameters():
-                    p.requires_grad = False
-
-        if freeze_embeddings:
-            self.projected_embeddings.requires_grad = False
-            freeze_module_params(self.embed_tokens)
-            freeze_module_params(self.embed_positions)
-            freeze_module_params(self.layer_norm)
-
-        for layer in range(n_trans_layers_to_freeze):
-            freeze_module_params(self.layers[layer])
 
     def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
         if embedding_type == 'sparse':
