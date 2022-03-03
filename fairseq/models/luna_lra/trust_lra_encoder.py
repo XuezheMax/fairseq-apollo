@@ -98,7 +98,7 @@ class TrustLRAEncoder(nn.Module):
             if self.embed_scale is None:
                 self.embed_scale = math.sqrt(self.embedding_dim)
 
-        self.emb_layer_norm = LayerNorm(self.embedding_dim, export=export)
+        self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=False, export=export)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
