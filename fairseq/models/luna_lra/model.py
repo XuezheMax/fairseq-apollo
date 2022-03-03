@@ -453,7 +453,7 @@ def flash_lra_cifar10(args):
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
 
-@register_model_architecture('lra', 'flash_lra_cifar10')
+@register_model_architecture('lra', 'trust_lra_cifar10')
 def flash_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'trust')
