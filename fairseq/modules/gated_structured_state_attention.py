@@ -37,7 +37,6 @@ class GatedStructuredStateAttention(nn.Module):
 
         self.embed_dim = embed_dim
         self.hdim = hdim
-        self.scaling = self.zdim ** -0.5
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
