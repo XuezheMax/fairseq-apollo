@@ -98,8 +98,6 @@ class TrustLRAEncoder(nn.Module):
             if self.embed_scale is None:
                 self.embed_scale = math.sqrt(self.embedding_dim)
 
-        self.emb_layer_norm = LayerNorm(self.embedding_dim, elementwise_affine=False, export=export)
-
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
         else:
@@ -180,7 +178,7 @@ class TrustLRAEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
 
-        x = self.emb_layer_norm(x)
+        x = torch.tanh(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
