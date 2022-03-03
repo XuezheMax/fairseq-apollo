@@ -18,10 +18,10 @@ from fairseq.modules.quant_noise import quant_noise
 
 
 @with_incremental_state
-class GatedAttentionUnit(nn.Module):
-    """Gated Attention Unit.
+class GatedStructuredStateAttention(nn.Module):
+    """Gated Structured State Attention.
 
-    See "Transformer Quality in Linear Time" for more details.
+    See "" for more details.
     """
 
     def __init__(
@@ -42,8 +42,8 @@ class GatedAttentionUnit(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.proj = nn.Linear(embed_dim, 2 * hdim + zdim, bias=True)
-        self.out_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.proj = nn.Linear(embed_dim, hdim + embed_dim + zdim, bias=True)
+        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 
@@ -65,8 +65,8 @@ class GatedAttentionUnit(nn.Module):
         nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
         nn.init.constant_(self.proj.bias, 0.0)
 
-        nn.init.normal_(self.out_proj.weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.out_proj.bias, 0.0)
+        nn.init.normal_(self.h_proj.weight, mean=0.0, std=0.02)
+        nn.init.constant_(self.h_proj.bias, 0.0)
 
         nn.init.normal_(self.gamma, mean=0.0, std=0.02)
         nn.init.constant_(self.beta, 0.0)
@@ -94,7 +94,7 @@ class GatedAttentionUnit(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = False,
         attn_mask: Optional[Tensor] = None,
-        before_relu2: bool = False,
+        before_softmax: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -107,8 +107,8 @@ class GatedAttentionUnit(nn.Module):
             attn_mask (ByteTensor, optional): typically used to
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
-            before_relu2 (bool, optional): return the raw attention
-                weights and values before the attention relu square.
+            before_softmax (bool, optional): return the raw attention
+                weights and values before the attention softmax.
         """
 
         seq_len, bsz, embed_dim = x.size()
@@ -119,11 +119,13 @@ class GatedAttentionUnit(nn.Module):
         else:
             saved_state = None
 
-        # N x B x D -> N x B x (2*E+S)
+        # N x B x D -> N x B x (D+E+S)
         base = self.proj(x)
-        u, v, z = torch.split(F.silu(base), [self.hdim, self.hdim, self.zdim], dim=-1)
+        u, v, z = torch.split(base, [self.embed_dim, self.hdim, self.zdim], dim=-1)
+        u = F.sigmoid(u)
+        v = F.silu(v)
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
-        z = z.unsqueeze(2) * self.gamma + self.beta
+        z = F.silu(z).unsqueeze(2) * self.gamma + self.beta
         # N x B x 2 x S -> N x B x S
         q, k = torch.unbind(z, dim=2)
         # N x B x S -> B x N x S
@@ -146,7 +148,7 @@ class GatedAttentionUnit(nn.Module):
             prev_padding_mask: Optional[Tensor] = None
             if "prev_padding_mask" in saved_state:
                 prev_padding_mask = saved_state["prev_padding_mask"]
-            padding_mask = GatedAttentionUnit._append_prev_padding_mask(
+            padding_mask = GatedStructuredStateAttention._append_prev_padding_mask(
                 padding_mask=padding_mask,
                 prev_padding_mask=prev_padding_mask,
                 batch_size=bsz,
@@ -177,23 +179,26 @@ class GatedAttentionUnit(nn.Module):
         bias = self._get_rel_pos_bias(seq_len)
         qk = qk / lengths + bias
         if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
+            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
+            attn_mask = attn_mask.unsqueeze(0)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk =qk.masked_fill(attn_mask, 0.0)
+            qk += attn_mask
 
-        if before_relu2:
+        if before_softmax:
             return qk, v
 
-        attn_weights = torch.square(F.relu(qk))
+        # attn_weights = torch.square(F.relu(qk))
+        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
         kernel = self.attention_dropout(attn_weights)
-        # B x N x E -> N x B x E
-        out = torch.bmm(kernel, v).transpose(0, 1)
+        # B x N x E -> B x N x D
+        h = self.h_proj(torch.bmm(kernel, v))
+        # B x N x D -> N x B x D
+        h = torch.tanh(h.transpose(0, 1))
         # N x B x D
-        out = self.out_proj(out * u)
+        out = torch.addcmul(x, u, h - x)
 
         if need_weights:
             return out, attn_weights
