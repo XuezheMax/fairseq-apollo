@@ -48,7 +48,6 @@ class LSTMLRAEncoder(nn.Module):
         output_dropout: float = 0.0,
         input_dropout: float = 0.0,
         max_seq_len: int = 256,
-        freeze_embeddings: bool = False,
         export: bool = False,
         traceable: bool = False,
         q_noise: float = 0.0,
@@ -90,14 +89,6 @@ class LSTMLRAEncoder(nn.Module):
             dropout=self.dropout_out_module.p if num_layers > 1 else 0.,
             bidirectional=bidirectional,
         )
-
-        def freeze_module_params(m):
-            if m is not None:
-                for p in m.parameters():
-                    p.requires_grad = False
-
-        if freeze_embeddings:
-            freeze_module_params(self.embed_tokens)
 
     def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
         if embedding_type == 'sparse':

@@ -130,10 +130,8 @@ class FlashLRAEncoder(nn.Module):
         if freeze_embeddings:
             self.projected_embeddings.requires_grad = False
             freeze_module_params(self.embed_tokens)
-            freeze_module_params(self.segment_embeddings)
             freeze_module_params(self.embed_positions)
-            freeze_module_params(self.emb_layer_norm)
-            freeze_module_params(self.proj_emb_layer_norm)
+            freeze_module_params(self.layer_norm)
 
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
@@ -215,6 +213,8 @@ class FlashLRAEncoder(nn.Module):
             x, _ = self.layers[i](x, x_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append(x)
+
+        x = self.layer_norm(x)
 
         if self.sen_rep_type == 'mp':
             sentence_rep = x.mean(dim=0)

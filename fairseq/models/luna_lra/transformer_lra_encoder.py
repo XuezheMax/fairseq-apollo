@@ -92,8 +92,6 @@ class TransformerLRAEncoder(nn.Module):
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
         embed_scale: float = None,
-        freeze_embeddings: bool = False,
-        n_trans_layers_to_freeze: int = 0,
         export: bool = False,
         traceable: bool = False,
         tie_layer_weights: bool = False,
@@ -178,20 +176,6 @@ class TransformerLRAEncoder(nn.Module):
         # Apply initialization of model params after building the model
         if self.apply_bert_init:
             self.apply(init_bert_params)
-
-        def freeze_module_params(m):
-            if m is not None:
-                for p in m.parameters():
-                    p.requires_grad = False
-
-        if freeze_embeddings:
-            freeze_module_params(self.embed_tokens)
-            freeze_module_params(self.segment_embeddings)
-            freeze_module_params(self.embed_positions)
-            freeze_module_params(self.emb_layer_norm)
-
-        for layer in range(n_trans_layers_to_freeze):
-            freeze_module_params(self.layers[layer])
 
     def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
         if embedding_type == 'sparse':
