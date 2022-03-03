@@ -122,7 +122,7 @@ class GatedStructuredStateAttention(nn.Module):
         # N x B x D -> N x B x (D+E+S)
         base = self.proj(x)
         u, v, z = torch.split(base, [self.embed_dim, self.hdim, self.zdim], dim=-1)
-        u = F.sigmoid(u)
+        u = torch.sigmoid(u)
         v = F.silu(v)
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = F.silu(z).unsqueeze(2) * self.gamma + self.beta
@@ -179,13 +179,13 @@ class GatedStructuredStateAttention(nn.Module):
         bias = self._get_rel_pos_bias(seq_len)
         qk = qk / lengths + bias
         if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
+            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0)
+            attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk += attn_mask
+            qk = qk.masked_fill(attn_mask, 0.0)
 
         if before_softmax:
             return qk, v
