@@ -38,6 +38,7 @@ class GatedStructuredStateAttention(nn.Module):
         self.embed_dim = embed_dim
         self.zdim = zdim
         self.hdim = hdim
+        self.scaling = self.zdim ** -0.5
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -168,30 +169,48 @@ class GatedStructuredStateAttention(nn.Module):
         if padding_mask is not None and padding_mask.dim() == 0:
             padding_mask = None
 
-        if padding_mask is not None:
-            lengths = seq_len - padding_mask.sum(dim=1)
-            lengths = lengths.view(bsz, 1, 1)
-        else:
-            lengths = seq_len
-
+        # softmax
         # B x N x N
+        # q *= self.scaling
         qk = torch.bmm(q, k.transpose(1, 2))
         bias = self._get_rel_pos_bias(seq_len)
-        qk = qk / lengths + bias
+        qk = qk + bias
         if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
+            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
+            attn_mask = attn_mask.unsqueeze(0)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk = qk.masked_fill(attn_mask, 0.0)
+            qk += attn_mask
+
+        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
+
+        # relu2
+        # if padding_mask is not None:
+        #     lengths = seq_len - padding_mask.sum(dim=1)
+        #     lengths = lengths.view(bsz, 1, 1)
+        # else:
+        #     lengths = seq_len
+        #
+        # # B x N x N
+        # qk = torch.bmm(q, k.transpose(1, 2))
+        # bias = self._get_rel_pos_bias(seq_len)
+        # qk = qk / lengths + bias
+        # if padding_mask is not None:
+        #     qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
+        #
+        # if attn_mask is not None:
+        #     attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
+        #     if self.onnx_trace:
+        #         attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
+        #     qk = qk.masked_fill(attn_mask, 0.0)
+
+        # attn_weights = torch.square(F.relu(qk))
 
         if before_softmax:
             return qk, v
 
-        attn_weights = torch.square(F.relu(qk))
-        # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
         kernel = self.attention_dropout(attn_weights)
         v = self.hidden_dropout(v)
         # B x N x E -> B x N x D
