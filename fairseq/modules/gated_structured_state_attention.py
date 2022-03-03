@@ -41,10 +41,8 @@ class GatedStructuredStateAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.proj = nn.Linear(embed_dim, hdim + 2 * embed_dim, bias=True)
+        self.proj = nn.Linear(embed_dim, hdim + 3 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
-        self.gamma = Parameter(torch.Tensor(embed_dim))
-        self.beta = Parameter(torch.Tensor(embed_dim))
 
         self.max_positions = max_positions
         self.rel_pos_bias = Parameter(torch.Tensor(2 * max_positions - 1))
@@ -66,9 +64,6 @@ class GatedStructuredStateAttention(nn.Module):
 
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=0.02)
         nn.init.constant_(self.h_proj.bias, 0.0)
-
-        nn.init.normal_(self.gamma, mean=0.0, std=0.02)
-        nn.init.constant_(self.beta, 0.0)
 
         nn.init.normal_(self.rel_pos_bias, mean=0.0, std=0.02)
 
@@ -118,13 +113,13 @@ class GatedStructuredStateAttention(nn.Module):
         else:
             saved_state = None
 
-        # N x B x D -> N x B x (D+E+D)
+        # N x B x D -> N x B x (E+3*D)
         base = self.proj(x)
-        u, v, q = torch.split(base, [self.embed_dim, self.hdim, self.embed_dim], dim=-1)
+        u, qkv = torch.split(base, [self.embed_dim, self.hdim + 2 * self.embed_dim], dim=-1)
         u = torch.sigmoid(u)
-        v = F.silu(v)
-        # N x B x D
-        k = x * self.gamma + self.beta
+        # N x B x (E+2D)
+        qkv = F.silu(qkv)
+        v, q, k = torch.split(qkv, [self.hdim, self.embed_dim, self.embed_dim], dim=-1)
         # N x B x S -> B x N x S
         q = q.transpose(0, 1)
         k = k.transpose(0, 1)
@@ -165,12 +160,17 @@ class GatedStructuredStateAttention(nn.Module):
         if padding_mask is not None and padding_mask.dim() == 0:
             padding_mask = None
 
+        if padding_mask is not None:
+            lengths = seq_len - padding_mask.sum(dim=1)
+            lengths = lengths.view(bsz, 1, 1)
+        else:
+            lengths = seq_len
+
         # softmax
         # B x N x N
-        # q *= self.scaling
         qk = torch.bmm(q, k.transpose(1, 2))
         bias = self._get_rel_pos_bias(seq_len)
-        qk = qk + bias
+        qk = qk / lengths + bias
         if padding_mask is not None:
             qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
 
@@ -181,28 +181,6 @@ class GatedStructuredStateAttention(nn.Module):
             qk += attn_mask
 
         attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
-
-        # relu2
-        # if padding_mask is not None:
-        #     lengths = seq_len - padding_mask.sum(dim=1)
-        #     lengths = lengths.view(bsz, 1, 1)
-        # else:
-        #     lengths = seq_len
-        #
-        # # B x N x N
-        # qk = torch.bmm(q, k.transpose(1, 2))
-        # bias = self._get_rel_pos_bias(seq_len)
-        # qk = qk / lengths + bias
-        # if padding_mask is not None:
-        #     qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
-        #
-        # if attn_mask is not None:
-        #     attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
-        #     if self.onnx_trace:
-        #         attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-        #     qk = qk.masked_fill(attn_mask, 0.0)
-
-        # attn_weights = torch.square(F.relu(qk))
 
         if before_softmax:
             return qk, v
