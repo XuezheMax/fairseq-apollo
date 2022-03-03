@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Callable, Optional, Tuple, List, Union
+from typing import Optional, Tuple, List, Union
 import math
 
 import torch
@@ -11,15 +11,13 @@ import torch.nn as nn
 
 from fairseq import utils
 from fairseq.modules import (
-    LayerNorm,
-    LayerDropModuleList,
-    GatedAttentionUnit,
+    GatedStructuredStateAttention,
 )
 from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
-class FlashSentenceEncoderLayer(nn.Module):
+class TrustSentenceEncoderLayer(nn.Module):
     """
         Implements a Flash-Quad encoder layer.
     """
@@ -40,12 +38,10 @@ class FlashSentenceEncoderLayer(nn.Module):
         # Initialize parameters
         self.embedding_dim = embedding_dim
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-
-        self.gau = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions)
-        self.layer_norm = LayerNorm(self.embedding_dim, export=export)
+        self.net = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions)
 
     def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions):
-        return GatedAttentionUnit(
+        return GatedStructuredStateAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
             hdim=hidden_dim,
@@ -59,12 +55,8 @@ class FlashSentenceEncoderLayer(nn.Module):
         x: torch.Tensor,
         x_padding_mask: Optional[torch.Tensor] = None,
     ):
-        residual = x
-        x = self.layer_norm(x)
 
-        x, attn = self.gau(x, x_padding_mask)
-
+        x, attn = self.net(x, x_padding_mask)
         x = self.dropout_module(x)
-        x = residual + x
 
         return x, attn

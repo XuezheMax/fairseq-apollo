@@ -10,15 +10,14 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules import (
-    LayerNorm,
     LayerDropModuleList,
     PositionalEmbedding,
-    FlashSentenceEncoderLayer,
+    TrustSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
-class FlashLRAEncoder(nn.Module):
+class TrustLRAEncoder(nn.Module):
     """
     Implementation for a Bi-directional FLASH based Sentence Encoder used
     in masked pre-trained language models.
@@ -107,7 +106,7 @@ class FlashLRAEncoder(nn.Module):
         self.num_layers = num_encoder_layers
 
         self.layers.extend([
-            self.build_flash_sentence_encoder_layer(
+            self.build_trust_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
                 hidden_dim=hidden_dim,
                 z_dim=z_dim,
@@ -119,8 +118,6 @@ class FlashLRAEncoder(nn.Module):
             )
             for _ in range(self.num_layers)
         ])
-
-        self.layer_norm = LayerNorm(self.embedding_dim, export=export)
 
         def freeze_module_params(m):
             if m is not None:
@@ -149,7 +146,7 @@ class FlashLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
 
-    def build_flash_sentence_encoder_layer(
+    def build_trust_sentence_encoder_layer(
         self,
         embedding_dim,
         hidden_dim,
@@ -160,7 +157,7 @@ class FlashLRAEncoder(nn.Module):
         max_positions,
         export,
     ):
-        return FlashSentenceEncoderLayer(
+        return TrustSentenceEncoderLayer(
             embedding_dim=embedding_dim,
             hidden_dim=hidden_dim,
             z_dim=z_dim,
@@ -198,6 +195,7 @@ class FlashLRAEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
 
+        x = torch.tanh(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
