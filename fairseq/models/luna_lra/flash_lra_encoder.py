@@ -212,7 +212,7 @@ class FlashLRAEncoder(nn.Module):
             inner_states.append(x)
 
         for i in range(self.num_layers):
-            x, _ = self.layers[i](x, self_attn_padding_mask=padding_mask)
+            x, _ = self.layers[i](x, x_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append(x)
 
