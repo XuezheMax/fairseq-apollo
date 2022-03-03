@@ -205,7 +205,7 @@ class GatedStructuredStateAttention(nn.Module):
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
         # N x B x E -> N x B x D
-        h = torch.tanh(self.h_proj(h * u))
+        h = torch.tanh(self.h_proj(h * r))
         # N x B x D
         out = torch.addcmul(x, u, h - x)
 
