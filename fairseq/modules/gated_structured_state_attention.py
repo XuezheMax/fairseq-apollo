@@ -198,8 +198,8 @@ class GatedStructuredStateAttention(nn.Module):
         if before_softmax:
             return qk, v
 
-        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
-        # attn_weights = torch.square(F.relu(qk))
+        # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
+        attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
         v = self.hidden_dropout(v)
         # B x N x E -> N x B x E
