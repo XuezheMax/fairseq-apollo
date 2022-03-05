@@ -131,7 +131,7 @@ class GatedStructuredStateAttention(nn.Module):
 
         # N x B x (2*E+D)
         rzv = F.silu(rzv)
-        r, z, v = torch.split(rzv, [self.hdim, self.embed_dim, self.embed_dim], dim=-1)
+        r, z, v = torch.split(rzv, [self.embed_dim, self.embed_dim, self.hdim], dim=-1)
 
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
