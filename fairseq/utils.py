@@ -499,6 +499,7 @@ def get_available_activation_fns() -> List:
         "gelu_fast",  # deprecated
         "gelu_accurate",
         "tanh",
+        "sin",
         "linear",
     ]
 
