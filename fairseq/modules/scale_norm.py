@@ -20,6 +20,6 @@ class ScaleNorm(nn.Module):
         nn.init.constant_(self.scalar, 1.0)
 
     def forward(self, x):
-        mean_square = torch.sum(x, dim=self.dim, keepdim=True)
+        mean_square = torch.mean(torch.square(x), dim=self.dim, keepdim=True)
         x = self.scalar * x * torch.rsqrt(mean_square + self.eps)
         return x
