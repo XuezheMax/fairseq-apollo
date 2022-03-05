@@ -9,6 +9,7 @@ import math
 import torch
 import torch.nn as nn
 
+from fairseq import utils
 from fairseq.modules import (
     LayerNorm,
     LayerDropModuleList,
@@ -51,6 +52,7 @@ class TrustLRAEncoder(nn.Module):
         embedding_dim: int = 512,
         hidden_dim: int = 1024,
         z_dim: int = 128,
+        activation='tanh',
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
@@ -78,6 +80,8 @@ class TrustLRAEncoder(nn.Module):
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
+        assert activation in ['tanh', 'sin']
+        self.activation = utils.get_activation_fn(activation=activation)
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
@@ -113,6 +117,7 @@ class TrustLRAEncoder(nn.Module):
                 attention_dropout=attention_dropout,
                 hidden_dropout=hidden_dropout,
                 max_positions=self.max_seq_len,
+                activation=activation,
                 export=export
             )
             for _ in range(self.num_layers)
@@ -138,6 +143,7 @@ class TrustLRAEncoder(nn.Module):
         attention_dropout,
         hidden_dropout,
         max_positions,
+        activation,
         export,
     ):
         return TrustSentenceEncoderLayer(
@@ -148,6 +154,7 @@ class TrustLRAEncoder(nn.Module):
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             max_positions=max_positions,
+            activation=activation,
             export=export
         )
 
@@ -178,7 +185,7 @@ class TrustLRAEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
 
-        x = torch.tanh(x)
+        x = self.activation(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation

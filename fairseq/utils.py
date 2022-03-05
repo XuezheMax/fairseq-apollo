@@ -484,6 +484,8 @@ def get_activation_fn(activation: str) -> Callable:
         return gelu_accurate
     elif activation == "tanh":
         return torch.tanh
+    elif activation == 'sin':
+        return torch.sin
     elif activation == "linear":
         return lambda x: x
     else:

@@ -33,6 +33,7 @@ from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
 from .trust_sentence_encoder_layer import TrustSentenceEncoderLayer
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
+from .scale_norm import ScaleNorm
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .transformer_sentence_encoder_layer import TransformerSentenceEncoderLayer
 from .transformer_sentence_encoder import TransformerSentenceEncoder
@@ -73,6 +74,7 @@ __all__ = [
     'PositionalEmbedding',
     'SamePad',
     'ScalarBias',
+    'ScaleNorm',
     'SinusoidalPositionalEmbedding',
     'TransformerSentenceEncoderLayer',
     'TransformerSentenceEncoder',

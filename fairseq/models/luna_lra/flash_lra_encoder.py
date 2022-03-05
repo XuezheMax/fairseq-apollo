@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules import (
-    LayerNorm,
+    ScaleNorm,
     LayerDropModuleList,
     PositionalEmbedding,
     FlashSentenceEncoderLayer,
@@ -118,7 +118,7 @@ class FlashLRAEncoder(nn.Module):
             for _ in range(self.num_layers)
         ])
 
-        self.layer_norm = LayerNorm(self.embedding_dim, export=export)
+        self.layer_norm = ScaleNorm(dim=-1)
 
     def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
         if embedding_type == 'sparse':

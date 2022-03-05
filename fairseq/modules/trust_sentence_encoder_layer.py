@@ -31,6 +31,7 @@ class TrustSentenceEncoderLayer(nn.Module):
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
         max_positions: int = 1024,
+        activation='tanh',
         export: bool = False,
     ) -> None:
         super().__init__()
@@ -38,16 +39,17 @@ class TrustSentenceEncoderLayer(nn.Module):
         # Initialize parameters
         self.embedding_dim = embedding_dim
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.net = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions)
+        self.net = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation)
 
-    def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions):
+    def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation):
         return GatedStructuredStateAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
             hdim=hidden_dim,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
-            max_positions=max_positions
+            max_positions=max_positions,
+            activation=activation
         )
 
     def forward(

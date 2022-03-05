@@ -293,6 +293,7 @@ class LRAEncoder(FairseqEncoder):
                 embedding_dim=args.encoder_embed_dim,
                 hidden_dim=args.encoder_ffn_embed_dim,
                 z_dim=args.z_dim,
+                activation=args.activation_fn,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
@@ -460,6 +461,7 @@ def flash_lra_cifar10(args):
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)

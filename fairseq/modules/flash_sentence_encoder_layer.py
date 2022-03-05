@@ -11,7 +11,7 @@ import torch.nn as nn
 
 from fairseq import utils
 from fairseq.modules import (
-    LayerNorm,
+    ScaleNorm,
     LayerDropModuleList,
     GatedAttentionUnit,
 )
@@ -42,7 +42,7 @@ class FlashSentenceEncoderLayer(nn.Module):
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.gau = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions)
-        self.layer_norm = LayerNorm(self.embedding_dim, export=export)
+        self.layer_norm = ScaleNorm(dim=-1)
 
     def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions):
         return GatedAttentionUnit(

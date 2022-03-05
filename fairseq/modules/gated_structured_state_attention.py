@@ -32,11 +32,14 @@ class GatedStructuredStateAttention(nn.Module):
         attention_dropout=0.0,
         hidden_dropout=0.0,
         max_positions=1024,
+        activation='tanh',
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
         self.hdim = hdim
+        assert activation in ['tanh', 'sin']
+        self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
