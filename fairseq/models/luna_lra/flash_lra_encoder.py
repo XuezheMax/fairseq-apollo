@@ -10,12 +10,12 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules import (
-    ScaleNorm,
     LayerDropModuleList,
     PositionalEmbedding,
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.scale_norm import ScaleNorm
 
 
 class FlashLRAEncoder(nn.Module):

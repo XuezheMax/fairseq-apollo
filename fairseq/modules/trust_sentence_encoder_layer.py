@@ -13,7 +13,6 @@ from fairseq import utils
 from fairseq.modules import (
     GatedStructuredStateAttention,
 )
-from fairseq.modules.quant_noise import quant_noise
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
