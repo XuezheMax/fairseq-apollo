@@ -20,6 +20,7 @@ from .gumbel_vector_quantizer import GumbelVectorQuantizer
 from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
 from .layer_norm import Fp32LayerNorm, LayerNorm
+from .scale_norm import ScaleNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .positional_embedding import PositionalEmbedding
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
@@ -33,7 +34,6 @@ from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
 from .trust_sentence_encoder_layer import TrustSentenceEncoderLayer
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
-from .scale_norm import ScaleNorm
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .transformer_sentence_encoder_layer import TransformerSentenceEncoderLayer
 from .transformer_sentence_encoder import TransformerSentenceEncoder
