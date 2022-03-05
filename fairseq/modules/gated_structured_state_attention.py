@@ -125,7 +125,7 @@ class GatedStructuredStateAttention(nn.Module):
 
         # N x B x D -> N x B x (2*E+D+S)
         base = self.proj(x)
-        u, rzv = torch.split(base, [self.embed_dim, 2 * self.hdim, self.zdim], dim=-1)
+        u, rzv = torch.split(base, [self.embed_dim, 2 * self.hdim + self.zdim], dim=-1)
 
         # N x B x D
         u = torch.sigmoid(u)
