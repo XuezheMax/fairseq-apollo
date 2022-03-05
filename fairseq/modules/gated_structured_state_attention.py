@@ -44,7 +44,7 @@ class GatedStructuredStateAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.proj = nn.Linear(embed_dim, 2 * (hdim + embed_dim), bias=True)
+        self.proj = nn.Linear(embed_dim, hdim + 3 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
 
         self.gamma = Parameter(torch.Tensor(2, embed_dim))
@@ -122,16 +122,16 @@ class GatedStructuredStateAttention(nn.Module):
         else:
             saved_state = None
 
-        # N x B x D -> N x B x (2E+2D)
+        # N x B x D -> N x B x (E+3D)
         base = self.proj(x)
-        u, rzv = torch.split(base, [self.embed_dim, 2 * self.hdim + self.embed_dim], dim=-1)
+        u, rzv = torch.split(base, [self.embed_dim, self.hdim + 2 * self.embed_dim], dim=-1)
 
         # N x B x D
         u = torch.sigmoid(u)
 
         # N x B x (2*E+D)
         rzv = F.silu(rzv)
-        r, z, v = torch.split(rzv, [self.hdim, self.embed_dim, self.hdim], dim=-1)
+        r, z, v = torch.split(rzv, [self.hdim, self.embed_dim, self.embed_dim], dim=-1)
 
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
@@ -208,7 +208,7 @@ class GatedStructuredStateAttention(nn.Module):
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
         # N x B x E -> N x B x D
-        h = self.activation(self.h_proj(h * r))
+        h = self.activation(self.h_proj(h) * r)
         # N x B x D
         out = torch.addcmul(x, u, h - x)
 
