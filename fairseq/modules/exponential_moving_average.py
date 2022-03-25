@@ -66,11 +66,11 @@ class EMALayer(nn.Module):
         nn.init.constant_(self.weight, -1.)
 
     def compute_kernel(self, length: int):
-        # D*c
-        gamma = torch.sigmoid(self.weight)
+        # D*c x 1
+        gamma = torch.sigmoid(self.weight).unsqueeze(1)
         # D*c x N
-        vander_matrix = torch.vander((1.0 - gamma), N=length, increasing=True)
-        self._kernel = vander_matrix * gamma.unsqueeze(1)
+        vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
+        self._kernel = torch.exp(vander) * gamma
         return self._kernel
 
     def kernel(self, length: int):
@@ -81,7 +81,7 @@ class EMALayer(nn.Module):
         elif self._kernel.size(-1) < length:
             return self.compute_kernel(length)
         else:
-            return self._kernel
+            return self._kernel[..., :length]
 
     def forward(
         self,
