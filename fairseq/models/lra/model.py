@@ -16,11 +16,11 @@ from fairseq.modules import (
     LayerNorm,
     SinusoidalPositionalEmbedding
 )
-from fairseq.models.luna_lra.transformer_lra_encoder import TransformerLRAEncoder
-from fairseq.models.luna_lra.luna_lra_encoder import LunaLRAEncoder
-from fairseq.models.luna_lra.lstm_lra_encoder import LSTMLRAEncoder
-from fairseq.models.luna_lra.flash_lra_encoder import FlashLRAEncoder
-from fairseq.models.luna_lra.trust_lra_encoder import TrustLRAEncoder
+from fairseq.models.lra.transformer_lra_encoder import TransformerLRAEncoder
+from fairseq.models.lra.luna_lra_encoder import LunaLRAEncoder
+from fairseq.models.lra.lstm_lra_encoder import LSTMLRAEncoder
+from fairseq.models.lra.flash_lra_encoder import FlashLRAEncoder
+from fairseq.models.lra.mega_lra_encoder import MegaLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 logger = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--quant-noise-scalar', type=float, metavar='D', default=0,
                             help='scalar quantization noise and scalar quantization at training time')
 
-        parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'trust'])
+        parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
@@ -162,7 +162,7 @@ class LRAModel(FairseqEncoderModel):
             src_tokens = src_tokens[:, 1:]
         sentence_rep = self.encoder(src_tokens, src_lengths)
         if not self.use_p:
-            if self.layer_type in ['transformer', 'lstm', 'flash', 'trust']:
+            if self.layer_type in ['transformer', 'lstm', 'flash', 'mega']:
                 sentence_rep = sentence_rep[1]
             elif self.layer_type == 'luna':
                 sentence_rep = sentence_rep[1][0]
@@ -284,8 +284,8 @@ class LRAEncoder(FairseqEncoder):
                 learned_pos_embedding=args.encoder_learned_pos,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
-        elif args.layer_type == 'trust':
-            self.encoder = TrustLRAEncoder(
+        elif args.layer_type == 'mega':
+            self.encoder = MegaLRAEncoder(
                 padding_idx=padding_idx,
                 vocab_size=vocab_size,
                 num_encoder_layers=args.encoder_layers,
@@ -454,10 +454,10 @@ def flash_lra_cifar10(args):
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
 
-@register_model_architecture('lra', 'trust_lra_cifar10')
+@register_model_architecture('lra', 'mega_lra_cifar10')
 def flash_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.layer_type = getattr(args, 'layer_type', 'trust')
+    args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)

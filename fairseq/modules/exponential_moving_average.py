@@ -88,7 +88,7 @@ class EMALayer(nn.Module):
         x,
         padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> Tensor:
         """Input shape: Time x Batch x Channel
 
         Args:
@@ -110,99 +110,34 @@ class EMALayer(nn.Module):
         if padding_mask is not None:
             u = u.masked_fill(padding_mask.unsqueeze(2), 0.)
 
-        # N x B x D
-        u = torch.sigmoid(u)
+        # B x N x D -> B x D x N
+        u = u.transpose(1, 2)
 
-        # N x B x (2*E+S)
-        rzv = F.silu(rzv)
-        r, z, v = torch.split(rzv, [self.hdim, self.zdim, self.hdim], dim=-1)
+        if self.bidirectional:
+            # B x 2*D x N
+            u = torch.stack([u, u.flip(-1)], dim=1)
 
-        # N x B x S -> N x B x 1 x S -> N x B x 2 x S
-        z = z.unsqueeze(2) * self.gamma + self.beta
-        # N x B x 2 x S -> N x B x S
-        q, k = torch.unbind(z, dim=2)
+        # D x N
+        k = self.kernel(seq_len)
 
-        # N x B x S -> B x N x S
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
+        u_f = torch.fft.rfft(u, n=2 * seq_len)
+        k_f = torch.fft.rfft(k, n=2 * seq_len)
 
-        if saved_state is not None:
-            # saved states are stored with shape (bsz, seq_len, dim)
-            if "prev_key" in saved_state:
-                prev_key = saved_state["prev_key"]
-                assert prev_key is not None
-                assert k is not None
-                k = torch.cat([prev_key, k], dim=1)
-            if "prev_value" in saved_state:
-                prev_value = saved_state["prev_value"]
-                assert prev_value is not None
-                assert v is not None
-                v = torch.cat([prev_value, v], dim=1)
-            prev_padding_mask: Optional[Tensor] = None
-            if "prev_padding_mask" in saved_state:
-                prev_padding_mask = saved_state["prev_padding_mask"]
-            padding_mask = GatedStructuredStateAttention._append_prev_padding_mask(
-                padding_mask=padding_mask,
-                prev_padding_mask=prev_padding_mask,
-                batch_size=bsz,
-                seq_len=k.size(1),
-            )
+        # B x D x N
+        out = torch.fft.irfft(u_f * k_f, n=2 * seq_len)[..., :seq_len]
 
-            saved_state["prev_key"] = k
-            saved_state["prev_value"] = v
-            saved_state["prev_key_padding_mask"] = padding_mask
-            # In this branch incremental_state is never None
-            assert incremental_state is not None
-            incremental_state = self._set_input_buffer(incremental_state, saved_state)
+        if self.bidirectional:
+            out1, out2 = torch.split(out, [embed_dim, embed_dim], dim=1)
+            # B x 2*D x N
+            out = torch.cat([out1, out2.flip(-1)], dim=1)
 
-        seq_len = k.size(1)
-        # This is part of a workaround to get around fork/join parallelism
-        # not supporting Optional types.
-        if padding_mask is not None and padding_mask.dim() == 0:
-            padding_mask = None
-
-        if padding_mask is not None:
-            lengths = seq_len - padding_mask.sum(dim=1)
-            lengths = lengths.view(bsz, 1, 1)
-        else:
-            lengths = seq_len
-
-        # softmax
-        # B x N x N
-        qk = torch.bmm(q, k.transpose(1, 2))
-        bias = self._get_rel_pos_bias(seq_len)
-        qk = qk / lengths + bias
-        if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
-
-        if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0)
-            if self.onnx_trace:
-                attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk += attn_mask
-
-        if before_softmax:
-            return qk, v
-
-        # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
-        attn_weights = torch.square(F.relu(qk))
-        kernel = self.attention_dropout(attn_weights)
-        v = self.hidden_dropout(v)
-        # B x N x E -> N x B x E
-        h = torch.bmm(kernel, v).transpose(0, 1)
-        # N x B x E -> N x B x D
-        h = self.activation(self.h_proj(h * r))
-        # N x B x D
-        out = torch.addcmul(x, u, h - x)
-
-        if need_weights:
-            return out, attn_weights
-        else:
-            return out, None
+        # B x D x N -> N x B x D
+        out = out.permute(2, 0, 1)
+        out = self.activation(self.out_proj(out))
+        return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
-        result = self.get_incremental_state(incremental_state, "attn_state")
+        result = self.get_incremental_state(incremental_state, "ema_state")
         if result is not None:
             return result
         else:
@@ -210,7 +145,7 @@ class EMALayer(nn.Module):
             return empty_result
 
     def _set_input_buffer(self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], buffer: Dict[str, Optional[Tensor]]):
-        return self.set_incremental_state(incremental_state, "attn_state", buffer)
+        return self.set_incremental_state(incremental_state, "ema_state", buffer)
 
     @staticmethod
     def _append_prev_padding_mask(

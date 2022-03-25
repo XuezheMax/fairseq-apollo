@@ -8,4 +8,4 @@ from .luna_lra_encoder import LunaLRAEncoder
 from .transformer_lra_encoder import TransformerLRAEncoder
 from .lstm_lra_encoder import LSTMLRAEncoder
 from .flash_lra_encoder import FlashLRAEncoder
-from .trust_lra_encoder import TrustLRAEncoder
+from .mega_lra_encoder import MegaLRAEncoder

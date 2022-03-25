@@ -28,12 +28,12 @@ from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
 from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
 from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
-from .gated_attention_unit import GatedAttentionUnit
-from .gated_structured_state_attention import GatedStructuredStateAttention
 from .exponential_moving_average import EMALayer
 from .ema_gated_attention import EMAGatedAttention
+from .gated_attention_unit import GatedAttentionUnit
+from .gated_structured_state_attention import GatedStructuredStateAttention
 from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
-from .trust_sentence_encoder_layer import TrustSentenceEncoderLayer
+from .mega_sentence_encoder_layer import MegaSentenceEncoderLayer
 from .same_pad import SamePad
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
@@ -91,7 +91,7 @@ __all__ = [
     'EMALayer',
     'EMAGatedAttention',
     'FlashSentenceEncoderLayer',
-    'TrustSentenceEncoderLayer',
+    'MegaSentenceEncoderLayer',
     'TransposeLast',
     'VGGBlock',
     'unfold1d',

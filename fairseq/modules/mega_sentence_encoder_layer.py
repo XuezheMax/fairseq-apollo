@@ -12,11 +12,12 @@ import torch.nn as nn
 from fairseq import utils
 from fairseq.modules import (
     GatedStructuredStateAttention,
+    EMAGatedAttention,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
-class TrustSentenceEncoderLayer(nn.Module):
+class MegaSentenceEncoderLayer(nn.Module):
     """
         Implements a Flash-Quad encoder layer.
     """
@@ -38,17 +39,18 @@ class TrustSentenceEncoderLayer(nn.Module):
         # Initialize parameters
         self.embedding_dim = embedding_dim
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.net = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation)
+        self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation)
 
-    def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation):
-        return GatedStructuredStateAttention(
+    def build_layer(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation):
+        return EMAGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
             hdim=hidden_dim,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             max_positions=max_positions,
-            activation=activation
+            activation=activation,
+            bidirectional=True
         )
 
     def forward(

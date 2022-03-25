@@ -9,10 +9,11 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn import Parameter
+from torch.nn import Parameter, GRU
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
+from fairseq.modules.exponential_moving_average import EMALayer
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.quant_noise import quant_noise
 
@@ -33,6 +34,8 @@ class EMAGatedAttention(nn.Module):
         hidden_dropout=0.0,
         activation='tanh',
         peephole=False,
+        bidirectional=False,
+        max_positions=1024,
     ):
         super().__init__()
 
@@ -45,8 +48,11 @@ class EMAGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
+        self.ema = EMALayer(embed_dim, activation, bidirectional)
+
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim + zdim, bias=True)
-        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.hu_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -69,8 +75,9 @@ class EMAGatedAttention(nn.Module):
         nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
         nn.init.constant_(self.proj.bias, 0.0)
 
-        nn.init.normal_(self.h_proj.weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.h_proj.bias, 0.0)
+        nn.init.normal_(self.hw_proj.weight, mean=0.0, std=0.02)
+        nn.init.constant_(self.hw_proj.bias, 0.0)
+        nn.init.normal_(self.hu_proj.weight, mean=0.0, std=0.02)
 
         nn.init.normal_(self.gamma, mean=0.0, std=0.02)
         nn.init.constant_(self.beta, 0.0)
@@ -123,6 +130,10 @@ class EMAGatedAttention(nn.Module):
         else:
             saved_state = None
 
+        # N x B x D
+        ex = self.ema(x)
+        ex = self.hidden_dropout(ex)
+
         # N x B x D -> N x B x (2*E+D+S)
         base = self.proj(x)
         u, rzv = torch.split(base, [self.embed_dim, 2 * self.hdim + self.zdim], dim=-1)
@@ -159,7 +170,7 @@ class EMAGatedAttention(nn.Module):
             prev_padding_mask: Optional[Tensor] = None
             if "prev_padding_mask" in saved_state:
                 prev_padding_mask = saved_state["prev_padding_mask"]
-            padding_mask = GatedStructuredStateAttention._append_prev_padding_mask(
+            padding_mask = EMAGatedAttention._append_prev_padding_mask(
                 padding_mask=padding_mask,
                 prev_padding_mask=prev_padding_mask,
                 batch_size=bsz,
@@ -209,9 +220,10 @@ class EMAGatedAttention(nn.Module):
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
         # N x B x E -> N x B x D
-        h = self.activation(self.h_proj(h * r))
+        h = self.activation(self.hu_proj(ex) + self.hw_proj(h * r))
         # N x B x D
         out = torch.addcmul(x, u, h - x)
+        # out = torch.lerp(x, h, u)
 
         if need_weights:
             return out, attn_weights

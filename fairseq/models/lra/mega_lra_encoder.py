@@ -14,12 +14,12 @@ from fairseq.modules import (
     LayerNorm,
     LayerDropModuleList,
     PositionalEmbedding,
-    TrustSentenceEncoderLayer,
+    MegaSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
-class TrustLRAEncoder(nn.Module):
+class MegaLRAEncoder(nn.Module):
     """
     Implementation for a Bi-directional FLASH based Sentence Encoder used
     in masked pre-trained language models.
@@ -146,7 +146,7 @@ class TrustLRAEncoder(nn.Module):
         activation,
         export,
     ):
-        return TrustSentenceEncoderLayer(
+        return MegaSentenceEncoderLayer(
             embedding_dim=embedding_dim,
             hidden_dim=hidden_dim,
             z_dim=z_dim,

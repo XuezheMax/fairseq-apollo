@@ -34,7 +34,7 @@ cp $0 ${SAVE}/run.sh
 ```
 ```bash
 # listops
-model=luna_lra_listop # Archs in fairseq/models/luna_lra/model.py
+model=luna_lra_listop lra
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 --find-unused-parameters \
     -a ${model} --task long_range_arena \
