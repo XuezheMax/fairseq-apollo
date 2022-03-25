@@ -74,10 +74,6 @@ class EMAGatedAttention(nn.Module):
         nn.init.constant_(self.ema_decay, -1.)
 
         # proj
-        nn.init.normal_(self.z_proj.weight, mean=0.0, std=0.02)
-        if self.z_proj.weight is not None:
-            nn.init.constant_(self.z_proj.bias, 0.0)
-
         nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
         nn.init.constant_(self.proj.bias, 0.0)
 
