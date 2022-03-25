@@ -115,7 +115,7 @@ class EMALayer(nn.Module):
 
         if self.bidirectional:
             # B x 2*D x N
-            u = torch.stack([u, u.flip(-1)], dim=1)
+            u = torch.cat([u, u.flip(-1)], dim=1)
 
         # D x N
         k = self.kernel(seq_len)
