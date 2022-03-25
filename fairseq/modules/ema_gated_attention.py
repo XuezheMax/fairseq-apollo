@@ -13,7 +13,6 @@ from torch.nn import Parameter, GRU
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.exponential_moving_average import EMALayer
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.quant_noise import quant_noise
 
@@ -48,9 +47,12 @@ class EMAGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.ema = EMALayer(embed_dim, activation, bidirectional)
+        self.bidirectional = bidirectional
+        self.ema_alpha = nn.Parameter(torch.Tensor(embed_dim))
+        self.ema_beta = nn.Parameter(torch.Tensor(embed_dim))
 
-        self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim + zdim, bias=True)
+        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
+        self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
         self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
         self.hu_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
@@ -72,6 +74,15 @@ class EMAGatedAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
+        # EMA
+        nn.init.constant_(self.ema_alpha, -1.)
+        nn.init.normal_(self.ema_beta, mean=0.0, std=1)
+
+        # proj
+        nn.init.normal_(self.z_proj.weight, mean=0.0, std=0.02)
+        if self.z_proj.weight is not None:
+            nn.init.constant_(self.z_proj.bias, 0.0)
+
         nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
         nn.init.constant_(self.proj.bias, 0.0)
 
@@ -97,6 +108,63 @@ class EMAGatedAttention(nn.Module):
         r = (2 * seq_len - 1) // 2
         t = t[:, r:-r]
         return t
+
+    def compute_kernel(self, length: int):
+        # D x 1
+        gamma = torch.sigmoid(self.ema_alpha).unsqueeze(1)
+        # D x N
+        vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
+        self._kernel = torch.exp(vander) * gamma
+        return self._kernel
+
+    def kernel(self, length: int):
+        if self.training:
+            return self.compute_kernel(length)
+        elif self._kernel is None:
+            return self.compute_kernel(length)
+        elif self._kernel.size(-1) < length:
+            return self.compute_kernel(length)
+        else:
+            return self._kernel[..., :length]
+
+    def ema_forward(
+        self, x,
+        padding_mask: Optional[Tensor] = None,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+    ) -> Tensor:
+
+        seq_len, bsz, embed_dim = x.size()
+        assert embed_dim == self.embed_dim
+
+        if incremental_state is not None:
+            saved_state = self._get_input_buffer(incremental_state)
+        else:
+            saved_state = None
+
+        # N x B x D
+        residual = x * self.ema_beta
+
+        # N x B x D -> B x D x N
+        x = x.permute(1, 2, 0)
+        if padding_mask is not None:
+            x = x.masked_fill(padding_mask.unsqueeze(1), 0.)
+
+        # D x N
+        k = self.kernel(seq_len)
+        k_f = torch.fft.rfft(k, n=2 * seq_len)
+        x_f = torch.fft.rfft(x, n=2 * seq_len)
+
+        # B x D x N
+        out = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
+        if self.bidirectional:
+            # B x D x N
+            x_f = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
+            out2 = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
+            out = out + out2.flip(-1)
+
+        # B x D x N -> N x B x D
+        out = out.permute(2, 0, 1) + residual
+        return out
 
     def forward(
         self,
@@ -131,24 +199,25 @@ class EMAGatedAttention(nn.Module):
             saved_state = None
 
         # N x B x D
-        ex = self.ema(x)
-        ex = self.hidden_dropout(ex)
+        ex = self.ema_forward(x, incremental_state)
 
-        # N x B x D -> N x B x (2*E+D+S)
+        # N x B x S
+        z = self.z_proj(ex)
+        # N x B x S -> N x B x 1 x S -> N x B x 2 x S
+        z = z.unsqueeze(2) * self.gamma + self.beta
+        # N x B x 2 x S -> N x B x S
+        q, k = torch.unbind(z, dim=2)
+
+        # N x B x D -> N x B x (2*E+D)
         base = self.proj(x)
-        u, rzv = torch.split(base, [self.embed_dim, 2 * self.hdim + self.zdim], dim=-1)
+        u, rv = torch.split(base, [self.embed_dim, 2 * self.hdim], dim=-1)
 
         # N x B x D
         u = torch.sigmoid(u)
 
         # N x B x (2*E+S)
-        rzv = F.silu(rzv)
-        r, z, v = torch.split(rzv, [self.hdim, self.zdim, self.hdim], dim=-1)
-
-        # N x B x S -> N x B x 1 x S -> N x B x 2 x S
-        z = z.unsqueeze(2) * self.gamma + self.beta
-        # N x B x 2 x S -> N x B x S
-        q, k = torch.unbind(z, dim=2)
+        rv = F.silu(rv)
+        r, v = torch.split(rv, [self.hdim, self.hdim], dim=-1)
 
         # N x B x S -> B x N x S
         q = q.transpose(0, 1)
