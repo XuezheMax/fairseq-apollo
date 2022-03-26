@@ -41,7 +41,7 @@ class EMAGatedAttention(nn.Module):
         self.embed_dim = embed_dim
         self.hdim = hdim
         self.zdim = zdim
-        assert activation in ['tanh', 'sin']
+        assert activation in ['tanh', 'sin', 'norm']
         self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)

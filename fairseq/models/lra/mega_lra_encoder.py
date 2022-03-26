@@ -8,6 +8,7 @@ import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from fairseq import utils
 from fairseq.modules import (
@@ -80,7 +81,7 @@ class MegaLRAEncoder(nn.Module):
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
-        assert activation in ['tanh', 'sin']
+        assert activation in ['tanh', 'sin', 'norm']
         self.activation = utils.get_activation_fn(activation=activation)
 
         assert embedding_type in ['sparse', 'linear']
@@ -109,7 +110,7 @@ class MegaLRAEncoder(nn.Module):
         self.num_layers = num_encoder_layers
 
         self.layers.extend([
-            self.build_trust_sentence_encoder_layer(
+            self.build_mega_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
                 hidden_dim=hidden_dim,
                 z_dim=z_dim,
@@ -134,7 +135,7 @@ class MegaLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
 
-    def build_trust_sentence_encoder_layer(
+    def build_mega_sentence_encoder_layer(
         self,
         embedding_dim,
         hidden_dim,
