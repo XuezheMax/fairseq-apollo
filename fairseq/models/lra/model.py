@@ -410,7 +410,7 @@ def flash_lra_imdb(args):
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
 
-@register_model_architecture('lra', 'mega_lra_cifar10')
+@register_model_architecture('lra', 'mega_lra_imdb')
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
