@@ -384,12 +384,12 @@ def luna_lra_listop(args):
 @register_model_architecture('lra', 'transformer_lra_imdb')
 def transformer_lra_imdb_architecture(args):
     args.max_positions = getattr(args, 'max_positions', 4002)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 1024)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 1024)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     base_architecture(args)
 
 @register_model_architecture('lra', 'luna_lra_imdb')
