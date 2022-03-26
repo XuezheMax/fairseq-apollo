@@ -392,21 +392,37 @@ def transformer_lra_imdb_architecture(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 1024)
     base_architecture(args)
 
-@register_model_architecture('lra', 'transformer_lra_imdb_eff')
-def transformer_lra_imdb_eff_architecture(args):
-    args.max_positions = getattr(args, 'max_positions', 1000)
-    transformer_lra_imdb_architecture(args)
-
 @register_model_architecture('lra', 'luna_lra_imdb')
 def luna_lra_imdb_architecture(args):
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_imdb_architecture(args)
 
-@register_model_architecture('lra', 'luna_lra_imdb_eff')
-def luna_lra_imdb_architecture(args):
-    args.max_positions = getattr(args, 'max_positions', 2000)
-    args.layer_type = getattr(args, 'layer_type', 'luna')
-    transformer_lra_imdb_architecture(args)
+@register_model_architecture('lra', 'flash_lra_imdb')
+def flash_lra_imdb(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'flash')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.max_positions = getattr(args, 'max_positions', 4002)
+    base_architecture(args)
+
+@register_model_architecture('lra', 'mega_lra_cifar10')
+def mega_lra_imdb(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.max_positions = getattr(args, 'max_positions', 4002)
+    base_architecture(args)
 
 @register_model_architecture('lra', 'transformer_lra_aan')
 def transformer_lra_aan_architecture(args):
@@ -455,7 +471,7 @@ def flash_lra_cifar10(args):
     base_architecture(args)
 
 @register_model_architecture('lra', 'mega_lra_cifar10')
-def flash_lra_cifar10(args):
+def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)

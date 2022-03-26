@@ -37,10 +37,8 @@ class EMALayer(nn.Module):
         self.activation = utils.get_activation_fn(activation=activation)
         self.bidirectional = bidirectional
 
-        num_directions = 2 if self.bidirectional else 1
-        self.input_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim * num_directions, embed_dim, bias=bias)
-        self.weight = nn.Parameter(torch.Tensor(embed_dim * num_directions))
+        self.ema_alpha = nn.Parameter(torch.Tensor(embed_dim))
+        self.ema_beta = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
 
         self.reset_parameters()
@@ -55,20 +53,13 @@ class EMALayer(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.input_proj.weight, mean=0.0, std=0.02)
-        if self.input_proj.weight is not None:
-            nn.init.constant_(self.input_proj.bias, 0.0)
-
-        nn.init.normal_(self.out_proj.weight, mean=0.0, std=0.02)
-        if self.out_proj.weight is not None:
-            nn.init.constant_(self.out_proj.bias, 0.0)
-
-        nn.init.constant_(self.weight, -1.)
+        nn.init.constant_(self.ema_alpha, -1.)
+        nn.init.normal_(self.ema_beta, mean=0.0, std=1)
 
     def compute_kernel(self, length: int):
-        # D*c x 1
-        gamma = torch.sigmoid(self.weight).unsqueeze(1)
-        # D*c x N
+        # D x 1
+        gamma = torch.sigmoid(self.ema_alpha).unsqueeze(1)
+        # D x N
         vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
         self._kernel = torch.exp(vander) * gamma
         return self._kernel
@@ -105,35 +96,29 @@ class EMALayer(nn.Module):
         else:
             saved_state = None
 
-        # N x B x D -> B x N x D
-        u = F.silu(self.input_proj(x.transpose(0, 1)))
+        # N x B x D
+        residual = x * self.ema_beta
+
+        # N x B x D -> B x D x N
+        x = x.permute(1, 2, 0)
         if padding_mask is not None:
-            u = u.masked_fill(padding_mask.unsqueeze(2), 0.)
-
-        # B x N x D -> B x D x N
-        u = u.transpose(1, 2)
-
-        if self.bidirectional:
-            # B x 2*D x N
-            u = torch.cat([u, u.flip(-1)], dim=1)
+            x = x.masked_fill(padding_mask.unsqueeze(1), 0.)
 
         # D x N
         k = self.kernel(seq_len)
-
-        u_f = torch.fft.rfft(u, n=2 * seq_len)
         k_f = torch.fft.rfft(k, n=2 * seq_len)
+        x_f = torch.fft.rfft(x, n=2 * seq_len)
 
         # B x D x N
-        out = torch.fft.irfft(u_f * k_f, n=2 * seq_len)[..., :seq_len]
-
+        out = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
         if self.bidirectional:
-            out1, out2 = torch.split(out, [embed_dim, embed_dim], dim=1)
-            # B x 2*D x N
-            out = torch.cat([out1, out2.flip(-1)], dim=1)
+            # B x D x N
+            x_f = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
+            out2 = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
+            out = out + out2.flip(-1)
 
         # B x D x N -> N x B x D
-        out = out.permute(2, 0, 1)
-        out = self.activation(self.out_proj(out))
+        out = out.permute(2, 0, 1) + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
