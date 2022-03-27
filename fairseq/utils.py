@@ -500,6 +500,7 @@ def get_available_activation_fns() -> List:
         "gelu_accurate",
         "tanh",
         "sin",
+        'norm',
         "linear",
     ]
 
