@@ -9,13 +9,13 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn import Parameter, GRU
+from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.layer_norm import LayerNorm
 from fairseq.modules.exponential_moving_average import EMALayer
-from fairseq.modules.quant_noise import quant_noise
 
 @with_incremental_state
 class EMAGatedAttention(nn.Module):
@@ -42,7 +42,10 @@ class EMAGatedAttention(nn.Module):
         self.hdim = hdim
         self.zdim = zdim
         assert activation in ['tanh', 'sin', 'norm']
-        self.activation = utils.get_activation_fn(activation=activation)
+        if activation == 'norm':
+            self.activation = LayerNorm(self.embed_dim, elementwise_affine=False)
+        else:
+            self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)

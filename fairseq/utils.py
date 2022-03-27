@@ -455,13 +455,6 @@ def log_softmax(x, dim: int, onnx_trace: bool = False):
         return F.log_softmax(x, dim=dim, dtype=torch.float32)
 
 
-def normalize(p, dim, eps=1e-12):
-    def forward(x):
-        return F.normalize(x, p=p, dim=dim, eps=eps)
-
-    return forward
-
-
 def get_perplexity(loss, round=2, base=2):
     if loss is None:
         return 0.
@@ -495,8 +488,6 @@ def get_activation_fn(activation: str) -> Callable:
         return torch.sin
     elif activation == "linear":
         return lambda x: x
-    elif activation == 'norm':
-        return normalize(p=float('inf'), dim=-1, eps=1e-8)
     else:
         raise RuntimeError("--activation-fn {} not supported".format(activation))
 
@@ -509,7 +500,6 @@ def get_available_activation_fns() -> List:
         "gelu_accurate",
         "tanh",
         "sin",
-        'norm',
         "linear",
     ]
 

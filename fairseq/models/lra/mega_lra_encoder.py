@@ -82,7 +82,10 @@ class MegaLRAEncoder(nn.Module):
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
         assert activation in ['tanh', 'sin', 'norm']
-        self.activation = utils.get_activation_fn(activation=activation)
+        if activation == 'norm':
+            self.activation = LayerNorm(self.embed_dim, elementwise_affine=False)
+        else:
+            self.activation = utils.get_activation_fn(activation=activation)
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)

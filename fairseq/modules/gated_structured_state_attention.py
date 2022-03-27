@@ -14,8 +14,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.quant_noise import quant_noise
-
+from fairseq.modules.layer_norm import LayerNorm
 
 @with_incremental_state
 class GatedStructuredStateAttention(nn.Module):
@@ -40,7 +39,10 @@ class GatedStructuredStateAttention(nn.Module):
         self.hdim = hdim
         self.zdim = zdim
         assert activation in ['tanh', 'sin', 'norm']
-        self.activation = utils.get_activation_fn(activation=activation)
+        if activation == 'norm':
+            self.activation = LayerNorm(self.embed_dim, elementwise_affine=False)
+        else:
+            self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -66,7 +68,7 @@ class GatedStructuredStateAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        std = 1.0 / self.embed_dim
+        std = 0.02
         nn.init.normal_(self.proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.proj.bias, 0.0)
 
