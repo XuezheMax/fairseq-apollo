@@ -46,7 +46,7 @@ class GatedStructuredStateAttention(nn.Module):
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim + zdim, bias=True)
-        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.h_proj = nn.Linear(hdim, embed_dim, bias=(activation != 'norm'))
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -66,16 +66,18 @@ class GatedStructuredStateAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
+        std = 1.0 / self.embed_dim
+        nn.init.normal_(self.proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.proj.bias, 0.0)
 
-        nn.init.normal_(self.h_proj.weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.h_proj.bias, 0.0)
+        nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
+        if self.h_proj.bias is not None:
+            nn.init.constant_(self.h_proj.bias, 0.0)
 
-        nn.init.normal_(self.gamma, mean=0.0, std=0.02)
+        nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
 
-        nn.init.normal_(self.rel_pos_bias, mean=0.0, std=0.02)
+        nn.init.normal_(self.rel_pos_bias, mean=0.0, std=std)
 
     def _get_rel_pos_bias(self, seq_len):
         # seq_len * 2 -1

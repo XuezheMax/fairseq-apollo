@@ -496,7 +496,7 @@ def get_activation_fn(activation: str) -> Callable:
     elif activation == "linear":
         return lambda x: x
     elif activation == 'norm':
-        return normalize(p=2, dim=-1, eps=1e-8)
+        return normalize(p=float('inf'), dim=-1, eps=1e-8)
     else:
         raise RuntimeError("--activation-fn {} not supported".format(activation))
 
