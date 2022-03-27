@@ -83,7 +83,7 @@ class MegaLRAEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
         assert activation in ['tanh', 'sin', 'norm']
         if activation == 'norm':
-            self.activation = LayerNorm(self.embed_dim, elementwise_affine=False)
+            self.activation = LayerNorm(self.embedding_dim, elementwise_affine=False)
         else:
             self.activation = utils.get_activation_fn(activation=activation)
 
