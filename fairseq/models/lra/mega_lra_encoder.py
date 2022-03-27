@@ -18,6 +18,7 @@ from fairseq.modules import (
     MegaSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.models.lra.model import Linear
 
 
 class MegaLRAEncoder(nn.Module):
@@ -126,13 +127,16 @@ class MegaLRAEncoder(nn.Module):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
-            self.embed_norm = LayerNorm(self.embedding_dim, elementwise_affine=False)
+            self.embed_proj = nn.Sequential(
+                Linear(self.embedding_dim, self.embedding_dim, bias=False),
+                nn.Tanh()
+            )
             return embed_tokens
         else:
             embed_tokens = nn.Linear(1, embedding_dim, bias=True)
             nn.init.xavier_normal_(embed_tokens.weight)
             nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
-            self.embed_norm = utils.get_activation_fn(activation='tanh')
+            self.embed_proj = utils.get_activation_fn(activation='tanh')
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -186,7 +190,7 @@ class MegaLRAEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
 
-        x = self.embed_norm(x)
+        x = self.embed_proj(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
