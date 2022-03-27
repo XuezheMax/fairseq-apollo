@@ -14,7 +14,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.layer_norm import LayerNorm
+from fairseq.modules.scale_norm import ScaleNorm
 
 @with_incremental_state
 class GatedStructuredStateAttention(nn.Module):
@@ -40,7 +40,7 @@ class GatedStructuredStateAttention(nn.Module):
         self.zdim = zdim
         assert activation in ['tanh', 'sin', 'norm']
         if activation == 'norm':
-            self.activation = LayerNorm(self.embed_dim, elementwise_affine=False)
+            self.activation = ScaleNorm(dim=-1)
         else:
             self.activation = utils.get_activation_fn(activation=activation)
 

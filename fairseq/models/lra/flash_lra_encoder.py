@@ -16,6 +16,7 @@ from fairseq.modules import (
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.scale_norm import ScaleNorm
+from fairseq.modules.layer_norm import LayerNorm
 
 
 class FlashLRAEncoder(nn.Module):

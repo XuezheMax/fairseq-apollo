@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules import (
+    LayerNorm,
     ScaleNorm,
     GatedAttentionUnit,
 )
