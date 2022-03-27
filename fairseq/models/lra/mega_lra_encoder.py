@@ -81,11 +81,6 @@ class MegaLRAEncoder(nn.Module):
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
-        assert activation in ['tanh', 'sin', 'norm']
-        if activation == 'norm':
-            self.activation = LayerNorm(self.embedding_dim, elementwise_affine=False)
-        else:
-            self.activation = utils.get_activation_fn(activation=activation)
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
@@ -131,11 +126,13 @@ class MegaLRAEncoder(nn.Module):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            self.embed_norm = LayerNorm(self.embedding_dim, elementwise_affine=False)
             return embed_tokens
         else:
             embed_tokens = nn.Linear(1, embedding_dim, bias=True)
             nn.init.xavier_normal_(embed_tokens.weight)
             nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
+            self.embed_norm = utils.get_activation_fn(activation='tanh')
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -189,7 +186,7 @@ class MegaLRAEncoder(nn.Module):
         if self.embed_positions is not None:
             x += self.embed_positions(tokens, positions=positions)
 
-        x = self.activation(x)
+        x = self.embed_norm(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
