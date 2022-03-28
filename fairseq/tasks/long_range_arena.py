@@ -68,6 +68,7 @@ class LRATextTask(FairseqTask):
         self.cls_idx = cls_idx
         self.dictionary = data_dictionary
         self._label_dictionary = label_dictionary
+        self.prepend_cls = args.sen_rep_type == 'cls'
         if not hasattr(args, 'max_positions'):
             self._max_positions = (
                 args.max_source_positions,
@@ -121,10 +122,12 @@ class LRATextTask(FairseqTask):
             return dataset
 
         src_ds = make_dataset('src-bin', self.source_dictionary)
-        src_ds = PrependTokenDataset(src_ds, self.cls_idx)
+        if self.prepend_cls:
+            src_ds = PrependTokenDataset(src_ds, self.cls_idx)
         src1_ds = make_dataset('src1-bin', self.source_dictionary)
         if src1_ds is not None:
-            src1_ds = PrependTokenDataset(src1_ds, self.cls_idx)
+            if self.prepend_cls:
+                src1_ds = PrependTokenDataset(src1_ds, self.cls_idx)
             src1_tokens = TruncateDataset(src1_ds, self.args.max_positions)
         with data_utils.numpy_seed(self.args.seed):
             shuffle = np.random.permutation(len(src_ds))

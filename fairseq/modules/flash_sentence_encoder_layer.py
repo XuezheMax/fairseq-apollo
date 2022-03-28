@@ -30,6 +30,7 @@ class FlashSentenceEncoderLayer(nn.Module):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
+        norm_type: str = 'scalenorm',
         max_positions: int = 1024,
         export: bool = False,
     ) -> None:
@@ -40,7 +41,15 @@ class FlashSentenceEncoderLayer(nn.Module):
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         self.gau = self.build_gated_attention_unit(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions)
-        self.layer_norm = ScaleNorm(dim=-1)
+        self.pre_norm = self.build_norm_layer(norm_type, embedding_dim, export)
+
+    def build_norm_layer(self, norm_type, embedding_dim, export):
+        if norm_type == 'layernorm':
+            return LayerNorm(embedding_dim, export=export)
+        elif norm_type == 'scalenorm':
+            return ScaleNorm(dim=-1)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
     def build_gated_attention_unit(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions):
         return GatedAttentionUnit(
@@ -58,7 +67,7 @@ class FlashSentenceEncoderLayer(nn.Module):
         x_padding_mask: Optional[torch.Tensor] = None,
     ):
         residual = x
-        x = self.layer_norm(x)
+        x = self.pre_norm(x)
 
         x, attn = self.gau(x, x_padding_mask)
 

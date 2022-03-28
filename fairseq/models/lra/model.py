@@ -145,6 +145,7 @@ class LRAModel(FairseqEncoderModel):
                             help='scalar quantization noise and scalar quantization at training time')
 
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
+        parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
@@ -157,9 +158,6 @@ class LRAModel(FairseqEncoderModel):
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
         src_lengths = sample['net_input']['src_lengths']
-        if self.use_p or self.sen_rep_type == 'mp':
-            assert self.layer_type == 'luna' or not self.use_p
-            src_tokens = src_tokens[:, 1:]
         sentence_rep = self.encoder(src_tokens, src_lengths)
         if not self.use_p:
             if self.layer_type in ['transformer', 'lstm', 'flash', 'mega']:
@@ -278,10 +276,8 @@ class LRAEncoder(FairseqEncoder):
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
+                norm_type=args.norm_type,
                 max_seq_len=args.max_positions,
-                use_position_embeddings=(not args.no_token_positional_embeddings),
-                offset_positions_by_padding=offset_positions_by_padding,
-                learned_pos_embedding=args.encoder_learned_pos,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         elif args.layer_type == 'mega':
@@ -405,6 +401,7 @@ def flash_lra_imdb(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.max_positions = getattr(args, 'max_positions', 4002)
@@ -464,6 +461,7 @@ def flash_lra_cifar10(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
