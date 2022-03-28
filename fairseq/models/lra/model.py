@@ -293,10 +293,8 @@ class LRAEncoder(FairseqEncoder):
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
+                norm_type=args.norm_type,
                 max_seq_len=args.max_positions,
-                use_position_embeddings=(not args.no_token_positional_embeddings),
-                offset_positions_by_padding=offset_positions_by_padding,
-                learned_pos_embedding=args.encoder_learned_pos,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
         else:
@@ -477,6 +475,7 @@ def mega_lra_cifar10(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)

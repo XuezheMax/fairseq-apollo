@@ -13,8 +13,8 @@ import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import (
     ScaleNorm,
+    LayerNorm,
     LayerDropModuleList,
-    PositionalEmbedding,
     MegaSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
@@ -57,12 +57,9 @@ class MegaLRAEncoder(nn.Module):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
+        norm_type: str = 'scalenorm',
         layerdrop: float = 0.0,
         max_seq_len: int = 256,
-        use_position_embeddings: bool = False,
-        offset_positions_by_padding: bool = True,
-        learned_pos_embedding: bool = True,
-        embed_scale: float = None,
         export: bool = False,
         traceable: bool = False,
         sen_rep_type: str = 'cls',
@@ -76,30 +73,17 @@ class MegaLRAEncoder(nn.Module):
         self.max_seq_len = max_seq_len
         self.embedding_type = embedding_type
         self.embedding_dim = embedding_dim
-        self.use_position_embeddings = use_position_embeddings
-        self.learned_pos_embedding = learned_pos_embedding
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
-        self.embed_scale = embed_scale
 
-        self.embed_positions = (
-            PositionalEmbedding(
-                self.max_seq_len,
-                self.embedding_dim,
-                padding_idx=(self.padding_idx if offset_positions_by_padding else None),
-                learned=self.learned_pos_embedding,
-            )
-            if self.use_position_embeddings
-            else None
-        )
-
-        if self.use_position_embeddings and not self.learned_pos_embedding:
-            if self.embed_scale is None:
-                self.embed_scale = math.sqrt(self.embedding_dim)
+        if embedding_type == 'linear':
+            self.embed_norm = utils.get_activation_fn(activation=activation)
+        else:
+            self.embed_norm = self.build_embedding_norm(embedding_dim, norm_type, export)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -122,17 +106,23 @@ class MegaLRAEncoder(nn.Module):
             for _ in range(self.num_layers)
         ])
 
+    def build_embedding_norm(self, embedding_dim, norm_type, export):
+        if norm_type == 'layernorm':
+            return LayerNorm(embedding_dim, export=export)
+        elif norm_type == 'scalenorm':
+            return ScaleNorm(dim=-1)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
+
     def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
-            self.embed_norm = ScaleNorm(dim=-1)
             return embed_tokens
         else:
             embed_tokens = nn.Linear(1, embedding_dim, bias=True)
             nn.init.xavier_normal_(embed_tokens.weight)
             nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
-            self.embed_norm = utils.get_activation_fn(activation='tanh')
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -180,18 +170,12 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x 1 -> B x T x D
             x = self.embed_tokens(tokens.unsqueeze(2))
 
-        if self.embed_scale is not None:
-            x *= self.embed_scale
-
-        if self.embed_positions is not None:
-            x += self.embed_positions(tokens, positions=positions)
-
         x = self.embed_norm(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
-            x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+            x = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -205,8 +189,11 @@ class MegaLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
+        if padding_mask is not None:
+            x = x.masked_fill(padding_mask.transpose(0, 1).unsqueeze(-1), 0.0)
+
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.mean(dim=0)
+            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
         else:
             sentence_rep = x[0, :, :]
 

@@ -14,7 +14,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.scale_norm import ScaleNorm
+
 
 @with_incremental_state
 class GatedStructuredStateAttention(nn.Module):
@@ -38,17 +38,14 @@ class GatedStructuredStateAttention(nn.Module):
         self.embed_dim = embed_dim
         self.hdim = hdim
         self.zdim = zdim
-        assert activation in ['tanh', 'sin', 'norm']
-        if activation == 'norm':
-            self.activation = ScaleNorm(dim=-1)
-        else:
-            self.activation = utils.get_activation_fn(activation=activation)
+        assert activation in ['tanh', 'sin']
+        self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim + zdim, bias=True)
-        self.h_proj = nn.Linear(hdim, embed_dim, bias=(activation != 'norm'))
+        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))

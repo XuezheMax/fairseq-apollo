@@ -11,7 +11,6 @@ import torch.nn as nn
 
 from fairseq.modules import (
     LayerDropModuleList,
-    PositionalEmbedding,
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
