@@ -80,7 +80,7 @@ class GatedStructuredStateAttention(nn.Module):
 
     def _get_rel_pos_bias(self, seq_len):
         # seq_len * 2 -1
-        b = self.rel_pos_bias[:(2 * seq_len - 1)]
+        b = self.rel_pos_bias[(self.max_positions - seq_len):(self.max_positions + seq_len - 1)]
         # seq_len * 3 - 1
         t = F.pad(b, (0, seq_len))
         # (seq_len * 3 - 1) * seq_len
@@ -186,19 +186,18 @@ class GatedStructuredStateAttention(nn.Module):
         else:
             lengths = seq_len
 
-        # softmax
         # B x N x N
         qk = torch.bmm(q, k.transpose(1, 2))
         bias = self._get_rel_pos_bias(seq_len)
         qk = qk / lengths + bias
         if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float("-inf"))
+            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0)
+            attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk += attn_mask
+            qk = qk.masked_fill(attn_mask, 0.0)
 
         if before_softmax:
             return qk, v

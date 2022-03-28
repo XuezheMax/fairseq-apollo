@@ -75,7 +75,7 @@ class GatedAttentionUnit(nn.Module):
 
     def _get_rel_pos_bias(self, seq_len):
         # seq_len * 2 -1
-        b = self.rel_pos_bias[:(2 * seq_len - 1)]
+        b = self.rel_pos_bias[(self.max_positions - seq_len):(self.max_positions + seq_len - 1)]
         # seq_len * 3 - 1
         t = F.pad(b, (0, seq_len))
         # (seq_len * 3 - 1) * seq_len
@@ -183,7 +183,7 @@ class GatedAttentionUnit(nn.Module):
             attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
             if self.onnx_trace:
                 attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk =qk.masked_fill(attn_mask, 0.0)
+            qk = qk.masked_fill(attn_mask, 0.0)
 
         if before_relu2:
             return qk, v

@@ -44,8 +44,7 @@ class LRACrossEntropyCriterion(FairseqCriterion):
         lprobs = lprobs.view(-1, lprobs.size(-1))
         targets = model.get_targets(sample, net_output).view(-1)
         loss = F.nll_loss(lprobs, targets, reduction='sum')
-        logits = net_output["encoder_out"]
-        preds = torch.argmax(logits, 1)
+        preds = torch.argmax(lprobs, 1)
         correct = (preds == targets).sum()
         return loss, correct
 
