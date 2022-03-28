@@ -169,7 +169,7 @@ class FlashLRAEncoder(nn.Module):
 
         # account for padding while computing the representation
         if padding_mask is not None:
-            x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+            x = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -186,7 +186,7 @@ class FlashLRAEncoder(nn.Module):
         x = self.final_norm(x)
 
         if padding_mask is not None:
-            x *= 1 - padding_mask.transpose(0, 1).unsqueeze(-1).type_as(x)
+            x = x.masked_fill(padding_mask.transpose(0, 1).unsqueeze(-1), 0.0)
 
         if self.sen_rep_type == 'mp':
             sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
