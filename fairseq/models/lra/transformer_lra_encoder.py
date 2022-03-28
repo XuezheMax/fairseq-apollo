@@ -254,7 +254,7 @@ class TransformerLRAEncoder(nn.Module):
 
         # account for padding while computing the representation
         if padding_mask is not None:
-            x *= 1 - padding_mask.unsqueeze(-1).type_as(x)
+            x = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -273,8 +273,11 @@ class TransformerLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
+        if padding_mask is not None:
+            x = x.masked_fill(padding_mask.transpose(0, 1).unsqueeze(-1), 0.0)
+
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.mean(dim=0)
+            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
         else:
             sentence_rep = x[0, :, :]
 

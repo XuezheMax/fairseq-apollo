@@ -308,14 +308,17 @@ class LunaLRAEncoder(nn.Module):
         if self.layer_norm is not None:
             x = self.layer_norm(x)
             px = self.proj_layer_norm(px)
-        
+
+        if x_padding_mask is not None:
+            x = x * (1 - x_padding_mask.transpose(0, 1).unsqueeze(-1).type_as(x))
+
         if self.sen_rep_type == 'cls':
-            sentence_cls_rep = x[0, :, :]
+            sentence_rep = x[0, :, :]
         elif self.sen_rep_type == 'mp':
-            sentence_cls_rep = x.mean(dim=0)
+            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
         sentence_proj_rep = px
 
         if last_state_only:
             inner_states = [(x, px)]
 
-        return inner_states, (sentence_cls_rep, sentence_proj_rep), (x_padding_mask, px_padding_mask)
+        return inner_states, (sentence_rep, sentence_proj_rep), (x_padding_mask, px_padding_mask)

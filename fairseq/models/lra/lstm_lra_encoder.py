@@ -146,7 +146,7 @@ class LSTMLRAEncoder(nn.Module):
             x, _ = nn.utils.rnn.pad_packed_sequence(x, padding_value=self.padding_idx * 1.0)
 
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.mean(dim=0)
+            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
         else:
             sentence_rep = h[-2:] if self.bidirectional else h[-1:]
             sentence_rep = sentence_rep.transpose(0, 1).reshape(bsz, -1)
