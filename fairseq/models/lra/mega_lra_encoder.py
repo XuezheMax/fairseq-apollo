@@ -82,7 +82,7 @@ class MegaLRAEncoder(nn.Module):
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx)
 
         if embedding_type == 'linear':
-            self.embed_norm = utils.get_activation_fn(activation=activation)
+            self.embed_norm = None
         else:
             self.embed_norm = self.build_embedding_norm(embedding_dim, norm_type, export)
 
@@ -169,7 +169,8 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
-        x = self.embed_norm(x)
+        if self.embed_norm is not None:
+            x = self.embed_norm(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
