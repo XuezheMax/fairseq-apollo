@@ -14,6 +14,7 @@ from fairseq import utils
 from fairseq.modules import (
     ScaleNorm,
     LayerNorm,
+    RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
 )
@@ -72,16 +73,18 @@ class MegaLRAEncoder(nn.Module):
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
         self.embedding_type = embedding_type
+        self.norm_type = norm_type
         self.embedding_dim = embedding_dim
         self.traceable = traceable
         self.tpu = False  # whether we're on TPU
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
-        self.embed_tokens = self.build_embedding(self.embedding_type, self.vocab_size, self.embedding_dim, self.padding_idx)
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.norm_type, self.embedding_dim,
+                                                 self.vocab_size, self.padding_idx, export)
 
         if embedding_type == 'linear':
-            self.embed_norm = utils.get_activation_fn(activation=activation)
+            self.embed_norm = None
         else:
             self.embed_norm = self.build_embedding_norm(embedding_dim, norm_type, export)
 
@@ -114,15 +117,13 @@ class MegaLRAEncoder(nn.Module):
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
-    def build_embedding(self, embedding_type, vocab_size, embedding_dim, padding_idx):
+    def build_embedding(self, embedding_type, norm_type, embedding_dim, vocab_size, padding_idx, export):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = nn.Linear(1, embedding_dim, bias=True)
-            nn.init.xavier_normal_(embed_tokens.weight)
-            nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
+            embed_tokens = RealNumberEmbedding(embedding_dim, norm_type, export)
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -167,10 +168,11 @@ class MegaLRAEncoder(nn.Module):
         else:
             padding_mask = None
             tokens = (tokens - 0.5) / 0.5
-            # B x T -> B x T x 1 -> B x T x D
-            x = self.embed_tokens(tokens.unsqueeze(2))
+            # B x T -> B x T x D
+            x = self.embed_tokens(tokens)
 
-        x = self.embed_norm(x)
+        if self.embed_norm is not None:
+            x = self.embed_norm(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation

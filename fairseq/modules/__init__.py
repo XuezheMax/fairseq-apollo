@@ -22,6 +22,7 @@ from .layer_drop import LayerDropModuleList
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .scale_norm import ScaleNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
+from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
 from .relative_positional_bias import RelativePositionalBias
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
@@ -74,6 +75,7 @@ __all__ = [
     'MultiheadAttention',
     'LunarMultiheadAttention',
     'LunarCausalAttention',
+    'RealNumberEmbedding',
     'PositionalEmbedding',
     'RelativePositionalBias',
     'SamePad',
