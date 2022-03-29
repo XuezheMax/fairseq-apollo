@@ -213,8 +213,7 @@ class EMAGatedAttention(nn.Module):
         # N x B x E -> N x B x D
         h = self.activation(self.hu_proj(ex) + self.hw_proj(h * r))
         # N x B x D
-        # out = torch.addcmul(x, u, h - x)
-        out = torch.lerp(x, h, u)
+        out = torch.addcmul(x, u, h - x)
 
         if need_weights:
             return out, attn_weights
