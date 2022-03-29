@@ -9,6 +9,7 @@ from fairseq.modules import (
     LayerNorm,
     LayerDropModuleList,
     PositionalEmbedding,
+    RealNumberEmbedding,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
@@ -173,9 +174,7 @@ class LunaLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = nn.Linear(1, embedding_type, bias=True)
-            nn.init.xavier_normal_(embed_tokens.weight)
-            nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_luna_sentence_encoder_layer(
@@ -233,10 +232,10 @@ class LunaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
         else:
-            # B x T -> B x T x 1 -> B x T x D
-            tokens = (tokens - 0.5) / 0.5
-            x = self.embed_tokens(tokens.unsqueeze(2))
             x_padding_mask = None
+            tokens = (tokens - 0.5) / 0.5
+            # B x T -> B x T x 1 -> B x T x D
+            x = self.embed_tokens(tokens)
 
         lengths = tokens.size(1)
         if x_padding_mask is not None:
