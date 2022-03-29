@@ -11,10 +11,9 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn import Parameter
 
-from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.quant_noise import quant_noise
+from fairseq.modules.relative_positional_bias import RelativePositionalBias
 
 
 @with_incremental_state
@@ -48,7 +47,7 @@ class GatedAttentionUnit(nn.Module):
         self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
-        self.rel_pos_bias = Parameter(torch.Tensor(2 * max_positions - 1))
+        self.rel_pos_bias = RelativePositionalBias(max_positions)
 
         self.reset_parameters()
 
@@ -70,22 +69,6 @@ class GatedAttentionUnit(nn.Module):
 
         nn.init.normal_(self.gamma, mean=0.0, std=0.02)
         nn.init.constant_(self.beta, 0.0)
-
-        nn.init.normal_(self.rel_pos_bias, mean=0.0, std=0.02)
-
-    def _get_rel_pos_bias(self, seq_len):
-        # seq_len * 2 -1
-        b = self.rel_pos_bias[(self.max_positions - seq_len):(self.max_positions + seq_len - 1)]
-        # seq_len * 3 - 1
-        t = F.pad(b, (0, seq_len))
-        # (seq_len * 3 - 1) * seq_len
-        t = torch.tile(t, (seq_len,))
-        t = t[:-seq_len]
-        # seq_len x (3 * seq_len - 2)
-        t = t.view(seq_len, 3 * seq_len - 2)
-        r = (2 * seq_len - 1) // 2
-        t = t[:, r:-r]
-        return t
 
     def forward(
         self,
@@ -174,7 +157,7 @@ class GatedAttentionUnit(nn.Module):
 
         # B x N x N
         qk = torch.bmm(q, k.transpose(1, 2))
-        bias = self._get_rel_pos_bias(seq_len)
+        bias = self.rel_pos_bias(seq_len)
         qk = qk / lengths + bias
         if padding_mask is not None:
             qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)

@@ -23,6 +23,7 @@ from .layer_norm import Fp32LayerNorm, LayerNorm
 from .scale_norm import ScaleNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .positional_embedding import PositionalEmbedding
+from .relative_positional_bias import RelativePositionalBias
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
@@ -74,6 +75,7 @@ __all__ = [
     'LunarMultiheadAttention',
     'LunarCausalAttention',
     'PositionalEmbedding',
+    'RelativePositionalBias',
     'SamePad',
     'ScalarBias',
     'ScaleNorm',
