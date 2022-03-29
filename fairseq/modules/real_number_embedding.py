@@ -16,11 +16,13 @@ class RealNumberEmbedding(nn.Module):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.weight = Parameter(torch.Tensor(embedding_dim))
+        self.bias = Parameter(torch.Tensor(embedding_dim))
         self.weight_norm = self.build_weight_norm(embedding_dim, norm_type, export)
         self.reset_parameters()
 
     def reset_parameters(self):
-        std = math.sqrt(2.0 / self.embedding_dim)
+        std = math.sqrt(1.0 / self.embedding_dim)
+        nn.init.normal_(self.weight, mean=0.0, std=std)
         nn.init.normal_(self.weight, mean=0.0, std=std)
 
     def build_weight_norm(self, embedding_dim, norm_type, export):
@@ -37,4 +39,4 @@ class RealNumberEmbedding(nn.Module):
         weight = self.weight
         if self.weight_norm is not None:
             weight = self.weight_norm(weight)
-        return x.unsqueeze(-1) * weight
+        return x.unsqueeze(-1) * weight + self.bias
