@@ -23,7 +23,7 @@ class RealNumberEmbedding(nn.Module):
     def reset_parameters(self):
         std = math.sqrt(1.0 / self.embedding_dim)
         nn.init.normal_(self.weight, mean=0.0, std=std)
-        nn.init.normal_(self.weight, mean=0.0, std=std)
+        nn.init.normal_(self.bias, mean=0.0, std=std)
 
     def build_weight_norm(self, embedding_dim, norm_type, export):
         if norm_type == None:
