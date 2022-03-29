@@ -20,10 +20,9 @@ class RealNumberEmbedding(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        std = self.embedding_dim ** -0.5
-        nn.init.normal_(self.weight, mean=0, std=std)
-        nn.init.constant_(self.bias, 0.0)
+        std = 0.2
+        nn.init.normal_(self.weight, mean=0.0, std=std)
+        nn.init.normal_(self.bias, mean=0.0, std=std)
 
     def forward(self, x):
-        return torch.addcmul(self.bias, x.unsqueeze(-1), self.weight)
-        # return x.unsqueeze(-1) * self.weight + self.bias
+        return x.unsqueeze(-1) * self.weight + self.bias
