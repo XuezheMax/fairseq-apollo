@@ -115,7 +115,7 @@ class FlashLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = RealNumberEmbedding(embedding_dim, norm_type=None)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_flash_sentence_encoder_layer(

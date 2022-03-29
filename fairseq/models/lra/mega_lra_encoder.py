@@ -79,11 +79,10 @@ class MegaLRAEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
-        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, norm_type,
-                                                 self.vocab_size, self.padding_idx, export)
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx)
 
         if embedding_type == 'linear':
-            self.embed_norm = None
+            self.embed_norm = utils.get_activation_fn(activation=activation)
         else:
             self.embed_norm = self.build_embedding_norm(embedding_dim, norm_type, export)
 
@@ -116,13 +115,13 @@ class MegaLRAEncoder(nn.Module):
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
-    def build_embedding(self, embedding_type, embedding_dim, norm_type, vocab_size, padding_idx, export):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = RealNumberEmbedding(embedding_dim, norm_type, export)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -170,8 +169,7 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
-        if self.embed_norm is not None:
-            x = self.embed_norm(x)
+        x = self.embed_norm(x)
         x = self.dropout_module(x)
 
         # account for padding while computing the representation
