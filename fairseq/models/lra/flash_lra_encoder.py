@@ -11,6 +11,7 @@ import torch.nn as nn
 
 from fairseq.modules import (
     LayerDropModuleList,
+    RealNumberEmbedding,
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
@@ -114,9 +115,7 @@ class FlashLRAEncoder(nn.Module):
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
             return embed_tokens
         else:
-            embed_tokens = nn.Linear(1, embedding_dim, bias=True)
-            nn.init.xavier_normal_(embed_tokens.weight)
-            nn.init.normal_(embed_tokens.bias, mean=0, std=embedding_dim ** -0.5)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_flash_sentence_encoder_layer(
@@ -162,7 +161,7 @@ class FlashLRAEncoder(nn.Module):
             padding_mask = None
             tokens = (tokens - 0.5) / 0.5
             # B x T -> B x T x 1 -> B x T x D
-            x = self.embed_tokens(tokens.unsqueeze(2))
+            x = self.embed_tokens(tokens)
 
         x = self.dropout_module(x)
 
