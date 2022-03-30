@@ -82,7 +82,7 @@ class MegaLRAEncoder(nn.Module):
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx)
 
         if embedding_type == 'linear':
-            self.embed_norm = None
+            self.embed_norm = utils.get_activation_fn(activation=activation)
         else:
             self.embed_norm = self.build_embedding_norm(embedding_dim, norm_type, export)
 
