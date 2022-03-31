@@ -27,7 +27,6 @@ class EMALayer(nn.Module):
         self,
         embed_dim,
         zdim,
-        dropout=0.0,
         bidirectional=False,
     ):
         super().__init__()
@@ -35,9 +34,9 @@ class EMALayer(nn.Module):
         self.embed_dim = embed_dim
         self.zdim = zdim
         self.bidirectional = bidirectional
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
-        self.alpha = nn.Parameter(torch.Tensor(zdim))
+        kernel_dim = 2 * zdim if self.bidirectional else zdim
+        self.alpha = nn.Parameter(torch.Tensor(kernel_dim))
         self.beta = nn.Parameter(torch.Tensor(zdim))
         self.proj = nn.Linear(embed_dim, zdim)
         self._kernel = None
@@ -113,14 +112,18 @@ class EMALayer(nn.Module):
         # D x N
         k = self.kernel(seq_len)
         k_f = torch.fft.rfft(k, n=2 * seq_len)
-        x_f = torch.fft.rfft(x, n=2 * seq_len)
+        k_f2 = None
+        if self.bidirectional:
+            k_f, k_f2 = torch.split(k_f, [self.zdim, self.zdim], dim=0)
 
+        x_f = torch.fft.rfft(x, n=2 * seq_len)
         # B x D x N
         out = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
+
         if self.bidirectional:
             # B x D x N
-            x_f = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
-            out2 = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
+            x_f2 = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
+            out2 = torch.fft.irfft(x_f2 * k_f2, n=2 * seq_len)[..., :seq_len]
             out = out + out2.flip(-1)
 
         # B x D x N -> N x B x D
