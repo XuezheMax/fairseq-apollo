@@ -37,7 +37,7 @@ class EMALayer(nn.Module):
 
         kernel_dim = 2 * zdim if self.bidirectional else zdim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim))
-        # self.beta = nn.Parameter(torch.Tensor(zdim))
+        self.beta = nn.Parameter(torch.Tensor(zdim))
         self.proj = nn.Linear(embed_dim, zdim)
         self._kernel = None
 
@@ -54,7 +54,7 @@ class EMALayer(nn.Module):
 
     def reset_parameters(self):
         nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
-        # nn.init.normal_(self.beta, mean=0.0, std=1.0)
+        nn.init.normal_(self.beta, mean=0.0, std=1.0)
 
         # proj
         nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
@@ -102,7 +102,7 @@ class EMALayer(nn.Module):
 
         # N x B x D
         x = self.proj(x)
-        residual = x
+        residual = x * self.beta
 
         # N x B x D -> B x D x N
         x = x.permute(1, 2, 0)
@@ -127,8 +127,11 @@ class EMALayer(nn.Module):
             out = out + out2.flip(-1)
 
         # B x D x N -> N x B x D
-        out = out.permute(2, 0, 1) + residual
-        out = out / 3.0 if self.bidirectional else out / 2.0
+        out = out.permute(2, 0, 1)
+        if self.bidirectional:
+            out = out * 0.5
+
+        out = out + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
