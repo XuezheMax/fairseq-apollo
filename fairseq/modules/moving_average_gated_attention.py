@@ -126,7 +126,7 @@ class MovingAverageGatedAttention(nn.Module):
         # N x B x S
         mx = self.move(x, padding_mask, incremental_state)
 
-        z = self.z_proj(mx)
+        z = F.silu(self.z_proj(mx))
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # N x B x 2 x S -> N x B x S
