@@ -12,7 +12,7 @@ import torch.nn as nn
 from fairseq import utils
 from fairseq.modules import (
     GatedStructuredStateAttention,
-    EMAGatedAttention,
+    MovingAverageGatedAttention,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
 
@@ -39,13 +39,14 @@ class MegaSentenceEncoderLayer(nn.Module):
         # Initialize parameters
         self.embedding_dim = embedding_dim
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation)
+        self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, dropout, attention_dropout, hidden_dropout, max_positions, activation)
 
-    def build_layer(self, embedding_dim, hidden_dim, z_dim, attention_dropout, hidden_dropout, max_positions, activation):
-        return EMAGatedAttention(
+    def build_layer(self, embedding_dim, hidden_dim, z_dim, dropout, attention_dropout, hidden_dropout, max_positions, activation):
+        return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
             hdim=hidden_dim,
+            dropout=dropout,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             max_positions=max_positions,

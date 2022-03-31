@@ -16,10 +16,11 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
 from fairseq.modules.exponential_moving_average import EMALayer
+from fairseq.modules.legendre_moving_average import LMALayer
 
 
 @with_incremental_state
-class EMAGatedAttention(nn.Module):
+class MovingAverageGatedAttention(nn.Module):
     """Exponential Moving Average Gated Attention.
 
     See "" for more details.
@@ -30,6 +31,7 @@ class EMAGatedAttention(nn.Module):
         embed_dim,
         zdim,
         hdim,
+        dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
@@ -45,10 +47,11 @@ class EMAGatedAttention(nn.Module):
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
 
+        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.ema_layer = EMALayer(embed_dim, activation, bidirectional=bidirectional)
+        self.move = LMALayer(embed_dim, bidirectional=bidirectional)
 
         self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
@@ -122,10 +125,11 @@ class EMAGatedAttention(nn.Module):
             saved_state = None
 
         # N x B x D
-        ex = self.ema_layer(x, padding_mask, incremental_state)
+        mx = self.move(x, padding_mask, incremental_state)
+        mx = self.dropout_module(mx)
 
         # N x B x S
-        z = self.z_proj(ex)
+        z = self.z_proj(mx)
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # N x B x 2 x S -> N x B x S
@@ -162,7 +166,7 @@ class EMAGatedAttention(nn.Module):
             prev_padding_mask: Optional[Tensor] = None
             if "prev_padding_mask" in saved_state:
                 prev_padding_mask = saved_state["prev_padding_mask"]
-            padding_mask = EMAGatedAttention._append_prev_padding_mask(
+            padding_mask = MovingAverageGatedAttention._append_prev_padding_mask(
                 padding_mask=padding_mask,
                 prev_padding_mask=prev_padding_mask,
                 batch_size=bsz,
@@ -211,7 +215,7 @@ class EMAGatedAttention(nn.Module):
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
         # N x B x E -> N x B x D
-        h = self.activation(self.hu_proj(ex) + self.hw_proj(h * r))
+        h = self.activation(self.hu_proj(mx) + self.hw_proj(h * r))
         # N x B x D
         out = torch.addcmul(x, u, h - x)
 

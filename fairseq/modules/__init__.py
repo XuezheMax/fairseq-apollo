@@ -31,7 +31,7 @@ from .multihead_attention import MultiheadAttention
 from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
 from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
 from .exponential_moving_average import EMALayer
-from .ema_gated_attention import EMAGatedAttention
+from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
 from .gated_structured_state_attention import GatedStructuredStateAttention
 from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
@@ -93,7 +93,7 @@ __all__ = [
     'GatedAttentionUnit',
     'GatedStructuredStateAttention',
     'EMALayer',
-    'EMAGatedAttention',
+    'MovingAverageGatedAttention',
     'FlashSentenceEncoderLayer',
     'MegaSentenceEncoderLayer',
     'TransposeLast',

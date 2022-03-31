@@ -13,12 +13,11 @@ from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
 @with_incremental_state
-class EMALayer(nn.Module):
-    """Exponential Moving Average Layer.
+class LMALayer(nn.Module):
+    """Legendre Moving Average Layer.
 
     See "" for more details.
     """
@@ -26,6 +25,7 @@ class EMALayer(nn.Module):
     def __init__(
         self,
         embed_dim,
+        kernel_size=-1,
         bidirectional=False,
     ):
         super().__init__()
@@ -33,7 +33,6 @@ class EMALayer(nn.Module):
         self.embed_dim = embed_dim
         self.bidirectional = bidirectional
 
-        self.alpha = nn.Parameter(torch.Tensor(embed_dim))
         self.beta = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
 
@@ -49,26 +48,16 @@ class EMALayer(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
         nn.init.normal_(self.beta, mean=0.0, std=1.0)
 
-    def compute_kernel(self, length: int):
-        # D x 1
-        gamma = torch.sigmoid(self.alpha).unsqueeze(1)
-        # D x N
-        vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
-        self._kernel = torch.exp(vander) * gamma
-        return self._kernel
-
-    def kernel(self, length: int):
-        if self.training:
-            return self.compute_kernel(length)
-        elif self._kernel is None:
-            return self.compute_kernel(length)
-        elif self._kernel.size(-1) < length:
-            return self.compute_kernel(length)
+    def make_positions(self, x, mask):
+        seq_len, bsz, embed_dim = x.size()
+        # N x B
+        if mask is not None:
+            return torch.cumsum(mask, dim=0)
         else:
-            return self._kernel[..., :length]
+            mask = torch.ones(seq_len, 1).type_as(x)
+            return torch.cumsum(mask, dim=0)
 
     def forward(
         self,
@@ -83,42 +72,28 @@ class EMALayer(nn.Module):
                 keys that are pads, of shape `(batch, src_len)`, where
                 padding elements are indicated by 1s.
         """
-
-        seq_len, bsz, embed_dim = x.size()
-        assert embed_dim == self.embed_dim
-
-        if incremental_state is not None:
-            saved_state = self._get_input_buffer(incremental_state)
-        else:
-            saved_state = None
-
         # N x B x D
         residual = x * self.beta
 
-        # N x B x D -> B x D x N
-        x = x.permute(1, 2, 0)
-        if padding_mask is not None:
-            x = x.masked_fill(padding_mask.unsqueeze(1), 0.)
+        # N x B
+        mask = 1.0 - padding_mask.transpose(0, 1) if padding_mask is not None else None
+        # N x B x D
+        fwd = torch.cumsum(x, dim=0)
+        fwdp = self.make_positions(x, mask)
+        out = fwd / fwdp.unsqueeze(-1)
 
-        # D x N
-        k = self.kernel(seq_len)
-        k_f = torch.fft.rfft(k, n=2 * seq_len)
-        x_f = torch.fft.rfft(x, n=2 * seq_len)
-
-        # B x D x N
-        out = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
         if self.bidirectional:
-            # B x D x N
-            x_f = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
-            out2 = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
-            out = out + out2.flip(-1)
+            bwd = torch.cumsum(x.flip(0), dim=0)
+            if mask is not None:
+                mask = mask.flip(0)
+            bwdp = self.make_positions(x, mask)
+            out = out + (bwd / bwdp).flip(0)
 
-        # B x D x N -> N x B x D
-        out = out.permute(2, 0, 1) + residual
+        out = out + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
-        result = self.get_incremental_state(incremental_state, "ema_state")
+        result = self.get_incremental_state(incremental_state, "lma_state")
         if result is not None:
             return result
         else:
@@ -126,7 +101,7 @@ class EMALayer(nn.Module):
             return empty_result
 
     def _set_input_buffer(self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], buffer: Dict[str, Optional[Tensor]]):
-        return self.set_incremental_state(incremental_state, "ema_state", buffer)
+        return self.set_incremental_state(incremental_state, "lma_state", buffer)
 
     @staticmethod
     def _append_prev_padding_mask(
