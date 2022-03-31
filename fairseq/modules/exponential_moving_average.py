@@ -37,7 +37,7 @@ class EMALayer(nn.Module):
 
         hidden_dim = embed_dim // 2
         self.alpha = nn.Parameter(torch.Tensor(hidden_dim))
-        self.beta = nn.Parameter(torch.Tensor(hidden_dim))
+        self.beta = nn.Parameter(torch.Tensor(embed_dim))
         self.proj = nn.Linear(embed_dim, hidden_dim)
         self.out_proj = nn.Linear(hidden_dim, embed_dim)
         self._kernel = None
