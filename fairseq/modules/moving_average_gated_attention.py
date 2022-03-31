@@ -52,10 +52,10 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.move = EMALayer(embed_dim, dropout, bidirectional=bidirectional)
 
-        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
+        self.z_proj = nn.Linear(zdim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
         self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
-        self.hu_proj = nn.Linear(embed_dim, embed_dim, bias=True)
+        self.hu_proj = nn.Linear(zdim, embed_dim, bias=True)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
