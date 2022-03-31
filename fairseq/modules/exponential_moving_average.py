@@ -39,7 +39,6 @@ class EMALayer(nn.Module):
 
         self.ema_alpha = nn.Parameter(torch.Tensor(embed_dim))
         self.ema_beta = nn.Parameter(torch.Tensor(embed_dim))
-        self.proj = nn.Linear(embed_dim, embed_dim, bias=True)
         self._kernel = None
 
         self.reset_parameters()
@@ -56,9 +55,6 @@ class EMALayer(nn.Module):
     def reset_parameters(self):
         nn.init.constant_(self.ema_alpha, -1.)
         nn.init.normal_(self.ema_beta, mean=0.0, std=1)
-
-        nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.proj.bias, 0.0)
 
     def compute_kernel(self, length: int):
         # D x 1
@@ -101,8 +97,7 @@ class EMALayer(nn.Module):
             saved_state = None
 
         # N x B x D
-        residual = x * torch.tanh(self.ema_beta)
-        x = F.silu(self.proj(x))
+        residual = x * self.ema_beta
 
         # N x B x D -> B x D x N
         x = x.permute(1, 2, 0)
