@@ -26,15 +26,20 @@ class EMALayer(nn.Module):
     def __init__(
         self,
         embed_dim,
+        dropout=0.0,
         bidirectional=False,
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
         self.bidirectional = bidirectional
+        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
-        self.alpha = nn.Parameter(torch.Tensor(embed_dim))
-        self.beta = nn.Parameter(torch.Tensor(embed_dim))
+        hidden_dim = embed_dim // 2
+        self.alpha = nn.Parameter(torch.Tensor(hidden_dim))
+        self.beta = nn.Parameter(torch.Tensor(hidden_dim))
+        self.proj = nn.Linear(embed_dim, hidden_dim)
+        self.out_proj = nn.Linear(hidden_dim, embed_dim)
         self._kernel = None
 
         self.reset_parameters()
@@ -51,6 +56,12 @@ class EMALayer(nn.Module):
     def reset_parameters(self):
         nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
         nn.init.normal_(self.beta, mean=0.0, std=1.0)
+
+        # proj
+        nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
+        nn.init.constant_(self.proj.bias, 0.0)
+        nn.init.normal_(self.out_proj.weight, mean=0.0, std=0.02)
+        nn.init.constant_(self.out_proj.bias, 0.0)
 
     def compute_kernel(self, length: int):
         # D x 1
@@ -94,6 +105,7 @@ class EMALayer(nn.Module):
 
         # N x B x D
         residual = x * self.beta
+        x = self.proj(x)
 
         # N x B x D -> B x D x N
         x = x.permute(1, 2, 0)
@@ -114,7 +126,9 @@ class EMALayer(nn.Module):
             out = out + out2.flip(-1)
 
         # B x D x N -> N x B x D
-        out = out.permute(2, 0, 1) + residual
+        out = out.permute(2, 0, 1)
+        out = F.silu(self.out_proj(out))
+        out = self.dropout_module(out) + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:

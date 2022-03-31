@@ -47,11 +47,10 @@ class MovingAverageGatedAttention(nn.Module):
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
 
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.move = LMALayer(embed_dim, bidirectional=bidirectional)
+        self.move = EMALayer(embed_dim, dropout, bidirectional=bidirectional)
 
         self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
@@ -126,7 +125,6 @@ class MovingAverageGatedAttention(nn.Module):
 
         # N x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.dropout_module(mx)
 
         # N x B x S
         z = self.z_proj(mx)
