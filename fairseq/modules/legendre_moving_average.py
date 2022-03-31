@@ -76,7 +76,7 @@ class LMALayer(nn.Module):
         residual = x * self.beta
 
         # N x B
-        mask = 1.0 - padding_mask.transpose(0, 1) if padding_mask is not None else None
+        mask = 1.0 - padding_mask.float().transpose(0, 1) if padding_mask is not None else None
         # N x B x D
         fwd = torch.cumsum(x, dim=0)
         fwdp = self.make_positions(x, mask)
