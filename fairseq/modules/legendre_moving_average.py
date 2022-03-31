@@ -87,7 +87,7 @@ class LMALayer(nn.Module):
             if mask is not None:
                 mask = mask.flip(0)
             bwdp = self.make_positions(x, mask)
-            out = out + (bwd / bwdp).flip(0)
+            out = out + (bwd / bwdp.unsqueeze(-1)).flip(0)
 
         out = out + residual
         return out
