@@ -52,7 +52,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.move = EMALayer(embed_dim, zdim, bidirectional=bidirectional)
 
-        # self.z_proj = nn.Linear(zdim, zdim, bias=True)
+        self.z_proj = nn.Linear(zdim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
         self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
         self.hu_proj = nn.Linear(zdim, embed_dim, bias=True)
@@ -76,9 +76,9 @@ class MovingAverageGatedAttention(nn.Module):
 
     def reset_parameters(self):
         std = 0.02
-        # nn.init.normal_(self.z_proj.weight, mean=0.0, std=std)
-        # if self.z_proj.weight is not None:
-        #     nn.init.constant_(self.z_proj.bias, 0.0)
+        nn.init.normal_(self.z_proj.weight, mean=0.0, std=std)
+        if self.z_proj.weight is not None:
+            nn.init.constant_(self.z_proj.bias, 0.0)
 
         nn.init.normal_(self.proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.proj.bias, 0.0)
@@ -126,9 +126,9 @@ class MovingAverageGatedAttention(nn.Module):
         # N x B x S
         mx = self.move(x, padding_mask, incremental_state)
 
-        # z = self.z_proj(mx)
+        z = self.z_proj(mx)
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
-        z = F.silu(mx).unsqueeze(2) * self.gamma + self.beta
+        z = z.unsqueeze(2) * self.gamma + self.beta
         # N x B x 2 x S -> N x B x S
         q, k = torch.unbind(z, dim=2)
 
