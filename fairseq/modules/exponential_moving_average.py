@@ -61,7 +61,8 @@ class EMALayer(nn.Module):
 
     def compute_kernel(self, length: int):
         # D x 1
-        gamma = torch.sigmoid(self.alpha).unsqueeze(1)
+        # gamma = torch.sigmoid(self.alpha).unsqueeze(1)
+        gamma = 0.5 * (F.softsign(self.alpha) + 1.0).unsqueeze(1)
         # D x N
         vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
         self._kernel = torch.exp(vander) * gamma
