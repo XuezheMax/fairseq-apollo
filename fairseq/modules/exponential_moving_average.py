@@ -13,7 +13,6 @@ from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
 @with_incremental_state
@@ -127,11 +126,7 @@ class EMALayer(nn.Module):
             out = out + out2.flip(-1)
 
         # B x D x N -> N x B x D
-        out = out.permute(2, 0, 1)
-        if self.bidirectional:
-            out = out * 0.5
-
-        out = out + residual
+        out = out.permute(2, 0, 1) + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
