@@ -184,23 +184,25 @@ class MovingAverageGatedAttention(nn.Module):
             padding_mask = None
 
         if padding_mask is not None:
-            lengths = seq_len - padding_mask.sum(dim=1)
-            lengths = lengths.view(bsz, 1, 1)
+            # B x N
+            inverse_mask = 1.0 - padding_mask.type_as(x)
+            lengths = inverse_mask.sum(dim=1).view(bsz, 1, 1)
         else:
             lengths = seq_len
+            inverse_mask = None
 
         # B x N x N
         qk = torch.bmm(q, k.transpose(1, 2))
         bias = self.rel_pos_bias(seq_len)
         qk = qk / lengths + bias
-        if padding_mask is not None:
-            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), 0.0)
+        if inverse_mask is not None:
+            qk = qk * inverse_mask.unsqueeze(1)
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0).to(torch.bool)
+            inverse_attn_mask = 1.0 - attn_mask.unsqueeze(0).type_as(x)
             if self.onnx_trace:
-                attn_mask = attn_mask.repeat(qk.size(0), 1, 1)
-            qk = qk.masked_fill(attn_mask, 0.0)
+                inverse_attn_mask = inverse_attn_mask.repeat(qk.size(0), 1, 1)
+            qk = qk * inverse_attn_mask
 
         if before_softmax:
             return qk, v

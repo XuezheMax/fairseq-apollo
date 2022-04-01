@@ -107,7 +107,7 @@ class EMALayer(nn.Module):
         # N x B x D -> B x D x N
         x = x.permute(1, 2, 0)
         if padding_mask is not None:
-            x = x.masked_fill(padding_mask.unsqueeze(1), 0.)
+            x = x * (1.0 - padding_mask.unsqueeze(1).type_as(x))
 
         # D x N
         k = self.kernel(seq_len)

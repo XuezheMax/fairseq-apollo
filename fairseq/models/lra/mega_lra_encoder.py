@@ -175,7 +175,11 @@ class MegaLRAEncoder(nn.Module):
 
         # account for padding while computing the representation
         if padding_mask is not None:
-            x = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
+            # B x N
+            inverse_mask = 1.0 - padding_mask.type_as(x)
+            x = x * inverse_mask.unsqueeze(-1)
+        else:
+            inverse_mask = None
 
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
@@ -189,8 +193,8 @@ class MegaLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        if padding_mask is not None:
-            x = x.masked_fill(padding_mask.transpose(0, 1).unsqueeze(-1), 0.0)
+        if inverse_mask is not None:
+            x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
 
         if self.sen_rep_type == 'mp':
             sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
