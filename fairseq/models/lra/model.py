@@ -296,7 +296,7 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
                 norm_type=args.norm_type,
-                truncation=getattr(args.truncation_length, None),
+                truncation=getattr(args, 'truncation_length', None),
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
