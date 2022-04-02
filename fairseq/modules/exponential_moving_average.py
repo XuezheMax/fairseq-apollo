@@ -27,12 +27,14 @@ class EMALayer(nn.Module):
         embed_dim,
         zdim,
         bidirectional=False,
+        truncation=None
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
         self.zdim = zdim
         self.bidirectional = bidirectional
+        self.truncation = truncation
 
         kernel_dim = 2 * zdim if self.bidirectional else zdim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim))
@@ -69,14 +71,15 @@ class EMALayer(nn.Module):
         return self._kernel
 
     def kernel(self, length: int):
+        kernel_size = length if self.truncation is None else min(self.truncation, length)
         if self.training:
-            return self.compute_kernel(length)
+            return self.compute_kernel(kernel_size)
         elif self._kernel is None:
-            return self.compute_kernel(length)
-        elif self._kernel.size(-1) < length:
-            return self.compute_kernel(length)
+            return self.compute_kernel(kernel_size)
+        elif self._kernel.size(-1) < kernel_size:
+            return self.compute_kernel(kernel_size)
         else:
-            return self._kernel[..., :length]
+            return self._kernel[..., :kernel_size]
 
     def forward(
         self,

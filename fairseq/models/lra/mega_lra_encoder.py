@@ -60,6 +60,7 @@ class MegaLRAEncoder(nn.Module):
         hidden_dropout: float = 0.0,
         norm_type: str = 'scalenorm',
         layerdrop: float = 0.0,
+        truncation: int = None,
         max_seq_len: int = 256,
         export: bool = False,
         traceable: bool = False,
@@ -100,6 +101,7 @@ class MegaLRAEncoder(nn.Module):
                 dropout=dropout,
                 attention_dropout=attention_dropout,
                 hidden_dropout=hidden_dropout,
+                truncation=truncation,
                 max_positions=self.max_seq_len,
                 activation=activation,
                 export=export
@@ -132,6 +134,7 @@ class MegaLRAEncoder(nn.Module):
         dropout,
         attention_dropout,
         hidden_dropout,
+        truncation,
         max_positions,
         activation,
         export,
@@ -143,6 +146,7 @@ class MegaLRAEncoder(nn.Module):
             dropout=dropout,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
+            truncation=truncation,
             max_positions=max_positions,
             activation=activation,
             export=export
