@@ -78,11 +78,9 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float,
-                            metavar='D', help='dropout probability for'
-                            ' attention weights')
+                            metavar='D', help='dropout probability for attention weights')
         parser.add_argument('--act-dropout', type=float,
-                            metavar='D', help='dropout probability after'
-                            ' activation in FFN')
+                            metavar='D', help='dropout probability after activation in FFN')
 
         # Arguments related to hidden states and self-attention
         parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
@@ -98,14 +96,12 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
         parser.add_argument('--share-encoder-input-output-embed',
-                            action='store_true', help='share encoder input'
-                            ' and output embeddings')
+                            action='store_true', help='share encoder input and output embeddings')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
         parser.add_argument('--no-token-positional-embeddings',
                             action='store_true',
-                            help='if set, disables positional embeddings'
-                            ' (outside self attention)')
+                            help='if set, disables positional embeddings (outside self attention)')
 
         parser.add_argument('--input-type', choices=['text', 'image'])
         parser.add_argument('--max-positions', type=int,
@@ -114,13 +110,12 @@ class LRAModel(FairseqEncoderModel):
         # Arguments related to sentence level prediction
         parser.add_argument('--sentence-class-num', type=int, metavar='N',
                             help='number of classes for sentence task')
-        parser.add_argument('--sent-loss', action='store_true', help='if set,'
-                            ' calculate sentence level predictions')
+        parser.add_argument('--sent-loss', action='store_true', help='if set, calculate sentence level predictions')
 
         # Arguments related to parameter initialization
         parser.add_argument('--apply-bert-init', action='store_true',
                             help='use custom param initialization for BERT')
-        
+
         parser.add_argument('--use-p', default=False, action='store_true',
                             help='use p for prediction')
 
@@ -327,7 +322,7 @@ class LRAEncoder(FairseqEncoder):
                 embed_scale=None,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
             )
-    
+
     def forward(self, src_tokens, src_lengths=None, **kwargs):
         return self.encoder(src_tokens, src_lengths, last_state_only=True)
 
@@ -370,6 +365,7 @@ def transformer_lra_listop(args):
     args.tie_layer_weights = getattr(args, 'tie_layer_weights', True)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'luna_lra_listop')
 def luna_lra_listop(args):
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
@@ -377,6 +373,7 @@ def luna_lra_listop(args):
     args.tie_layer_weights = getattr(args, 'tie_layer_weights', True)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     base_architecture(args)
+
 
 @register_model_architecture('lra', 'transformer_lra_imdb')
 def transformer_lra_imdb_architecture(args):
@@ -389,10 +386,12 @@ def transformer_lra_imdb_architecture(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'luna_lra_imdb')
 def luna_lra_imdb_architecture(args):
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_imdb_architecture(args)
+
 
 @register_model_architecture('lra', 'flash_lra_imdb')
 def flash_lra_imdb(args):
@@ -407,6 +406,7 @@ def flash_lra_imdb(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
+
 
 @register_model_architecture('lra', 'mega_lra_imdb')
 def mega_lra_imdb(args):
@@ -423,6 +423,7 @@ def mega_lra_imdb(args):
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'transformer_lra_aan')
 def transformer_lra_aan_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
@@ -436,11 +437,13 @@ def transformer_lra_aan_architecture(args):
     args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 2)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'luna_lra_aan')
 def luna_lra_aan_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_aan_architecture(args)
+
 
 @register_model_architecture('lra', 'transformer_lra_cifar10')
 def transformer_lra_cifar10(args):
@@ -455,37 +458,40 @@ def transformer_lra_cifar10(args):
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'flash_lra_cifar10')
 def flash_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'flash')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
-    args.z_dim = getattr(args, 'z_dim', 128)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 512)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
+
 
 @register_model_architecture('lra', 'mega_lra_cifar10')
 def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
-    args.z_dim = getattr(args, 'z_dim', 128)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 512)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.truncation_length = getattr(args, 'truncation_length', 128)
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
+
 
 @register_model_architecture('lra', 'lstm_lra_cifar10')
 def transformer_lra_cifar10(args):
@@ -499,10 +505,12 @@ def transformer_lra_cifar10(args):
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'luna_lra_cifar10')
 def luna_lra_cifar10(args):
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_cifar10(args)
+
 
 @register_model_architecture('lra', 'transformer_lra_pf32')
 def transformer_lra_pf32(args):
@@ -518,14 +526,16 @@ def transformer_lra_pf32(args):
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
+
 @register_model_architecture('lra', 'luna_lra_pf32')
 def luna_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
 
+
 @register_model_architecture('lra', 'luna_lra_pf128')
 def luna_lra_pf32(args):
-    args.max_positions = getattr(args, 'max_positions', 128*128+2)
+    args.max_positions = getattr(args, 'max_positions', 128 * 128 + 2)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
