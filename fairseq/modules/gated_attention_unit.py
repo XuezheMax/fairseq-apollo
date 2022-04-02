@@ -173,9 +173,9 @@ class GatedAttentionUnit(nn.Module):
 
         attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
-        v = self.hidden_dropout(v)
         # B x N x E -> N x B x E
         out = torch.bmm(kernel, v).transpose(0, 1)
+        out = self.hidden_dropout(out)
         # N x B x D
         out = self.out_proj(out * u)
 

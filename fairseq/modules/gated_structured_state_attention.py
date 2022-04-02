@@ -190,9 +190,9 @@ class GatedStructuredStateAttention(nn.Module):
         # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
-        v = self.hidden_dropout(v)
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
+        h = self.hidden_dropout(h)
         # N x B x E -> N x B x D
         h = self.activation(self.h_proj(h * r))
         # N x B x D

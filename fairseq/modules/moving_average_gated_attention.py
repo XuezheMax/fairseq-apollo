@@ -48,15 +48,16 @@ class MovingAverageGatedAttention(nn.Module):
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
 
+        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
         self.move = EMALayer(embed_dim, zdim, bidirectional=bidirectional, truncation=truncation)
 
-        self.z_proj = nn.Linear(zdim, zdim, bias=True)
+        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
         self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
-        self.hu_proj = nn.Linear(zdim, embed_dim, bias=True)
+        self.hu_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -87,7 +88,6 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.hw_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.hw_proj.bias, 0.0)
         nn.init.normal_(self.hu_proj.weight, mean=0.0, std=std)
-        nn.init.normal_(self.hu_proj.bias, 0.0)
 
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
@@ -124,9 +124,11 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
-        # N x B x S
+        # N x B x D
         mx = self.move(x, padding_mask, incremental_state)
+        mx = self.dropout_module(mx)
 
+        # N x B x S
         z = F.silu(self.z_proj(mx))
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
@@ -211,9 +213,9 @@ class MovingAverageGatedAttention(nn.Module):
         # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
-        v = self.hidden_dropout(v)
         # B x N x E -> N x B x E
         h = torch.bmm(kernel, v).transpose(0, 1)
+        h = self.hidden_dropout(h)
         # N x B x E -> N x B x D
         h = self.activation(self.hu_proj(mx) + self.hw_proj(h * r))
         # N x B x D
