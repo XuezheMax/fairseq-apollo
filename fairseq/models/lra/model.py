@@ -412,14 +412,14 @@ def flash_lra_imdb(args):
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
-    args.truncation_length = getattr(args, 'truncation_length', 512)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
 
@@ -488,7 +488,7 @@ def mega_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.truncation_length = getattr(args, 'truncation_length', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)
 
