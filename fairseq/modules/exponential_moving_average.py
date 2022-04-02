@@ -114,20 +114,21 @@ class EMALayer(nn.Module):
 
         # D x N
         k = self.kernel(seq_len)
-        k_f = torch.fft.rfft(k, n=2 * seq_len)
-        k_f2 = None
+        fft_len = seq_len
+        s = 0
+        kernel_size = k.size(1)
         if self.bidirectional:
-            k_f, k_f2 = torch.split(k_f, [self.zdim, self.zdim], dim=0)
+            k1, k2 = torch.split(k, [self.zdim, self.zdim])
+            # D x 2*N-1
+            k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
+            x = F.pad(x, (kernel_size - 1, 0))
+            fft_len = fft_len + kernel_size - 1
+            s = 2 * kernel_size - 2
 
-        x_f = torch.fft.rfft(x, n=2 * seq_len)
+        k_f = torch.fft.rfft(k, n=2 * fft_len)
+        x_f = torch.fft.rfft(x, n=2 * fft_len)
         # B x D x N
-        out = torch.fft.irfft(x_f * k_f, n=2 * seq_len)[..., :seq_len]
-
-        if self.bidirectional:
-            # B x D x N
-            x_f2 = torch.fft.rfft(x.flip(-1), n=2 * seq_len)
-            out2 = torch.fft.irfft(x_f2 * k_f2, n=2 * seq_len)[..., :seq_len]
-            out = out + out2.flip(-1)
+        out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
 
         # B x D x N -> N x B x D
         out = out.permute(2, 0, 1) + residual
