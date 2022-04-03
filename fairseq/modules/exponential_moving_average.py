@@ -70,8 +70,6 @@ class EMALayer(nn.Module):
         # D x N x L
         vander = torch.arange(length).to(delta).view(1, 1, length) * torch.log(1 - delta)
         kernel = (delta * self.beta) * torch.exp(vander)
-        # D x N x L
-        kernel = torch.bmm(self.gamma, kernel)
         # D x L
         self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma)
         return self._kernel
