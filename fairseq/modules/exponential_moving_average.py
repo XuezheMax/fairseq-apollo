@@ -36,10 +36,10 @@ class EMALayer(nn.Module):
         self.bidirectional = bidirectional
         self.truncation = truncation
 
-        kernel_dim = 2 * ndim if self.bidirectional else ndim
-        self.alpha = nn.Parameter(torch.Tensor(embed_dim, kernel_dim, 1))
-        self.beta = nn.Parameter(torch.Tensor(embed_dim, kernel_dim, 1))
-        self.gamma = nn.Parameter(torch.Tensor(embed_dim, kernel_dim))
+        kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
+        self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
 
