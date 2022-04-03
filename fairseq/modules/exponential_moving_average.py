@@ -25,7 +25,7 @@ class EMALayer(nn.Module):
     def __init__(
         self,
         embed_dim,
-        ndim,
+        ndim=2,
         bidirectional=False,
         truncation=None
     ):
@@ -37,8 +37,10 @@ class EMALayer(nn.Module):
         self.truncation = truncation
 
         kernel_dim = 2 * ndim if self.bidirectional else ndim
-        self.alpha = nn.Parameter(torch.Tensor(kernel_dim))
-        self.beta = nn.Parameter(torch.Tensor(ndim))
+        self.alpha = nn.Parameter(torch.Tensor(embed_dim, kernel_dim, 1))
+        self.beta = nn.Parameter(torch.Tensor(embed_dim, kernel_dim, 1))
+        self.gamma = nn.Parameter(torch.Tensor(embed_dim, kernel_dim))
+        self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
 
         self.reset_parameters()
@@ -54,15 +56,24 @@ class EMALayer(nn.Module):
 
     def reset_parameters(self):
         nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
-        nn.init.normal_(self.beta, mean=0.0, std=1.0)
+        nn.init.normal_(self.beta, mean=1.0, std=0.02)
+        nn.init.normal_(self.gamma, mean=0.0, std=0.02)
+        nn.init.normal_(self.omega, mean=0.0, std=1.0)
+
+    def calc_delta(self):
+        # D x N
+        return torch.sigmoid(self.alpha)
 
     def compute_kernel(self, length: int):
-        # D x 1
-        # gamma = torch.sigmoid(self.alpha).unsqueeze(1)
-        gamma = torch.sigmoid(self.alpha).unsqueeze(1)
-        # D x N
-        vander = torch.arange(length).to(gamma).unsqueeze(0) * torch.log(1 - gamma)
-        self._kernel = torch.exp(vander) * gamma
+        # D x N x 1
+        delta = self.calc_delta()
+        # D x N x L
+        vander = torch.arange(length).to(delta).view(1, 1, length) * torch.log(1 - delta)
+        kernel = (delta * self.beta) * torch.exp(vander)
+        # D x N x L
+        kernel = torch.bmm(self.gamma, kernel)
+        # D x L
+        self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma)
         return self._kernel
 
     def kernel(self, length: int):
@@ -98,22 +109,22 @@ class EMALayer(nn.Module):
         else:
             saved_state = None
 
-        # N x B x D
-        residual = x * self.beta
+        # L x B x D
+        residual = x * self.omega
 
-        # N x B x D -> B x D x N
+        # L x B x D -> B x D x L
         x = x.permute(1, 2, 0)
         if padding_mask is not None:
             x = x * (1.0 - padding_mask.unsqueeze(1).type_as(x))
 
-        # D x N
+        # D x L
         k = self.kernel(seq_len)
         fft_len = seq_len
         s = 0
         kernel_size = k.size(1)
         if self.bidirectional:
             k1, k2 = torch.split(k, [self.ndim, self.ndim])
-            # D x 2*N-1
+            # D x 2*L-1
             k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
             x = F.pad(x, (kernel_size - 1, 0))
             fft_len = fft_len + kernel_size - 1
@@ -121,10 +132,10 @@ class EMALayer(nn.Module):
 
         k_f = torch.fft.rfft(k, n=2 * fft_len)
         x_f = torch.fft.rfft(x, n=2 * fft_len)
-        # B x D x N
+        # B x D x L
         out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
 
-        # B x D x N -> N x B x D
+        # B x D x L -> L x B x D
         out = out.permute(2, 0, 1) + residual
         return out
 

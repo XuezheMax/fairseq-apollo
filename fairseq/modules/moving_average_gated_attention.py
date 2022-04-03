@@ -31,6 +31,7 @@ class MovingAverageGatedAttention(nn.Module):
         embed_dim,
         zdim,
         hdim,
+        ndim=2,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
@@ -50,7 +51,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.move = EMALayer(embed_dim, embed_dim, bidirectional=bidirectional, truncation=truncation)
+        self.move = EMALayer(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
         self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
         self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)

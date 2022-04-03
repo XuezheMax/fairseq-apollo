@@ -87,6 +87,8 @@ class LRAModel(FairseqEncoderModel):
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--z-dim', type=int, metavar='N',
                             help='encoder z dimension for FLASH')
+        parser.add_argument('--n-dim', type=int, metavar='N',
+                            help='encoder n dimension for Mega')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
@@ -286,6 +288,7 @@ class LRAEncoder(FairseqEncoder):
                 embedding_dim=args.encoder_embed_dim,
                 hidden_dim=args.encoder_ffn_embed_dim,
                 z_dim=args.z_dim,
+                n_dim=args.n_dim,
                 activation=args.activation_fn,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
@@ -335,6 +338,7 @@ def base_architecture(args):
 
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
     args.z_dim = getattr(args, 'z_dim', 128)
+    args.n_dim = getattr(args, 'n_dim', 2)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
 
@@ -414,6 +418,7 @@ def mega_lra_imdb(args):
     args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
     args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 2)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
@@ -481,6 +486,7 @@ def mega_lra_cifar10(args):
     args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 2)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
