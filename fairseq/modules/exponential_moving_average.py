@@ -63,6 +63,7 @@ class EMALayer(nn.Module):
             A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
             B = torch.ones(self.ndim, 1)
             w, V = torch.linalg.eig(A)
+            w = w.real
             V_inv = V.conj().real
             self.alpha.normal_(mean=0.0, std=0.02).add_(w.unsqueeze(1))
             self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
