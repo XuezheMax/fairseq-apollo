@@ -37,6 +37,7 @@ class EMALayer(nn.Module):
         self.truncation = truncation
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
+        self.delta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
@@ -55,21 +56,34 @@ class EMALayer(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
-        nn.init.normal_(self.beta, mean=1.0, std=0.02)
-        nn.init.normal_(self.gamma, mean=1.0, std=0.02)
-        nn.init.normal_(self.omega, mean=0.0, std=1.0)
+        with torch.no_grad():
+            # delta
+            nn.init.uniform_(self.delta, a=0.001, b=0.1)
+            # alpha & beta
+            A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
+            B = torch.ones(self.ndim, 1)
+            w, V = torch.linalg.eig(A)
+            V_inv = V.conj().real
+            self.alpha.normal_(mean=0.0, std=0.02).add_(w.unsqueeze(1))
+            self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
+            # gamma & omega
+            nn.init.normal_(self.gamma, mean=0.0, std=1.0)
+            nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
-    def calc_delta(self):
-        # D x N
-        return torch.sigmoid(self.alpha)
+    def calc_params(self):
+        # D x 1 x 1
+        delta = torch.exp(self.delta)
+        # D x N x 1
+        p = delta / (1.0 + 0.5 * delta * self.alpha)
+        q = 1.0 - p * self.alpha
+        return p, q
 
     def compute_kernel(self, length: int):
         # D x N x 1
-        delta = self.calc_delta()
+        p, q = self.calc_params()
         # D x N x L
-        vander = torch.arange(length).to(delta).view(1, 1, length) * torch.log(1 - delta)
-        kernel = (delta * self.beta) * torch.exp(vander)
+        vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
+        kernel = (p * self.beta) * torch.exp(vander)
         # D x L
         self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma)
         return self._kernel
