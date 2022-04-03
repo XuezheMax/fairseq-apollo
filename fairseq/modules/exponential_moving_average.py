@@ -121,7 +121,7 @@ class EMALayer(nn.Module):
         s = 0
         kernel_size = k.size(1)
         if self.bidirectional:
-            k1, k2 = torch.split(k, [self.ndim, self.ndim])
+            k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
             # D x 2*L-1
             k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
             x = F.pad(x, (kernel_size - 1, 0))
