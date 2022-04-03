@@ -28,8 +28,6 @@ class EMALayer(nn.Module):
         ndim=2,
         bidirectional=False,
         truncation=None,
-        delta_max=0.2,
-        delta_min=0.001
     ):
         super().__init__()
 
@@ -37,8 +35,6 @@ class EMALayer(nn.Module):
         self.ndim = ndim
         self.bidirectional = bidirectional
         self.truncation = truncation
-        self.delta_max = delta_max
-        self.delta_min = delta_min
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
@@ -59,15 +55,14 @@ class EMALayer(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.alpha, mean=0, std=1.0)
+        nn.init.normal_(self.alpha, mean=1.0, std=1.0)
         nn.init.normal_(self.beta, mean=1.0, std=0.02)
         nn.init.normal_(self.gamma, mean=1.0, std=0.02)
         nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def calc_delta(self):
         # D x N
-        alpha = torch.sigmoid(self.alpha)
-        return alpha * self.delta_max + (1.0 - alpha) * self.delta_min
+        return torch.sigmoid(self.alpha)
 
     def compute_kernel(self, length: int):
         # D x N x 1
