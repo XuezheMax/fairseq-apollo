@@ -51,6 +51,9 @@ class FairseqDropout(nn.Module):
             else:
                 logger.info('Disabling dropout for module: {}'.format(name))
 
+    def extra_repr(self) -> str:
+        return 'p={}'.format(self.p)
+
 
 class FairseqFeatureDropout(nn.Module):
 

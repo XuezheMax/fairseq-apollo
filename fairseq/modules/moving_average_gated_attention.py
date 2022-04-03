@@ -31,7 +31,6 @@ class MovingAverageGatedAttention(nn.Module):
         embed_dim,
         zdim,
         hdim,
-        dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
@@ -48,7 +47,6 @@ class MovingAverageGatedAttention(nn.Module):
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
 
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
@@ -126,7 +124,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         # N x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.dropout_module(mx)
+        mx = self.hidden_dropout(mx)
 
         # N x B x S
         z = F.silu(self.z_proj(mx))
