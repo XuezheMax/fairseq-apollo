@@ -25,21 +25,20 @@ class EMALayer(nn.Module):
     def __init__(
         self,
         embed_dim,
-        zdim,
+        ndim,
         bidirectional=False,
         truncation=None
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
-        self.zdim = zdim
+        self.ndim = ndim
         self.bidirectional = bidirectional
         self.truncation = truncation
 
-        kernel_dim = 2 * zdim if self.bidirectional else zdim
+        kernel_dim = 2 * ndim if self.bidirectional else ndim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim))
-        self.beta = nn.Parameter(torch.Tensor(zdim))
-        self.proj = nn.Linear(embed_dim, zdim)
+        self.beta = nn.Parameter(torch.Tensor(ndim))
         self._kernel = None
 
         self.reset_parameters()
@@ -56,10 +55,6 @@ class EMALayer(nn.Module):
     def reset_parameters(self):
         nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
         nn.init.normal_(self.beta, mean=0.0, std=1.0)
-
-        # proj
-        nn.init.normal_(self.proj.weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.proj.bias, 0.0)
 
     def compute_kernel(self, length: int):
         # D x 1
@@ -104,7 +99,6 @@ class EMALayer(nn.Module):
             saved_state = None
 
         # N x B x D
-        x = self.proj(x)
         residual = x * self.beta
 
         # N x B x D -> B x D x N
@@ -118,7 +112,7 @@ class EMALayer(nn.Module):
         s = 0
         kernel_size = k.size(1)
         if self.bidirectional:
-            k1, k2 = torch.split(k, [self.zdim, self.zdim])
+            k1, k2 = torch.split(k, [self.ndim, self.ndim])
             # D x 2*N-1
             k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
             x = F.pad(x, (kernel_size - 1, 0))
