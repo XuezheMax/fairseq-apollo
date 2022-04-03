@@ -57,7 +57,7 @@ class EMALayer(nn.Module):
     def reset_parameters(self):
         nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
         nn.init.normal_(self.beta, mean=1.0, std=0.02)
-        nn.init.normal_(self.gamma, mean=(1.0 / self.ndim), std=0.02)
+        nn.init.normal_(self.gamma, mean=1.0, std=0.02)
         nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def calc_delta(self):
