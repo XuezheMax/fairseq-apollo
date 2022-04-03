@@ -55,7 +55,7 @@ class EMALayer(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        nn.init.normal_(self.alpha, mean=-2.0, std=1.0)
+        nn.init.normal_(self.alpha, mean=-1.0, std=1.0)
         nn.init.normal_(self.beta, mean=1.0, std=0.02)
         nn.init.normal_(self.gamma, mean=1.0 / self.ndim, std=0.02)
         nn.init.normal_(self.omega, mean=0.0, std=1.0)
