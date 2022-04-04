@@ -58,14 +58,13 @@ class EMALayer(nn.Module):
     def reset_parameters(self):
         with torch.no_grad():
             # delta
-            nn.init.normal_(self.delta, mean=0.0, std=0.02)
+            nn.init.normal_(self.delta, mean=2.0, std=0.02)
             # alpha & beta
             A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
             B = torch.ones(self.ndim, 1)
-            w, V = torch.linalg.eig(A)
-            w = w.real
+            _, V = torch.linalg.eig(A)
             V_inv = V.conj().real.transpose(0, 1)
-            self.alpha.normal_(mean=0.0, std=0.02).add_(w.unsqueeze(1))
+            nn.init.normal_(self.alpha, mean=0.0, std=0.02)
             self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
             # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
@@ -73,10 +72,11 @@ class EMALayer(nn.Module):
 
     def calc_params(self):
         # D x 1 x 1
-        delta = torch.sigmoid(self.delta) + 0.5
+        delta = torch.sigmoid(self.delta)
+        alpha = torch.sigmoid(self.alpha)
         # D x N x 1
-        p = delta / (1.0 + 0.5 * delta * self.alpha)
-        q = 1.0 - p * self.alpha
+        p = delta / (1.0 + 0.5 * delta * alpha)
+        q = 1.0 - p * alpha
         return p, q
 
     def compute_kernel(self, length: int):
