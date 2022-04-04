@@ -37,7 +37,7 @@ class EMALayer(nn.Module):
         self.truncation = truncation
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
-        self.delta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
+        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
@@ -57,25 +57,23 @@ class EMALayer(nn.Module):
 
     def reset_parameters(self):
         with torch.no_grad():
-            # delta
-            nn.init.normal_(self.delta, mean=2.0, std=0.02)
-            # alpha & beta
+            # delta & alpha
+            nn.init.normal_(self.delta, mean=1.385, std=0.2)
+            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+            # beta
             A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
             B = torch.ones(self.ndim, 1)
             _, V = torch.linalg.eig(A)
             V_inv = V.conj().real.transpose(0, 1)
-            nn.init.normal_(self.alpha, mean=0.0, std=0.02)
             self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
             # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def calc_params(self):
-        # D x 1 x 1
-        delta = torch.sigmoid(self.delta)
-        alpha = torch.sigmoid(self.alpha)
         # D x N x 1
-        p = delta / (1.0 + 0.5 * delta * alpha)
+        p = torch.sigmoid(self.delta)
+        alpha = torch.sigmoid(self.alpha)
         q = 1.0 - p * alpha
         return p, q
 
