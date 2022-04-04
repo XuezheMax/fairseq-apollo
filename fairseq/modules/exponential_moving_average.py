@@ -147,7 +147,7 @@ class EMALayer(nn.Module):
         out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
 
         # B x D x L -> L x B x D
-        out = out.permute(2, 0, 1) + residual
+        out = F.silu(out.permute(2, 0, 1) + residual)
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
