@@ -37,3 +37,6 @@ class RelativePositionalBias(nn.Module):
         r = (2 * seq_len - 1) // 2
         t = t[:, r:-r]
         return t
+
+    def extra_repr(self) -> str:
+        return 'max positions={}'.format(self.max_positions)
