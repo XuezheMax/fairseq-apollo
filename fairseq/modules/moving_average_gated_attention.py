@@ -159,7 +159,7 @@ class MovingAverageGatedAttention(nn.Module):
             nc = seq_len // self.chunk_size
             # N x B x S -> B x K x C x S
             q = q.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
-            k = z.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
+            k = k.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
             v = v.view(nc, self.chunk_size, bsz, self.hdim).permute(2, 0, 1, 3)
             if padding_mask is not None:
                 # B x N -> B x K x C
