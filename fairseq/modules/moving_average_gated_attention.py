@@ -154,6 +154,9 @@ class MovingAverageGatedAttention(nn.Module):
             q = q.transpose(0, 1).unsqueeze(1)
             k = k.transpose(0, 1).unsqueeze(1)
             v = v.transpose(0, 1).unsqueeze(1)
+            if padding_mask is not None:
+                # B x N -> B x 1 x N
+                padding_mask = padding_mask.unsqueeze(1)
         else:
             slen = self.chunk_size
             nc = seq_len // self.chunk_size
