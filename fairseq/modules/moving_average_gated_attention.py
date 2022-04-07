@@ -149,7 +149,7 @@ class MovingAverageGatedAttention(nn.Module):
         r, v = torch.split(rv, [self.hdim, self.hdim], dim=-1)
 
         if self.chunk_size < 0:
-            slen = k.size(1)
+            slen = k.size(0)
             # N x B x S -> B x 1 x N x S
             q = q.transpose(0, 1).unsqueeze(1)
             k = k.transpose(0, 1).unsqueeze(1)
