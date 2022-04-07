@@ -59,6 +59,7 @@ class MegaLRAEncoder(nn.Module):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
+        chunk_size: int = -1,
         norm_type: str = 'scalenorm',
         layerdrop: float = 0.0,
         truncation: int = None,
@@ -72,6 +73,7 @@ class MegaLRAEncoder(nn.Module):
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.chunk_size = chunk_size
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
         self.embedding_type = embedding_type
@@ -103,6 +105,7 @@ class MegaLRAEncoder(nn.Module):
                 dropout=dropout,
                 attention_dropout=attention_dropout,
                 hidden_dropout=hidden_dropout,
+                chunk_size=chunk_size,
                 truncation=truncation,
                 max_positions=self.max_seq_len,
                 activation=activation,
@@ -137,6 +140,7 @@ class MegaLRAEncoder(nn.Module):
         dropout,
         attention_dropout,
         hidden_dropout,
+        chunk_size,
         truncation,
         max_positions,
         activation,
@@ -150,6 +154,7 @@ class MegaLRAEncoder(nn.Module):
             dropout=dropout,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
+            chunk_size=chunk_size,
             truncation=truncation,
             max_positions=max_positions,
             activation=activation,
@@ -164,7 +169,14 @@ class MegaLRAEncoder(nn.Module):
             positions: Optional[torch.Tensor] = None,
     ) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], torch.Tensor]:
 
-        # compute padding mask. This is needed for multi-head attention
+
+        bsz, seq_len = tokens.size()
+        if self.chunk_size > 0 and seq_len % self.chunk_size != 0:
+            assert self.embedding_type != 'sparse', 'for image the sequence length {} must be divided by chunk size {}'.format(seq_len, self.chunk_size)
+
+            num_paddings = math.ceil(seq_len / self.chunk_size) * self.chunk_size - seq_len
+            tokens = F.pad(tokens, (0, num_paddings), value=self.padding_idx)
+
         if self.embedding_type == 'sparse':
             padding_mask = tokens.eq(self.padding_idx)
             if not self.traceable and not self.tpu and not padding_mask.any():

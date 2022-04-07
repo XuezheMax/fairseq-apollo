@@ -145,6 +145,8 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
+        parser.add_argument('--chunk-size', type=int, metavar='N',
+                            help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
@@ -294,6 +296,7 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
                 norm_type=args.norm_type,
+                chunk_size=args.chunk_size,
                 truncation=getattr(args, 'truncation_length', None),
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
@@ -424,6 +427,7 @@ def mega_lra_imdb(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
@@ -494,6 +498,7 @@ def mega_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 384)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1025)
     base_architecture(args)

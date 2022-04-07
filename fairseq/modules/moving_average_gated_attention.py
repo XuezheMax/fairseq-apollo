@@ -37,6 +37,7 @@ class MovingAverageGatedAttention(nn.Module):
         activation='tanh',
         peephole=False,
         bidirectional=False,
+        chunk_size=-1,
         truncation=None,
         max_positions=1024,
     ):
@@ -45,11 +46,13 @@ class MovingAverageGatedAttention(nn.Module):
         self.embed_dim = embed_dim
         self.hdim = hdim
         self.zdim = zdim
+        self.ndim=ndim
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
+        self.chunk_size = chunk_size
 
         self.move = EMALayer(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
@@ -62,7 +65,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
-        self.rel_pos_bias = RelativePositionalBias(max_positions)
+        self.rel_pos_bias = RelativePositionalBias(max_positions if chunk_size < 0 else chunk_size)
 
         self.reset_parameters()
 
@@ -145,10 +148,22 @@ class MovingAverageGatedAttention(nn.Module):
         rv = F.silu(rv)
         r, v = torch.split(rv, [self.hdim, self.hdim], dim=-1)
 
-        # N x B x S -> B x N x S
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
+        if self.chunk_size < 0:
+            slen = k.size(1)
+            # N x B x S -> B x 1 x N x S
+            q = q.transpose(0, 1).unsqueeze(1)
+            k = k.transpose(0, 1).unsqueeze(1)
+            v = v.transpose(0, 1).unsqueeze(1)
+        else:
+            slen = self.chunk_size
+            nc = seq_len // self.chunk_size
+            # N x B x S -> B x K x C x S
+            q = q.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
+            k = z.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
+            v = v.view(nc, self.chunk_size, bsz, self.hdim).permute(2, 0, 1, 3)
+            if padding_mask is not None:
+                # B x N -> B x K x C
+                padding_mask = padding_mask.view(bsz, nc, self.chunk_size)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, seq_len, dim)
@@ -179,27 +194,28 @@ class MovingAverageGatedAttention(nn.Module):
             assert incremental_state is not None
             incremental_state = self._set_input_buffer(incremental_state, saved_state)
 
-        seq_len = k.size(1)
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
         if padding_mask is not None and padding_mask.dim() == 0:
             padding_mask = None
 
         if padding_mask is not None:
-            # B x N
+            # B x K x C
             inverse_mask = 1.0 - padding_mask.type_as(x)
-            lengths = inverse_mask.sum(dim=1).view(bsz, 1, 1)
+            # B x K x 1 x 1
+            lengths = inverse_mask.sum(dim=-1, keepdim=True).unsqueeze(-1)
         else:
-            lengths = seq_len
+            lengths = slen
             inverse_mask = None
 
-        # B x N x N
-        qk = torch.bmm(q, k.transpose(1, 2))
-        bias = self.rel_pos_bias(seq_len)
+        # B x K x C x C
+        qk = torch.matmul(q, k.transpose(2, 3))
+        bias = self.rel_pos_bias(slen)
         qk = qk / lengths + bias
         if inverse_mask is not None:
-            qk = qk * inverse_mask.unsqueeze(1)
+            qk = qk * inverse_mask.unsqueeze(2)
 
+        assert attn_mask is None
         if attn_mask is not None:
             inverse_attn_mask = 1.0 - attn_mask.unsqueeze(0).type_as(x)
             if self.onnx_trace:
@@ -209,11 +225,10 @@ class MovingAverageGatedAttention(nn.Module):
         if before_softmax:
             return qk, v
 
-        # attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
         attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
-        # B x N x E -> N x B x E
-        h = torch.bmm(kernel, v).transpose(0, 1)
+        # B x K x C x E -> B x N x E -> N x B x E
+        h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         h = self.hidden_dropout(h)
         # N x B x E -> N x B x D
         h = self.activation(self.hu_proj(mx) + self.hw_proj(h * r))
@@ -260,3 +275,6 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             new_padding_mask = prev_padding_mask
         return new_padding_mask
+
+    def extra_repr(self) -> str:
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim, self.chunk_size)
