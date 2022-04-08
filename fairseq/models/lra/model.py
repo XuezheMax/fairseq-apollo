@@ -464,7 +464,7 @@ def transformer_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.max_positions = getattr(args, 'max_positions', 1025)
+    args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
 
 
@@ -480,7 +480,7 @@ def flash_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.max_positions = getattr(args, 'max_positions', 1025)
+    args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
 
 
@@ -500,7 +500,7 @@ def mega_lra_cifar10(args):
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
-    args.max_positions = getattr(args, 'max_positions', 1025)
+    args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
 
 
@@ -513,7 +513,7 @@ def transformer_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.max_positions = getattr(args, 'max_positions', 1025)
+    args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
 
 
