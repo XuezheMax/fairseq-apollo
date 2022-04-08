@@ -171,7 +171,7 @@ class MegaLRAEncoder(nn.Module):
 
 
         bsz, seq_len = tokens.size()
-        if self.chunk_size > 0 and seq_len % self.chunk_size != 0:
+        if self.chunk_size > 0 and seq_len > self.chunk_size and seq_len % self.chunk_size != 0:
             assert self.embedding_type == 'sparse', 'for image the sequence length {} must be divided by chunk size {}'.format(seq_len, self.chunk_size)
 
             num_paddings = math.ceil(seq_len / self.chunk_size) * self.chunk_size - seq_len

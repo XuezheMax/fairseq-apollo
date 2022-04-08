@@ -34,6 +34,11 @@ class EMALayer(nn.Module):
         self.bidirectional = bidirectional
         self.truncation = truncation
 
+        if self.bidirectional:
+            self.scale = math.sqrt(0.5 / self.ndim)
+        else:
+            self.scale = math.sqrt(1.0 / self.ndim)
+
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
@@ -82,7 +87,7 @@ class EMALayer(nn.Module):
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
         kernel = (p * self.beta) * torch.exp(vander)
         # D x L
-        self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma)
+        self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
         return self._kernel
 
     def kernel(self, length: int):
