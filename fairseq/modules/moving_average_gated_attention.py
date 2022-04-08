@@ -205,8 +205,10 @@ class MovingAverageGatedAttention(nn.Module):
         if padding_mask is not None:
             # B x K x C
             inverse_mask = 1.0 - padding_mask.type_as(x)
+            # B x K x 1
+            lengths = inverse_mask.sum(dim=-1, keepdim=True)
             # B x K x 1 x 1
-            lengths = inverse_mask.sum(dim=-1, keepdim=True).unsqueeze(-1)
+            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
         else:
             lengths = slen
             inverse_mask = None
