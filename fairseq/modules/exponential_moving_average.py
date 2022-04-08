@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.layer_norm import LayerNorm
 
 
 @with_incremental_state
@@ -41,7 +40,6 @@ class EMALayer(nn.Module):
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
-        self.layer_norm = LayerNorm(self.embed_dim)
         self._kernel = None
 
         self.reset_parameters()
@@ -147,7 +145,7 @@ class EMALayer(nn.Module):
         out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
 
         # B x D x L -> L x B x D
-        out = self.layer_norm(out.permute(2, 0, 1) + residual)
+        out = F.silu(out.permute(2, 0, 1) + residual)
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
