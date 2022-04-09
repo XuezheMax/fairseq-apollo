@@ -486,6 +486,7 @@ def mega_lra_aan(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 2)
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
