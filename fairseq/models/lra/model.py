@@ -376,9 +376,28 @@ def transformer_lra_listop(args):
 @register_model_architecture('lra', 'luna_lra_listop')
 def luna_lra_listop(args):
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.max_positions = getattr(args, 'max_positions', 2001)
+    args.max_positions = getattr(args, 'max_positions', 2002)
     args.tie_layer_weights = getattr(args, 'tie_layer_weights', True)
     args.layer_type = getattr(args, 'layer_type', 'luna')
+    base_architecture(args)
+
+
+@register_model_architecture('lra', 'mega_lra_listop')
+def mega_lra_listop(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 160)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 16)
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 160)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.max_positions = getattr(args, 'max_positions', 2002)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     base_architecture(args)
 
 
@@ -419,17 +438,18 @@ def flash_lra_imdb(args):
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 160)
     args.z_dim = getattr(args, 'z_dim', 64)
-    args.n_dim = getattr(args, 'n_dim', 2)
+    args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 160)
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     base_architecture(args)
 
 
@@ -452,6 +472,24 @@ def luna_lra_aan_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_aan_architecture(args)
+
+
+@register_model_architecture('lra', 'mega_lra_aan')
+def mega_lra_aan(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 16)
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.max_positions = getattr(args, 'max_positions', 4002)
+    base_architecture(args)
 
 
 @register_model_architecture('lra', 'transformer_lra_cifar10')
@@ -488,9 +526,9 @@ def flash_lra_cifar10(args):
 def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 384)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
     args.z_dim = getattr(args, 'z_dim', 128)
-    args.n_dim = getattr(args, 'n_dim', 2)
+    args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 192)
