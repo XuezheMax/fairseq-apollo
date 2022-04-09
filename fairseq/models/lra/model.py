@@ -398,6 +398,7 @@ def mega_lra_listop(args):
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 2002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     base_architecture(args)
 
 
