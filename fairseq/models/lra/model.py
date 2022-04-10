@@ -439,10 +439,10 @@ def flash_lra_imdb(args):
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
-    args.encoder_layers = getattr(args, 'encoder_layers', 5)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
