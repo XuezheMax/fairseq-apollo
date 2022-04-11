@@ -585,8 +585,48 @@ def luna_lra_pf32(args):
     transformer_lra_pf32(args)
 
 
+@register_model_architecture('lra', 'mega_lra_pf32')
+def mega_lra_pf32(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 16)
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.max_positions = getattr(args, 'max_positions', 1024)
+    base_architecture(args)
+
+
 @register_model_architecture('lra', 'luna_lra_pf128')
 def luna_lra_pf32(args):
     args.max_positions = getattr(args, 'max_positions', 128 * 128 + 2)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
+
+
+@register_model_architecture('lra', 'mega_lra_pf128')
+def mega_lra_pf128(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.z_dim = getattr(args, 'z_dim', 64)
+    args.n_dim = getattr(args, 'n_dim', 16)
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.norm_type = getattr(args, 'norm_type', 'scalenorm')
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.max_positions = getattr(args, 'max_positions', 128 * 128)
+    base_architecture(args)
