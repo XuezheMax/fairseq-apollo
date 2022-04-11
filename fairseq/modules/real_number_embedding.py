@@ -8,14 +8,22 @@ import torch
 from torch import nn
 from torch.nn import Parameter
 from fairseq.modules.layer_norm import LayerNorm
+from fairseq.modules.scale_norm import ScaleNorm
 
 
 class RealNumberEmbedding(nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, norm_type, export=False):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.weight = Parameter(torch.Tensor(embedding_dim))
         self.bias = Parameter(torch.Tensor(embedding_dim))
+        if norm_type == 'layernorm':
+            self.embed_norm = LayerNorm(embedding_dim, export=export)
+        elif norm_type == 'scalenorm':
+            self.embed_norm = ScaleNorm(dim=-1)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -23,4 +31,5 @@ class RealNumberEmbedding(nn.Module):
         nn.init.normal_(self.bias, mean=0.0, std=0.02)
 
     def forward(self, x):
-        return x.unsqueeze(-1) * self.weight + self.bias
+        weight = self.embed_norm(self.weight)
+        return x.unsqueeze(-1) * weight + self.bias
