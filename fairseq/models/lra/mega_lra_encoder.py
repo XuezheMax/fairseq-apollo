@@ -238,7 +238,7 @@ class NormalizedEmbedding(nn.Module):
         self.reset_parameters(embedding_dim)
 
     def reset_parameters(self, embedding_dim):
-        nn.init.normal_(self.embed_norm.weight, mean=0, std=embedding_dim ** -0.5)
+        nn.init.normal_(self.embed.weight, mean=0, std=embedding_dim ** -0.5)
 
     def forward(self, tokens):
         x = self.embed(tokens)
