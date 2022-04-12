@@ -58,10 +58,9 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.move = EMALayer(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
-        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
-        self.proj = nn.Linear(embed_dim, 2 * hdim + embed_dim, bias=True)
+        self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
         self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
-        self.hu_proj = nn.Linear(embed_dim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -82,16 +81,14 @@ class MovingAverageGatedAttention(nn.Module):
 
     def reset_parameters(self):
         std = 0.02
-        nn.init.normal_(self.z_proj.weight, mean=0.0, std=std)
-        if self.z_proj.weight is not None:
-            nn.init.constant_(self.z_proj.bias, 0.0)
+        nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
+        nn.init.constant_(self.v_proj.bias, 0.0)
 
-        nn.init.normal_(self.proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.proj.bias, 0.0)
+        nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
+        nn.init.constant_(self.mx_proj.bias, 0.0)
 
         nn.init.normal_(self.hw_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.hw_proj.bias, 0.0)
-        nn.init.normal_(self.hu_proj.weight, mean=0.0, std=std)
 
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
@@ -183,27 +180,23 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
+        # N x B x E
+        v = F.silu(self.v_proj(x))
+
         # N x B x D
         mx = self.move(x, padding_mask, incremental_state)
         mx = self.hidden_dropout(mx)
-
-        # N x B x S
-        z = F.silu(self.z_proj(mx))
+        # N x B x D -> N x B x (2*D+S+E)
+        base = self.mx_proj(mx)
+        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim])
+        # N x B x D
+        u = torch.sigmoid(u)
+        # N x B x (E+S)
+        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
         # N x B x S -> N x B x 1 x S -> N x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # N x B x 2 x S -> N x B x S
         q, k = torch.unbind(z, dim=2)
-
-        # N x B x D -> N x B x (2*E+D)
-        base = self.proj(x)
-        u, rv = torch.split(base, [self.embed_dim, 2 * self.hdim], dim=-1)
-
-        # N x B x D
-        u = torch.sigmoid(u)
-
-        # N x B x (2*E+S)
-        rv = F.silu(rv)
-        r, v = torch.split(rv, [self.hdim, self.hdim], dim=-1)
 
         if self.chunk_size < 0:
             # N x B x S -> B x 1 x N x S
@@ -272,7 +265,7 @@ class MovingAverageGatedAttention(nn.Module):
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         h = self.hidden_dropout(h)
         # N x B x E -> N x B x D
-        h = self.activation(self.hu_proj(mx) + self.hw_proj(h * r))
+        h = self.activation(hx + self.hw_proj(h * r))
         # N x B x D
         out = torch.addcmul(x, u, h - x)
 
