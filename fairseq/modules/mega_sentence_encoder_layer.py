@@ -35,6 +35,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         truncation=None,
         max_positions: int = 1024,
         activation='tanh',
+        attention_activation='softmax',
         export: bool = False,
     ) -> None:
         super().__init__()
@@ -44,11 +45,13 @@ class MegaSentenceEncoderLayer(nn.Module):
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
         self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, n_dim,
-                                    attention_dropout, hidden_dropout, activation,
+                                    attention_dropout, hidden_dropout,
+                                    activation, attention_activation,
                                     chunk_size, truncation, max_positions)
 
     def build_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
-                    attention_dropout, hidden_dropout, activation,
+                    attention_dropout, hidden_dropout,
+                    activation, attention_activation,
                     chunk_size, truncation, max_positions):
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
@@ -61,6 +64,7 @@ class MegaSentenceEncoderLayer(nn.Module):
             truncation=truncation,
             max_positions=max_positions,
             activation=activation,
+            attention_activation=attention_activation,
             bidirectional=True
         )
 

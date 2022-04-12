@@ -125,6 +125,8 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use')
+        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2'],
+                            help='activation function for attention mechanism')
         parser.add_argument('--classifier-activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='Which activation function to use for classifier layer.')
@@ -292,6 +294,7 @@ class LRAEncoder(FairseqEncoder):
                 z_dim=args.z_dim,
                 n_dim=args.n_dim,
                 activation=args.activation_fn,
+                attention_activation=args.attention_activation_fn,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
@@ -357,6 +360,7 @@ def base_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', True)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)

@@ -35,7 +35,7 @@ class MovingAverageGatedAttention(nn.Module):
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
-        peephole=False,
+        attention_activation='softmax',
         bidirectional=False,
         chunk_size=-1,
         truncation=None,
@@ -49,6 +49,8 @@ class MovingAverageGatedAttention(nn.Module):
         self.ndim=ndim
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
+        self.attention_activation = attention_activation
+        self.scaling = self.embed_dim ** -0.5 if attention_activation == 'softmax' else None
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -94,6 +96,59 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
 
+    def relu2_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
+        slen = k.size(0) if self.chunk_size < 0 else self.chunk_size
+        if padding_mask is not None:
+            # B x K x C
+            inverse_mask = 1.0 - padding_mask.type_as(q)
+            # B x K x 1
+            lengths = inverse_mask.sum(dim=-1, keepdim=True)
+            # B x K x 1 x 1
+            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
+        else:
+            lengths = slen
+            inverse_mask = None
+
+        # B x K x C x C
+        qk = torch.matmul(q, k.transpose(2, 3))
+        bias = self.rel_pos_bias(slen)
+        qk = qk / lengths + bias
+        if inverse_mask is not None:
+            qk = qk * inverse_mask.unsqueeze(2)
+
+        if attn_mask is not None:
+            inverse_attn_mask = 1.0 - attn_mask.unsqueeze(0).type_as(q)
+            if self.onnx_trace:
+                inverse_attn_mask = inverse_attn_mask.repeat(qk.size(0), 1, 1)
+            qk = qk * inverse_attn_mask
+
+        if before_attn_fn:
+            return qk
+
+        attn_weights = utils.relu2(qk)
+        return attn_weights
+
+    def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
+        slen = k.size(0) if self.chunk_size < 0 else self.chunk_size
+        q = q * self.scaling
+        # B x K x C x C
+        qk = torch.matmul(q, k.transpose(2, 3))
+        bias = self.rel_pos_bias(slen)
+        qk = qk + bias
+
+        if attn_mask is not None:
+            attn_mask = attn_mask.unsqueeze(0)
+            qk = qk + attn_mask
+
+        if padding_mask is not None:
+           qk = qk.masked_fill(padding_mask.unsqueeze(2), float('-inf'))
+
+        if before_attn_fn:
+            return qk
+
+        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace)
+        return attn_weights
+
     def forward(
         self,
         x,
@@ -101,7 +156,7 @@ class MovingAverageGatedAttention(nn.Module):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = False,
         attn_mask: Optional[Tensor] = None,
-        before_softmax: bool = False,
+        before_attn_fn: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time x Batch x Channel
 
@@ -114,7 +169,7 @@ class MovingAverageGatedAttention(nn.Module):
             attn_mask (ByteTensor, optional): typically used to
                 implement causal attention, where the mask prevents the
                 attention from looking forward in time (default: None).
-            before_softmax (bool, optional): return the raw attention
+            before_attn_fn (bool, optional): return the raw attention
                 weights and values before the attention softmax.
         """
 
@@ -202,35 +257,16 @@ class MovingAverageGatedAttention(nn.Module):
         if padding_mask is not None and padding_mask.dim() == 0:
             padding_mask = None
 
-        if padding_mask is not None:
-            # B x K x C
-            inverse_mask = 1.0 - padding_mask.type_as(x)
-            # B x K x 1
-            lengths = inverse_mask.sum(dim=-1, keepdim=True)
-            # B x K x 1 x 1
-            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
+        if self.attention_activation == 'softmax':
+            attn_weights = self.softmax_attention(q, k, padding_mask, attn_mask, before_attn_fn)
+        elif self.attention_activation == 'relu2':
+            attn_weights = self.relu2_attention(q, k, padding_mask, attn_mask, before_attn_fn)
         else:
-            lengths = slen
-            inverse_mask = None
+            raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
 
-        # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3))
-        bias = self.rel_pos_bias(slen)
-        qk = qk / lengths + bias
-        if inverse_mask is not None:
-            qk = qk * inverse_mask.unsqueeze(2)
+        if before_attn_fn:
+            return attn_weights, v
 
-        assert attn_mask is None
-        if attn_mask is not None:
-            inverse_attn_mask = 1.0 - attn_mask.unsqueeze(0).type_as(x)
-            if self.onnx_trace:
-                inverse_attn_mask = inverse_attn_mask.repeat(qk.size(0), 1, 1)
-            qk = qk * inverse_attn_mask
-
-        if before_softmax:
-            return qk, v
-
-        attn_weights = torch.square(F.relu(qk))
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x N x E -> N x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
@@ -282,4 +318,6 @@ class MovingAverageGatedAttention(nn.Module):
         return new_padding_mask
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim, self.chunk_size)
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}'.format(self.embed_dim, self.zdim,
+                                                                                  self.hdim, self.ndim, self.chunk_size,
+                                                                                  self.attention_activation)

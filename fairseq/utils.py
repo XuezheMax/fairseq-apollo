@@ -441,6 +441,13 @@ def import_user_module(args):
             importlib.import_module(module_name)
 
 
+def relu2(x, onnx_trace: bool = False):
+    if onnx_trace:
+        return torch.square(F.relu(x.float()))
+    else:
+        return torch.square(F.relu(x))
+
+
 def softmax(x, dim: int, onnx_trace: bool = False):
     if onnx_trace:
         return F.softmax(x.float(), dim=dim)

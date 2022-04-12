@@ -56,6 +56,7 @@ class MegaLRAEncoder(nn.Module):
         z_dim: int = 128,
         n_dim=2,
         activation='tanh',
+        attention_activation='softmax',
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
@@ -106,6 +107,7 @@ class MegaLRAEncoder(nn.Module):
                 truncation=truncation,
                 max_positions=self.max_seq_len,
                 activation=activation,
+                attention_activation=attention_activation,
                 export=export
             )
             for _ in range(self.num_layers)
@@ -132,6 +134,7 @@ class MegaLRAEncoder(nn.Module):
         truncation,
         max_positions,
         activation,
+        attention_activation,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -146,6 +149,7 @@ class MegaLRAEncoder(nn.Module):
             truncation=truncation,
             max_positions=max_positions,
             activation=activation,
+            attention_activation=attention_activation,
             export=export
         )
 
