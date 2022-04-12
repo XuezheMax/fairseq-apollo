@@ -360,7 +360,7 @@ def base_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', True)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
-    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
+    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'relu2')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
