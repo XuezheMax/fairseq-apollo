@@ -144,7 +144,7 @@ class LRAModel(FairseqEncoderModel):
                             help='scalar quantization noise and scalar quantization at training time')
 
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
-        parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm'])
+        parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm', 'batchnorm'])
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--chunk-size', type=int, metavar='N',

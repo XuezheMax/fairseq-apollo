@@ -18,11 +18,13 @@ class RealNumberEmbedding(nn.Module):
         self.weight = Parameter(torch.Tensor(embedding_dim))
         self.bias = Parameter(torch.Tensor(embedding_dim))
         if norm_type is None:
-            self.embed_norm = None
+            self._embed_norm = None
         elif norm_type == 'layernorm':
-            self.embed_norm = LayerNorm(embedding_dim, export=export)
+            self._embed_norm = LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
-            self.embed_norm = ScaleNorm(dim=-1)
+            self._embed_norm = ScaleNorm(dim=-1)
+        elif norm_type == 'batchnorm':
+            self._embed_norm = nn.BatchNorm1d(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
@@ -32,8 +34,17 @@ class RealNumberEmbedding(nn.Module):
         nn.init.normal_(self.weight, mean=0.0, std=0.1)
         nn.init.normal_(self.bias, mean=0.0, std=0.02)
 
+    def embed_norm(self, emb):
+        if self._embed_norm is None:
+            return emb
+        elif isinstance(self._embed_norm, nn.BatchNorm1d):
+            emb = emb.transpose(-2, -1)
+            emb = self._embed_norm(emb)
+            return emb.transpose(-2, -1)
+        else:
+            return self._embed_norm(emb)
+
     def forward(self, x):
         emb = x.unsqueeze(-1) * self.weight + self.bias
-        if self.embed_norm is not None:
-            emb = self.embed_norm(emb)
+        emb = self.embed_norm(emb)
         return emb
