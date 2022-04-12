@@ -97,7 +97,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.beta, 0.0)
 
     def relu2_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
-        slen = k.size(0) if self.chunk_size < 0 else self.chunk_size
+        slen = k.size(2)
         if padding_mask is not None:
             # B x K x C
             inverse_mask = 1.0 - padding_mask.type_as(q)
@@ -129,7 +129,7 @@ class MovingAverageGatedAttention(nn.Module):
         return attn_weights
 
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
-        slen = k.size(0) if self.chunk_size < 0 else self.chunk_size
+        slen = k.size(2)
         q = q * self.scaling
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3))
@@ -204,7 +204,6 @@ class MovingAverageGatedAttention(nn.Module):
         r, v = torch.split(rv, [self.hdim, self.hdim], dim=-1)
 
         if self.chunk_size < 0:
-            slen = k.size(0)
             # N x B x S -> B x 1 x N x S
             q = q.transpose(0, 1).unsqueeze(1)
             k = k.transpose(0, 1).unsqueeze(1)
@@ -213,7 +212,6 @@ class MovingAverageGatedAttention(nn.Module):
                 # B x N -> B x 1 x N
                 padding_mask = padding_mask.unsqueeze(1)
         else:
-            slen = self.chunk_size
             nc = seq_len // self.chunk_size
             # N x B x S -> B x K x C x S
             q = q.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
