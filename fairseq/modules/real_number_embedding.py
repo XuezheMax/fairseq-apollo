@@ -33,8 +33,7 @@ class RealNumberEmbedding(nn.Module):
         nn.init.normal_(self.bias, mean=0.0, std=0.02)
 
     def forward(self, x):
-        if self.embed_norm is None:
-            weight = self.weight
-        else:
-            weight = self.embed_norm(self.weight)
-        return x.unsqueeze(-1) * weight + self.bias
+        emb = x.unsqueeze(-1) * self.weight + self.bias
+        if self.embed_norm is not None:
+            emb = self.embed_norm(emb)
+        return emb
