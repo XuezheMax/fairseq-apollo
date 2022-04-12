@@ -114,7 +114,7 @@ python -u train.py ${DATA} \
     --dropout 0.2 \
     --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric \
     --optimizer adam --lr 0.001 --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
-    --batch-size 256 --sentence-avg --update-freq 1 \
+    --batch-size 512 --sentence-avg --update-freq 1 \
     --lr-scheduler inverse_sqrt --weight-decay 0.0 \
     --criterion lra_cross_entropy --max-update 62500 \
     --warmup-updates 4000 --warmup-init-lr '1e-07' \
