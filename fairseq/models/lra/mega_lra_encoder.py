@@ -111,14 +111,6 @@ class MegaLRAEncoder(nn.Module):
             for _ in range(self.num_layers)
         ])
 
-    def build_embedding_norm(self, embedding_dim, norm_type, export):
-        if norm_type == 'layernorm':
-            return LayerNorm(embedding_dim, export=export)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
-
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, export):
         if embedding_type == 'sparse':
             embed_tokens = NormalizedEmbedding(vocab_size, embedding_dim, padding_idx, norm_type, export)

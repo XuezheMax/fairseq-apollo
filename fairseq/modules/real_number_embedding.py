@@ -12,12 +12,14 @@ from fairseq.modules.scale_norm import ScaleNorm
 
 
 class RealNumberEmbedding(nn.Module):
-    def __init__(self, embedding_dim, norm_type, export=False):
+    def __init__(self, embedding_dim, norm_type=None, export=False):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.weight = Parameter(torch.Tensor(embedding_dim))
         self.bias = Parameter(torch.Tensor(embedding_dim))
-        if norm_type == 'layernorm':
+        if norm_type is None:
+            self.embed_norm = None
+        elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             self.embed_norm = ScaleNorm(dim=-1)
@@ -31,5 +33,8 @@ class RealNumberEmbedding(nn.Module):
         nn.init.normal_(self.bias, mean=0.0, std=0.02)
 
     def forward(self, x):
-        weight = self.embed_norm(self.weight)
+        if self.embed_norm is None:
+            weight = self.weight
+        else:
+            weight = self.embed_norm(self.weight)
         return x.unsqueeze(-1) * weight + self.bias
