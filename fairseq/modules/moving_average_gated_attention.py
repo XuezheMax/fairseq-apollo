@@ -188,7 +188,7 @@ class MovingAverageGatedAttention(nn.Module):
         mx = self.hidden_dropout(mx)
         # N x B x D -> N x B x (2*D+S+E)
         base = self.mx_proj(mx)
-        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim])
+        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
         # N x B x D
         u = torch.sigmoid(u)
         # N x B x (E+S)
