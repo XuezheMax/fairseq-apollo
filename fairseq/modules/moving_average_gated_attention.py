@@ -50,7 +50,7 @@ class MovingAverageGatedAttention(nn.Module):
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
-        self.scaling = self.embed_dim ** -0.5 if attention_activation == 'softmax' else None
+        self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -141,7 +141,9 @@ class MovingAverageGatedAttention(nn.Module):
             qk = qk + attn_mask
 
         if padding_mask is not None:
-           qk = qk.masked_fill(padding_mask.unsqueeze(2), float('-inf'))
+            padding_mask_all = padding_mask.all(dim=-1, keepdim=True)
+            padding_mask = torch.logical_and(padding_mask, ~padding_mask_all)
+            qk = qk.masked_fill(padding_mask.unsqueeze(2).to(torch.bool), float('-inf'))
 
         if before_attn_fn:
             return qk
