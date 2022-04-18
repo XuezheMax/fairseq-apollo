@@ -38,6 +38,7 @@ class MovingAverageGatedAttention(nn.Module):
         attention_activation='softmax',
         bidirectional=False,
         chunk_size=-1,
+        bias=False,
         truncation=None,
         max_positions=1024,
     ):
@@ -58,9 +59,9 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.move = EMALayer(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
-        self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
-        self.hw_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.v_proj = nn.Linear(embed_dim, hdim, bias=bias)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=bias)
+        self.hw_proj = nn.Linear(hdim, embed_dim, bias=bias)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -82,13 +83,16 @@ class MovingAverageGatedAttention(nn.Module):
     def reset_parameters(self):
         std = 0.02
         nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.v_proj.bias, 0.0)
+        if self.v_proj.bias is not None:
+            nn.init.constant_(self.v_proj.bias, 0.0)
 
         nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.mx_proj.bias, 0.0)
+        if self.mx_proj.bias is not None:
+            nn.init.constant_(self.mx_proj.bias, 0.0)
 
         nn.init.normal_(self.hw_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.hw_proj.bias, 0.0)
+        if self.hw_proj.bias is not None:
+            nn.init.constant_(self.hw_proj.bias, 0.0)
 
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
