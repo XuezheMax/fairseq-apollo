@@ -231,6 +231,7 @@ class LRAImageTask(FairseqTask):
         parser.add_argument('--shorten-data-split-list', default='',
                             help='comma-separated list of dataset splits to apply shortening to, '
                                  'e.g., "train,valid" (default: all dataset splits)')
+        parser.add_argument('--pixel-normalization', type=float, nargs='+', default=None, help='mean and std for pixel normalization.')
 
     def __init__(self, args):
         super().__init__(args)
@@ -242,6 +243,8 @@ class LRAImageTask(FairseqTask):
         else:
             self._max_positions = args.max_positions
         args.tokens_per_sample = self._max_positions
+        self.normalization = (0.5, 0.5) if args.pixel_normalization is None else args.pixel_normalization
+        assert len(self.normalization) == 2
 
     @classmethod
     def load_dictionary(cls, filename):
@@ -263,7 +266,7 @@ class LRAImageTask(FairseqTask):
 
         def make_dataset(type):
             split_path = get_path(type, split)
-            dataset = PixelSequenceDataset(split_path + '.src')
+            dataset = PixelSequenceDataset(split_path + '.src', self.normalization)
             return dataset
 
         src_ds = make_dataset('input')

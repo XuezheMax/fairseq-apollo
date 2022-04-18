@@ -177,7 +177,6 @@ class MegaLRAEncoder(nn.Module):
             x = self.embed_tokens(tokens)
         else:
             padding_mask = None
-            tokens = (tokens - 0.5) / 0.5
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 

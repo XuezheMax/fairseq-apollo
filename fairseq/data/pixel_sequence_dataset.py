@@ -15,13 +15,15 @@ from fairseq.tokenizer import tokenize_line
 
 class PixelSequenceDataset(FairseqDataset):
 
-    def __init__(self, path, reverse_order=False):
+    def __init__(self, path, normalization, reverse_order=False):
         self.tokens_list = []
         self.lines = []
         self.sizes = []
         self.reverse_order = reverse_order
         self.read_data(path)
         self.size = len(self.tokens_list)
+        self.mean = normalization[0]
+        self.std = normalization[1]
 
     def read_data(self, path):
         with open(path, 'r', encoding='utf-8') as f:
@@ -39,7 +41,8 @@ class PixelSequenceDataset(FairseqDataset):
         pixels = [int(w) for w in words]
 
         default_float_dtype = torch.get_default_dtype()
-        return torch.tensor(pixels, dtype=default_float_dtype).div(255.)
+        pixels = torch.tensor(pixels, dtype=default_float_dtype).div(255.)
+        return pixels.sub(self.mean).div(self.std)
 
     def check_index(self, i):
         if i < 0 or i >= self.size:
