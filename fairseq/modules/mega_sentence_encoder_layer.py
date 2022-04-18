@@ -67,7 +67,7 @@ class MegaSentenceEncoderLayer(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
-            bidirectional=True
+            bidirectional=True,
         )
 
     def forward(
