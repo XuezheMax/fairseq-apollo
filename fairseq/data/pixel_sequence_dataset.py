@@ -16,14 +16,14 @@ from fairseq.tokenizer import tokenize_line
 class PixelSequenceDataset(FairseqDataset):
 
     def __init__(self, path, normalization, reverse_order=False):
+        self.mean = normalization[0]
+        self.std = normalization[1]
         self.tokens_list = []
         self.lines = []
         self.sizes = []
         self.reverse_order = reverse_order
         self.read_data(path)
         self.size = len(self.tokens_list)
-        self.mean = normalization[0]
-        self.std = normalization[1]
 
     def read_data(self, path):
         with open(path, 'r', encoding='utf-8') as f:
