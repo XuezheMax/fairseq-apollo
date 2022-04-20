@@ -146,7 +146,6 @@ class MegaLRAEncoder(nn.Module):
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             chunk_size=chunk_size,
-            bias=False,
             truncation=truncation,
             max_positions=max_positions,
             activation=activation,
