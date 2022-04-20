@@ -60,7 +60,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.v_proj = nn.Linear(embed_dim, hdim)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
-        self.hw_proj = nn.Linear(hdim, embed_dim, bias=False)
+        self.hw_proj = nn.Linear(hdim, embed_dim)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -88,8 +88,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.mx_proj.bias, 0.0)
 
         nn.init.normal_(self.hw_proj.weight, mean=0.0, std=std)
-        if self.hw_proj.bias is not None:
-            nn.init.constant_(self.hw_proj.bias, 0.0)
+        nn.init.constant_(self.hw_proj.bias, 0.0)
 
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
