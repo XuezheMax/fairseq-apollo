@@ -532,10 +532,10 @@ def flash_lra_cifar10(args):
 def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 384)
     args.z_dim = getattr(args, 'z_dim', 128)
     args.n_dim = getattr(args, 'n_dim', 16)
-    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.encoder_layers = getattr(args, 'encoder_layers', 8)
     args.activation_fn = getattr(args, 'activation_fn', 'tanh')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 192)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
