@@ -42,6 +42,7 @@ class EMALayer(nn.Module):
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
+        self._coeffs = None
 
         self.reset_parameters()
 
@@ -69,16 +70,17 @@ class EMALayer(nn.Module):
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
-    def calc_params(self):
+    def calc_coeffs(self):
         # D x N x 1
         p = torch.sigmoid(self.delta)
         alpha = torch.sigmoid(self.alpha)
         q = 1.0 - p * alpha
+        self._coeffs = (p, q)
         return p, q
 
     def compute_kernel(self, length: int):
         # D x N x 1
-        p, q = self.calc_params()
+        p, q = self.calc_coeffs()
         # D x N x L
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
         kernel = (p * self.beta) * torch.exp(vander)
@@ -97,6 +99,24 @@ class EMALayer(nn.Module):
         else:
             return self._kernel[..., :kernel_size]
 
+    def coeffs(self):
+        if self.training:
+            return self.calc_coeffs()
+        elif self._coeffs is None:
+            return self.calc_coeffs()
+        else:
+            return self._coeffs
+
+    def step(self, x, hx=None):
+        p, q = self.coeffs()
+        # (D x N) x (B x D x 1) -> B x D x N
+        h = (p * self.beta).squeeze(-1) * x
+        if hx is not None:
+            h = h + q.squeeze(-1) * hx
+        # B x D
+        out = torch.einsum('bdn,dn->bd', h, self.gamma * self.scale)
+        return out, h
+
     def forward(
         self,
         x,
@@ -114,11 +134,6 @@ class EMALayer(nn.Module):
         seq_len, bsz, embed_dim = x.size()
         assert embed_dim == self.embed_dim
 
-        if incremental_state is not None:
-            saved_state = self._get_input_buffer(incremental_state)
-        else:
-            saved_state = None
-
         # L x B x D
         residual = x * self.omega
 
@@ -127,26 +142,40 @@ class EMALayer(nn.Module):
         if padding_mask is not None:
             x = x * (1.0 - padding_mask.unsqueeze(1).type_as(x))
 
-        # D x L
-        k = self.kernel(seq_len)
-        fft_len = seq_len
-        s = 0
-        kernel_size = k.size(1)
-        if self.bidirectional:
-            k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
-            # D x 2*L-1
-            k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
-            x = F.pad(x, (kernel_size - 1, 0))
-            fft_len = fft_len + kernel_size - 1
-            s = 2 * kernel_size - 2
+        assert not self.bidirectional or incremental_state is None, 'Bidirectional EMV does not support incremental state'
+        if incremental_state is not None:
+            assert seq_len == 1
+            saved_state = self._get_input_buffer(incremental_state)
+            if 'prev_state' in saved_state:
+                h = saved_state['prev_state']
+            else:
+                h = None
+            out, h = self.step(x, hx=h)
+            saved_state['prev_state'] = h
+            self._set_input_buffer(incremental_state, saved_state)
+            # B x D -> 1 x B x D
+            out = F.silu(out.unsqueeze(0) + residual)
+        else:
+            # D x L
+            k = self.kernel(seq_len)
+            fft_len = seq_len
+            s = 0
+            kernel_size = k.size(1)
+            if self.bidirectional:
+                k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
+                # D x 2*L-1
+                k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
+                x = F.pad(x, (kernel_size - 1, 0))
+                fft_len = fft_len + kernel_size - 1
+                s = 2 * kernel_size - 2
 
-        k_f = torch.fft.rfft(k, n=2 * fft_len)
-        x_f = torch.fft.rfft(x, n=2 * fft_len)
-        # B x D x L
-        out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
+            k_f = torch.fft.rfft(k, n=2 * fft_len)
+            x_f = torch.fft.rfft(x, n=2 * fft_len)
+            # B x D x L
+            out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
+            # B x D x L -> L x B x D
+            out = F.silu(out.permute(2, 0, 1) + residual)
 
-        # B x D x L -> L x B x D
-        out = F.silu(out.permute(2, 0, 1) + residual)
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
@@ -160,27 +189,18 @@ class EMALayer(nn.Module):
     def _set_input_buffer(self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], buffer: Dict[str, Optional[Tensor]]):
         return self.set_incremental_state(incremental_state, "ema_state", buffer)
 
-    @staticmethod
-    def _append_prev_padding_mask(
-        padding_mask: Optional[Tensor],
-        prev_padding_mask: Optional[Tensor],
-        batch_size: int,
-        seq_len: int,
-    ) -> Optional[Tensor]:
-        # saved key padding masks have shape (bsz, seq_len)
-        if prev_padding_mask is not None and padding_mask is not None:
-            new_padding_mask = torch.cat(
-                [prev_padding_mask.float(), padding_mask.float()], dim=1
-            )
-        # During incremental decoding, as the padding token enters and
-        # leaves the frame, there will be a time when prev or current
-        # is None
-        elif prev_padding_mask is not None:
-            filler = torch.zeros((batch_size, seq_len - prev_padding_mask.size(1)), device=prev_padding_mask.device)
-            new_padding_mask = torch.cat([prev_padding_mask.float(), filler.float()], dim=1)
-        elif padding_mask is not None:
-            filler = torch.zeros((batch_size, seq_len - padding_mask.size(1)), device=padding_mask.device)
-            new_padding_mask = torch.cat([filler.float(), padding_mask.float()], dim=1)
-        else:
-            new_padding_mask = prev_padding_mask
-        return new_padding_mask
+    @torch.jit.export
+    def reorder_incremental_state(
+            self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], new_order: Tensor
+    ):
+        """Reorder buffered internal state (for incremental generation)."""
+        input_buffer = self._get_input_buffer(incremental_state)
+        if input_buffer is not None:
+            for k in input_buffer.keys():
+                input_buffer_k = input_buffer[k]
+                if input_buffer_k is not None:
+                    if self.encoder_decoder_attention and input_buffer_k.size(0) == new_order.size(0):
+                        break
+                    input_buffer[k] = input_buffer_k.index_select(0, new_order)
+            incremental_state = self._set_input_buffer(incremental_state, input_buffer)
+        return incremental_state
