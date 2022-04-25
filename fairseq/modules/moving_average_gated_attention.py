@@ -302,12 +302,12 @@ class MovingAverageGatedAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x K x C x E -> B x N x E -> N x B x E
+        # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         h = self.hidden_dropout(h)
-        # N x B x E -> N x B x D
+        # L x B x E -> L x B x D
         h = self.activation(hx + self.hw_proj(h * r))
-        # N x B x D
+        # L x B x D
         out = torch.addcmul(x, u, h - x)
 
         if need_weights:

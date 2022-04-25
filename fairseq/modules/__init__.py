@@ -33,7 +33,7 @@ from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
 from .exponential_moving_average import EMALayer
 from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
-from .gated_structured_state_attention import GatedStructuredStateAttention
+from .gated_cross_attention import GatedCrossAttention
 from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
 from .mega_sentence_encoder_layer import MegaSentenceEncoderLayer
 from .same_pad import SamePad
@@ -91,7 +91,7 @@ __all__ = [
     'LunaSentenceEncoder',
     'LunaSentenceEncoderLayer',
     'GatedAttentionUnit',
-    'GatedStructuredStateAttention',
+    'GatedCrossAttention',
     'EMALayer',
     'MovingAverageGatedAttention',
     'FlashSentenceEncoderLayer',
