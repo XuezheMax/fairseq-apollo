@@ -161,7 +161,6 @@ class MegaLRAEncoder(nn.Module):
             positions: Optional[torch.Tensor] = None,
     ) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], torch.Tensor]:
 
-
         bsz, seq_len = tokens.size()
         if self.chunk_size > 0 and seq_len > self.chunk_size and seq_len % self.chunk_size != 0:
             assert self.embedding_type == 'sparse', 'for image the sequence length {} must be divided by chunk size {}'.format(seq_len, self.chunk_size)

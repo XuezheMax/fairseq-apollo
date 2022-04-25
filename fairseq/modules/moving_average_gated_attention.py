@@ -108,7 +108,13 @@ class MovingAverageGatedAttention(nn.Module):
 
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3))
+        # C x C
         bias = self.rel_pos_bias(slen)
+        if slen != q.size(2):
+            assert q.size(2) == 1
+            # 1 x C
+            bias = bias[-1:]
+
         qk = qk / lengths + bias
         if inverse_mask is not None:
             qk = qk * inverse_mask.unsqueeze(2)
@@ -130,7 +136,13 @@ class MovingAverageGatedAttention(nn.Module):
         q = q * self.scaling
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3))
+        # C x C
         bias = self.rel_pos_bias(slen)
+        if slen != q.size(2):
+            assert q.size(2) == 1
+            # 1 x C
+            bias = bias[-1:]
+
         qk = qk + bias
 
         if attn_mask is not None:
@@ -180,41 +192,28 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
-        # N x B x E
+        # L x B x E
         v = F.silu(self.v_proj(x))
 
-        # N x B x D
+        # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
         mx = self.hidden_dropout(mx)
-        # N x B x D -> N x B x (2*D+S+E)
+        # L x B x D -> L x B x (2*D+S+E)
         base = self.mx_proj(mx)
         u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
-        # N x B x D
+        # L x B x D
         u = torch.sigmoid(u)
-        # N x B x (E+S)
+        # L x B x (E+S)
         z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
-        # N x B x S -> N x B x 1 x S -> N x B x 2 x S
+        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
-        # N x B x 2 x S -> N x B x S
+        # L x B x 2 x S -> L x B x S
         q, k = torch.unbind(z, dim=2)
 
-        if self.chunk_size < 0:
-            # N x B x S -> B x 1 x N x S
-            q = q.transpose(0, 1).unsqueeze(1)
-            k = k.transpose(0, 1).unsqueeze(1)
-            v = v.transpose(0, 1).unsqueeze(1)
-            if padding_mask is not None:
-                # B x N -> B x 1 x N
-                padding_mask = padding_mask.unsqueeze(1)
-        else:
-            nc = seq_len // self.chunk_size
-            # N x B x S -> B x K x C x S
-            q = q.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
-            k = k.view(nc, self.chunk_size, bsz, self.zdim).permute(2, 0, 1, 3)
-            v = v.view(nc, self.chunk_size, bsz, self.hdim).permute(2, 0, 1, 3)
-            if padding_mask is not None:
-                # B x N -> B x K x C
-                padding_mask = padding_mask.view(bsz, nc, self.chunk_size)
+        # L x B x D -> B x L x D
+        q = q.transpose(0, 1)
+        k = z.transpose(0, 1)
+        v = v.transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, seq_len, dim)
@@ -238,12 +237,54 @@ class MovingAverageGatedAttention(nn.Module):
                 seq_len=k.size(1),
             )
 
-            saved_state["prev_key"] = k
-            saved_state["prev_value"] = v
-            saved_state["prev_key_padding_mask"] = padding_mask
+            if self.chunk_size < 0:
+                saved_state["prev_key"] = k
+                saved_state["prev_value"] = v
+                saved_state["prev_key_padding_mask"] = padding_mask
+            else:
+                curr_len = k.size(1) % self.chunk_size
+                if curr_len == 0:
+                    del saved_state["prev_key"]
+                    del saved_state["prev_value"]
+                    del saved_state["prev_key_padding_mask"]
+                else:
+                    saved_state["prev_key"] = k
+                    saved_state["prev_value"] = v
+                    saved_state["prev_key_padding_mask"] = padding_mask
             # In this branch incremental_state is never None
             assert incremental_state is not None
-            incremental_state = self._set_input_buffer(incremental_state, saved_state)
+            self._set_input_buffer(incremental_state, saved_state)
+
+        ctx_len = k.size(1)
+        if self.chunk_size < 0:
+            # B x L x S -> B x 1 x L x S
+            q = q.unsqueeze(1)
+            k = k.unsqueeze(1)
+            v = v.unsqueeze(1)
+            if padding_mask is not None:
+                # B x L -> B x 1 x L
+                padding_mask = padding_mask.unsqueeze(1)
+        else:
+            if seq_len < self.chunk_size:
+                q = q.unsqueeze(1)
+            else:
+                # B x L x S -> B x K x C x S
+                nc = seq_len // self.chunk_size
+                q = q.reshape(bsz, nc, self.chunk_size, self.zdim)
+
+            if ctx_len < self.chunk_size:
+                k = k.unsqueeze(1)
+                v = v.unsqueeze(1)
+                if padding_mask is not None:
+                    padding_mask = padding_mask.unsqueeze(1)
+            else:
+                # B x L x S -> B x K x C x S
+                nc = ctx_len // self.chunk_size
+                k = k.reshase(bsz, nc, self.chunk_size, self.zdim)
+                v = v.reshape(bsz, nc, self.chunk_size, self.hdim)
+                if padding_mask is not None:
+                    # B x L -> B x K x C
+                    padding_mask = padding_mask.view(bsz, nc, self.chunk_size)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -294,18 +335,16 @@ class MovingAverageGatedAttention(nn.Module):
     ) -> Optional[Tensor]:
         # saved key padding masks have shape (bsz, seq_len)
         if prev_padding_mask is not None and padding_mask is not None:
-            new_padding_mask = torch.cat(
-                [prev_padding_mask.float(), padding_mask.float()], dim=1
-            )
+            new_padding_mask = torch.cat([prev_padding_mask, padding_mask], dim=1)
         # During incremental decoding, as the padding token enters and
         # leaves the frame, there will be a time when prev or current
         # is None
         elif prev_padding_mask is not None:
             filler = torch.zeros((batch_size, seq_len - prev_padding_mask.size(1)), device=prev_padding_mask.device)
-            new_padding_mask = torch.cat([prev_padding_mask.float(), filler.float()], dim=1)
+            new_padding_mask = torch.cat([prev_padding_mask, filler.bool()], dim=1)
         elif padding_mask is not None:
             filler = torch.zeros((batch_size, seq_len - padding_mask.size(1)), device=padding_mask.device)
-            new_padding_mask = torch.cat([filler.float(), padding_mask.float()], dim=1)
+            new_padding_mask = torch.cat([filler.bool(), padding_mask], dim=1)
         else:
             new_padding_mask = prev_padding_mask
         return new_padding_mask
