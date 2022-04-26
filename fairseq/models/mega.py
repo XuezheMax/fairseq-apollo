@@ -428,7 +428,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
         self.chunk_size = args.decoder_chunk_size
-        self.attention_activation = args.attention_activation
+        self.attention_activation = args.attention_activation_fn
 
         self.embed_tokens = embed_tokens
 
