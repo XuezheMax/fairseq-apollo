@@ -687,3 +687,45 @@ def Linear(in_features, out_features, bias=True):
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
+
+
+@register_model_architecture("mega", "mega")
+def base_architecture(args):
+    args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1024)
+    args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
+    args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
+    args.encoder_layers = getattr(args, "encoder_layers", 6)
+    args.encoder_chunk_size = getattr(args, 'encoder_chunk_size', -1)
+
+    args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", args.encoder_hidden_dim)
+    args.decoder_z_dim = getattr(args, 'decoder_z_dim', args.encoder_z_dim)
+    args.decoder_n_dim = getattr(args, 'decoder_n_dim', args.encoder_n_dim)
+    args.decoder_layers = getattr(args, "decoder_layers", 6)
+    args.decoder_chunk_size = getattr(args, 'decoder_chunk_size', args.encoder_chunk_size)
+    args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
+    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
+
+    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
+    args.activation_dropout = getattr(args, "hidden_dropout", 0.0)
+    args.dropout = getattr(args, "dropout", 0.1)
+    args.norm_type = getattr(args, 'embedding_normalization', 'layernorm')
+
+    args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
+    args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
+    args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
+    args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
+    args.adaptive_input = getattr(args, "adaptive_input", False)
+
+    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
+
+
+@register_model_architecture("mega", "mega_wmt_en_de")
+def mega_wmt_en_de(args):
+    base_architecture(args)
