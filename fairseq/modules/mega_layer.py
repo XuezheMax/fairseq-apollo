@@ -39,7 +39,7 @@ class MegaEncoderLayer(nn.Module):
             truncation=args.truncation_length,
             max_positions=args.max_source_positions,
             activation=args.activation_fn,
-            attention_activation=args.attention_activation,
+            attention_activation=args.attention_activation_fn,
             bidirectional=True,
         )
 
@@ -86,7 +86,7 @@ class MegaDecoderLayer(nn.Module):
             truncation=args.truncation_length,
             max_positions=args.max_target_positions,
             activation=args.activation_fn,
-            attention_activation=args.attention_activation,
+            attention_activation=args.attention_activation_fn,
             bidirectional=False,
         )
 
@@ -98,7 +98,7 @@ class MegaDecoderLayer(nn.Module):
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
-            attention_activation=args.attention_activation,
+            attention_activation=args.attention_activation_fn,
         )
 
     def prepare_for_onnx_export_(self):
