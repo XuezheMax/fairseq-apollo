@@ -212,7 +212,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
-        k = z.transpose(0, 1)
+        k = k.transpose(0, 1)
         v = v.transpose(0, 1)
 
         if saved_state is not None:
