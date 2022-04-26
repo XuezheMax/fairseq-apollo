@@ -489,7 +489,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
         src_lengths: Optional[Any] = None,
         return_all_hiddens: bool = False,
     ):
@@ -514,7 +513,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
             encoder_out=encoder_out,
             incremental_state=incremental_state,
             alignment_layer=alignment_layer,
-            alignment_heads=alignment_heads,
         )
         if not features_only:
             x = self.output_layer(x)
@@ -527,7 +525,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         full_context_alignment: bool = False,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -535,7 +532,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
             incremental_state,
             full_context_alignment,
             alignment_layer,
-            alignment_heads,
         )
 
     """
