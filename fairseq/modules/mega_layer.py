@@ -24,7 +24,6 @@ class MegaEncoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
-        self.chunk_size = args.chunk_size
         self.mega_layer = self.build_layer(self.embed_dim, args)
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
@@ -54,9 +53,6 @@ class MegaEncoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        seq_len = x.size(0)
-        if self.chunk_size > 0:
-            assert seq_len % self.chunk_size == 0, 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
         x, _ = self.mega_layer(x, encoder_padding_mask)
         x = self.dropout_module(x)
         return x
