@@ -280,7 +280,7 @@ class MovingAverageGatedAttention(nn.Module):
             else:
                 # B x L x S -> B x K x C x S
                 nc = ctx_len // self.chunk_size
-                k = k.reshase(bsz, nc, self.chunk_size, self.zdim)
+                k = k.reshape(bsz, nc, self.chunk_size, self.zdim)
                 v = v.reshape(bsz, nc, self.chunk_size, self.hdim)
                 if padding_mask is not None:
                     # B x L -> B x K x C
