@@ -14,7 +14,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 
 
 @with_incremental_state
-class EMALayer(nn.Module):
+class MultiHeadEMA(nn.Module):
     """Exponential Moving Average Layer.
 
     See "" for more details.

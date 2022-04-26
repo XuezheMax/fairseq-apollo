@@ -30,7 +30,7 @@ from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
 from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
 from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
-from .exponential_moving_average import EMALayer
+from .exponential_moving_average import MultiHeadEMA
 from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
 from .gated_cross_attention import GatedCrossAttention
@@ -45,6 +45,7 @@ from .transpose_last import TransposeLast
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .luna_layer import LunaEncoderLayer, LunaDecoderLayer
+from .mega_layer import MegaEncoderLayer, MegaDecoderLayer
 from .vggblock import VGGBlock
 
 __all__ = [
@@ -92,8 +93,10 @@ __all__ = [
     'LunaSentenceEncoderLayer',
     'GatedAttentionUnit',
     'GatedCrossAttention',
-    'EMALayer',
+    'MultiHeadEMA',
     'MovingAverageGatedAttention',
+    'MegaEncoderLayer',
+    'MegaDecoderLayer',
     'FlashSentenceEncoderLayer',
     'MegaSentenceEncoderLayer',
     'TransposeLast',

@@ -15,8 +15,7 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
-from fairseq.modules.exponential_moving_average import EMALayer
-from fairseq.modules.legendre_moving_average import LMALayer
+from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
 
 @with_incremental_state
@@ -56,7 +55,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
 
-        self.move = EMALayer(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
+        self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
         self.v_proj = nn.Linear(embed_dim, hdim)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
@@ -120,10 +119,7 @@ class MovingAverageGatedAttention(nn.Module):
             qk = qk * inverse_mask.unsqueeze(2)
 
         if attn_mask is not None:
-            inverse_attn_mask = 1.0 - attn_mask.unsqueeze(0).type_as(q)
-            if self.onnx_trace:
-                inverse_attn_mask = inverse_attn_mask.repeat(qk.size(0), 1, 1)
-            qk = qk * inverse_attn_mask
+            qk = qk * attn_mask
 
         if before_attn_fn:
             return qk
@@ -146,7 +142,6 @@ class MovingAverageGatedAttention(nn.Module):
         qk = qk + bias
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(0)
             qk = qk + attn_mask
 
         if padding_mask is not None:
