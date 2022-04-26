@@ -176,7 +176,6 @@ class MegaModel(FairseqEncoderDecoderModel):
         return_all_hiddens: bool = True,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -194,7 +193,6 @@ class MegaModel(FairseqEncoderDecoderModel):
             encoder_out=encoder_out,
             features_only=features_only,
             alignment_layer=alignment_layer,
-            alignment_heads=alignment_heads,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
         )
