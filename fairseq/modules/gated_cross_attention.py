@@ -249,3 +249,19 @@ class GatedCrossAttention(nn.Module):
 
     def _set_input_buffer(self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], buffer: Dict[str, Optional[Tensor]]):
         return self.set_incremental_state(incremental_state, "attn_state", buffer)
+
+    @torch.jit.export
+    def reorder_incremental_state(
+            self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], new_order: Tensor
+    ):
+        """Reorder buffered internal state (for incremental generation)."""
+        input_buffer = self._get_input_buffer(incremental_state)
+        if input_buffer is not None:
+            for k in input_buffer.keys():
+                input_buffer_k = input_buffer[k]
+                if input_buffer_k is not None:
+                    if input_buffer_k.size(0) == new_order.size(0):
+                        break
+                    input_buffer[k] = input_buffer_k.index_select(0, new_order)
+            incremental_state = self._set_input_buffer(incremental_state, input_buffer)
+        return incremental_state
