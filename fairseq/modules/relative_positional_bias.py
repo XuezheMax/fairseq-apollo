@@ -35,7 +35,9 @@ class RelativePositionalBias(nn.Module):
         # seq_len x (3 * seq_len - 2)
         t = t.view(seq_len, 3 * seq_len - 2)
         r = (2 * seq_len - 1) // 2
-        t = t[:, r:-r]
+        start = r
+        end = t.size(1) - r
+        t = t[:, start:end]
         return t
 
     def extra_repr(self) -> str:
