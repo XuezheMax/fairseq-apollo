@@ -181,8 +181,10 @@ class GatedCrossAttention(nn.Module):
 
         # N x B x S -> B x N x S
         q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
+        if k is not None:
+            k = k.transpose(0, 1)
+        if v is not None:
+            v = v.transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, seq_len, dim)
