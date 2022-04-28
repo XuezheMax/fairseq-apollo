@@ -49,8 +49,8 @@ class GatedCrossAttention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
         self.h_proj = nn.Linear(embed_dim, embed_dim)
 
-        #self.gamma = Parameter(torch.Tensor(2, zdim))
-        #self.beta = Parameter(torch.Tensor(2, zdim))
+        self.gamma = Parameter(torch.Tensor(2, zdim))
+        self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.reset_parameters()
 
@@ -77,8 +77,8 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
 
-        #nn.init.normal_(self.gamma, mean=0.0, std=std)
-        #nn.init.constant_(self.beta, 0.0)
+        nn.init.normal_(self.gamma, mean=0.0, std=std)
+        nn.init.constant_(self.beta, 0.0)
 
     def relu2_attention(self, q, k, key_padding_mask, before_attn_fn):
         bsz, slen, _ = k.size()
@@ -155,21 +155,25 @@ class GatedCrossAttention(nn.Module):
         else:
             saved_state = None
 
-        # L2 x B x (E+D+S)
+        # L2 x B x (2*D+S)
         base = self.q_proj(query)
-        u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
+        u, rq = torch.split(base, [self.embed_dim, self.embed_dim + self.zdim], dim=-1)
 
         # L2 x B x D
         u = torch.sigmoid(u)
-        # L2 x B x E
-        r = F.silu(r)
+
+        # L2 x B x (D+S)
+        rq = F.silu(rq)
+        r, q = torch.split(rq, [self.embed_dim, self.zdim], dim=-1)
+        q = q * self.gamma[0] + self.beta[0]
 
         if key is None:
             assert value is None
             k = v = None
         else:
             # L1 x B x S
-            k = self.k_proj(key)
+            k = F.silu(self.k_proj(key))
+            k = k * self.gamma[1] + self.beta[1]
             v = F.silu(self.v_proj(key))
 
         # N x B x S -> B x N x S
@@ -221,12 +225,11 @@ class GatedCrossAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x L1 x E -> L1 x B x E
+        # B x L1 x D -> L1 x B x D
         h = torch.bmm(kernel, v).transpose(0, 1)
         h = self.hidden_dropout(h)
-        # L1 x B x E -> L1 x B x D
-        h = self.activation(self.h_proj(h * r))
         # L1 x B x D
+        h = self.activation(self.h_proj(h * r))
         out = torch.addcmul(query, u, h - query)
 
         if need_weights:
