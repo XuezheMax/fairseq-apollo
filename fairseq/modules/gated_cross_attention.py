@@ -27,7 +27,6 @@ class GatedCrossAttention(nn.Module):
         self,
         embed_dim,
         zdim,
-        hdim,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
@@ -36,8 +35,6 @@ class GatedCrossAttention(nn.Module):
         super().__init__()
 
         self.embed_dim = embed_dim
-        hdim = embed_dim
-        self.hdim = hdim
         self.zdim = zdim
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
@@ -48,9 +45,9 @@ class GatedCrossAttention(nn.Module):
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
         self.k_proj = nn.Linear(embed_dim, zdim)
-        self.v_proj = nn.Linear(embed_dim, hdim)
-        self.q_proj = nn.Linear(embed_dim, hdim + embed_dim + zdim)
-        self.h_proj = nn.Linear(hdim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
+        self.h_proj = nn.Linear(embed_dim, embed_dim)
 
         #self.gamma = Parameter(torch.Tensor(2, zdim))
         #self.beta = Parameter(torch.Tensor(2, zdim))
@@ -160,7 +157,7 @@ class GatedCrossAttention(nn.Module):
 
         # L2 x B x (E+D+S)
         base = self.q_proj(query)
-        u, r, q = torch.split(base, [self.embed_dim, self.hdim, self.zdim], dim=-1)
+        u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
 
         # L2 x B x D
         u = torch.sigmoid(u)
@@ -173,7 +170,7 @@ class GatedCrossAttention(nn.Module):
         else:
             # L1 x B x S
             k = self.k_proj(key)
-            v = self.v_proj(key)
+            v = F.silu(self.v_proj(key))
 
         # N x B x S -> B x N x S
         q = q.transpose(0, 1)

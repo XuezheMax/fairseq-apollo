@@ -94,7 +94,6 @@ class MegaDecoderLayer(nn.Module):
         return GatedCrossAttention(
             embed_dim=embed_dim,
             zdim=args.decoder_z_dim,
-            hdim=args.decoder_hidden_dim,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
