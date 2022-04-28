@@ -51,8 +51,8 @@ class GatedCrossAttention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, hdim + embed_dim + zdim)
         self.h_proj = nn.Linear(hdim, embed_dim)
 
-        self.gamma = Parameter(torch.Tensor(2, zdim))
-        self.beta = Parameter(torch.Tensor(2, zdim))
+        #self.gamma = Parameter(torch.Tensor(2, zdim))
+        #self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.reset_parameters()
 
@@ -79,8 +79,8 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
 
-        nn.init.normal_(self.gamma, mean=0.0, std=std)
-        nn.init.constant_(self.beta, 0.0)
+        #nn.init.normal_(self.gamma, mean=0.0, std=std)
+        #nn.init.constant_(self.beta, 0.0)
 
     def relu2_attention(self, q, k, key_padding_mask, before_attn_fn):
         bsz, slen, _ = k.size()
@@ -160,23 +160,19 @@ class GatedCrossAttention(nn.Module):
 
         # L2 x B x (E+D+S)
         base = self.q_proj(query)
-        u, rq = torch.split(base, [self.embed_dim, self.hdim + self.zdim], dim=-1)
+        u, r, q = torch.split(base, [self.embed_dim, self.hdim, self.zdim], dim=-1)
 
         # L2 x B x D
         u = torch.sigmoid(u)
-
-        # L2 x B x (E+S)
-        rq = F.silu(rq)
-        r, q = torch.split(rq, [self.hdim, self.zdim], dim=-1)
-        q = q * self.gamma[0] + self.beta[0]
+        # L2 x B x E
+        r = F.silu(r)
 
         if key is None:
             assert value is None
             k = v = None
         else:
             # L1 x B x S
-            k = F.silu(self.k_proj(key))
-            k = k * self.gamma[1] + self.beta[1]
+            k = self.k_proj(key)
             v = F.silu(self.v_proj(key))
 
         # N x B x S -> B x N x S
