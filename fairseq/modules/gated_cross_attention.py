@@ -36,6 +36,7 @@ class GatedCrossAttention(nn.Module):
         super().__init__()
 
         self.embed_dim = embed_dim
+        hdim = embed_dim
         self.hdim = hdim
         self.zdim = zdim
         assert activation in ['tanh', 'sin']
@@ -107,7 +108,6 @@ class GatedCrossAttention(nn.Module):
         return attn_weights
 
     def softmax_attention(self, q, k, key_padding_mask, before_attn_fn):
-        bsz, slen, _ = k.size()
         q = q * self.scaling
         # B x L2 x L1
         qk = torch.bmm(q, k.transpose(1, 2))
@@ -173,7 +173,7 @@ class GatedCrossAttention(nn.Module):
         else:
             # L1 x B x S
             k = self.k_proj(key)
-            v = F.silu(self.v_proj(key))
+            v = self.v_proj(key)
 
         # N x B x S -> B x N x S
         q = q.transpose(0, 1)

@@ -247,18 +247,6 @@ class MegaEncoder(FairseqEncoder):
     def build_encoder_layer(self, args):
         return MegaEncoderLayer(args)
 
-    def forward_embedding(self, src_tokens):
-        # embed tokens and positions
-        x = embed = self.embed_tokens(src_tokens)
-        if self.embed_positions is not None:
-            x = embed + self.embed_positions(src_tokens)
-        if self.layernorm_embedding is not None:
-            x = self.layernorm_embedding(x)
-        x = self.dropout_module(x)
-        if self.quant_noise is not None:
-            x = self.quant_noise(x)
-        return x, embed
-
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
         """
         Args:
