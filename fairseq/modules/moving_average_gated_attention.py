@@ -59,7 +59,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.v_proj = nn.Linear(embed_dim, hdim)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
-        self.hw_proj = nn.Linear(hdim, embed_dim)
+        self.h_proj = nn.Linear(hdim, embed_dim)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -86,8 +86,8 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.mx_proj.bias, 0.0)
 
-        nn.init.normal_(self.hw_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.hw_proj.bias, 0.0)
+        nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
+        nn.init.constant_(self.h_proj.bias, 0.0)
 
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
@@ -301,7 +301,7 @@ class MovingAverageGatedAttention(nn.Module):
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         h = self.hidden_dropout(h)
         # L x B x E -> L x B x D
-        h = self.activation(hx + self.hw_proj(h * r))
+        h = self.activation(hx + self.h_proj(h * r))
         # L x B x D
         out = torch.addcmul(x, u, h - x)
 
