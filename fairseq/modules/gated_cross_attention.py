@@ -263,3 +263,6 @@ class GatedCrossAttention(nn.Module):
                     input_buffer[k] = input_buffer_k.index_select(0, new_order)
             incremental_state = self._set_input_buffer(incremental_state, input_buffer)
         return incremental_state
+
+    def extra_repr(self) -> str:
+        return 'edim={}, zdim={}, attn_act={}'.format(self.embed_dim, self.zdim, self.attention_activation)
