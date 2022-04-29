@@ -674,7 +674,7 @@ def Linear(in_features, out_features, bias=True):
 @register_model_architecture("mega", "mega")
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
-    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 768)
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
     args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1536)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
     args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
