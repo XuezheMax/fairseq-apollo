@@ -101,7 +101,7 @@ class GatedCrossAttention(nn.Module):
         # L x L1
         bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
         if pidx is not None:
-            assert slen == 1
+            assert q.size(1) == 1
             # L1
             bias = bias[pidx]
         else:
@@ -127,7 +127,7 @@ class GatedCrossAttention(nn.Module):
         # L x L1
         bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
         if pidx is not None:
-            assert slen == 1
+            assert q.size(1) == 1
             # L1
             bias = bias[pidx]
         else:
