@@ -51,11 +51,11 @@ class GatedCrossAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        # self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
+        self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
         self.k_proj = nn.Linear(embed_dim, zdim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
+        self.mx_proj = nn.Linear(embed_dim, 3 * embed_dim + zdim)
         self.h_proj = nn.Linear(embed_dim, embed_dim)
 
         self.max_positions = max_positions
@@ -80,8 +80,8 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.v_proj.bias, 0.0)
 
-        nn.init.normal_(self.q_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.q_proj.bias, 0.0)
+        nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
+        nn.init.constant_(self.mx_proj.bias, 0.0)
 
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
@@ -152,6 +152,7 @@ class GatedCrossAttention(nn.Module):
         query,
         key: Optional[Tensor],
         value: Optional[Tensor],
+        padding_mask: Optional[Tensor] = None,
         key_padding_mask: Optional[Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         need_weights: bool = False,
@@ -161,6 +162,9 @@ class GatedCrossAttention(nn.Module):
         """Input shape: Time x Batch x Channel
 
         Args:
+            padding_mask (ByteTensor, optional): mask to exclude
+                queries that are pads, of shape `(batch, tgt_len)`, where
+                padding elements are indicated by 1s.
             key_padding_mask (ByteTensor, optional): mask to exclude
                 keys that are pads, of shape `(batch, src_len)`, where
                 padding elements are indicated by 1s.
@@ -186,9 +190,12 @@ class GatedCrossAttention(nn.Module):
             pidx = None
             saved_state = None
 
-        # L2 x B x (2*D+S)
-        base = self.q_proj(query)
-        u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
+        # L2 x B x D
+        mx = self.move(query, padding_mask, incremental_state)
+        mx = self.hidden_dropout(mx)
+        # L2 x B x (3*D+S)
+        base = self.mx_proj(mx)
+        u, r, q, hx = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim, self.embed_dim], dim=-1)
 
         # L2 x B x D
         u = torch.sigmoid(u)
@@ -255,11 +262,11 @@ class GatedCrossAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x L1 x D -> L1 x B x D
+        # B x L2 x D -> L2 x B x D
         h = torch.bmm(kernel, v).transpose(0, 1)
         h = self.hidden_dropout(h)
-        # L1 x B x D
-        h = self.activation(self.h_proj(h * r))
+        # L2 x B x D
+        h = self.activation(hx + self.h_proj(h * r))
         out = torch.addcmul(query, u, h - query)
 
         if need_weights:
@@ -295,4 +302,4 @@ class GatedCrossAttention(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, attn_act={}'.format(self.embed_dim, self.zdim, self.attention_activation)
+        return 'edim={}, zdim={}, ndim={}, attn_act={}'.format(self.embed_dim, self.zdim, self.ndim, self.attention_activation)

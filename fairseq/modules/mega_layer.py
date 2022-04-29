@@ -131,6 +131,7 @@ class MegaDecoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
+                                  padding_mask=decoder_padding_mask,
                                   key_padding_mask=encoder_padding_mask,
                                   incremental_state=incremental_state,
                                   static_kv=True, need_weights=need_attn)
