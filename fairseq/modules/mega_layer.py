@@ -130,15 +130,15 @@ class MegaDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        x, _ = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
-                               incremental_state=incremental_state,
-                               need_weights=False, attn_mask=attn_mask)
-        x = self.dropout_module(x)
-
         x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
                                   key_padding_mask=encoder_padding_mask,
                                   incremental_state=incremental_state,
                                   static_kv=True, need_weights=need_attn)
+        x = self.dropout_module(x)
+
+        x, _ = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
+                               incremental_state=incremental_state,
+                               need_weights=False, attn_mask=attn_mask)
         x = self.dropout_module(x)
 
         return x, attn, None
