@@ -88,7 +88,7 @@ class GatedCrossAttention(nn.Module):
 
     def relu2_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
         bsz, clen, _ = k.size()
-        slen = q.size(1) if pidx is None else pidx
+        slen = q.size(1) if pidx is None else pidx + 1
         if key_padding_mask is not None:
             # B x L1
             inverse_mask = 1.0 - key_padding_mask.type_as(q)
@@ -122,7 +122,7 @@ class GatedCrossAttention(nn.Module):
 
     def softmax_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
         bsz, clen, _ = k.size()
-        slen = q.size(1) if pidx is None else pidx
+        slen = q.size(1) if pidx is None else pidx + 1
 
         # L x L1
         bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
