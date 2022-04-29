@@ -69,8 +69,8 @@ class MegaDecoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.cross_attn = self.build_cross_attn(self.embed_dim, args)
+        self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.need_attn = False
         self.onnx_trace = False
 
