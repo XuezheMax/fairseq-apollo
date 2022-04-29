@@ -87,8 +87,12 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-hidden-embed-dim', type=int, metavar='N',
-                            help='decoder hiddem dimension for Mega')
+        parser.add_argument('--decoder-hidden-dim', type=int, metavar='N',
+                            help='decoder hidden dimension for Mega')
+        parser.add_argument('--decoder-z-dim', type=int, metavar='N',
+                            help='decoder z dimension for Mega')
+        parser.add_argument('--decoder-n-dim', type=int, metavar='N',
+                            help='decoder n dimension for Mega')
         parser.add_argument('--decoder-chunk-size', type=int, metavar='N',
                             help='chunk size of Mega decoder.')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
