@@ -686,7 +686,7 @@ def base_architecture(args):
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", args.encoder_hidden_dim)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', args.encoder_z_dim)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', args.encoder_n_dim)
-    args.decoder_layers = getattr(args, "decoder_layers", 3)
+    args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_chunk_size = getattr(args, 'decoder_chunk_size', args.encoder_chunk_size)
     args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
