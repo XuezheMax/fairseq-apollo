@@ -69,8 +69,8 @@ class MegaDecoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.cross_attn = self.build_cross_attn(self.embed_dim, args)
+        self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.need_attn = False
         self.onnx_trace = False
 
@@ -130,15 +130,15 @@ class MegaDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        x, _ = self.mega_layer(x=x, padding_mask = decoder_padding_mask,
-                               incremental_state=incremental_state,
-                               need_weights=False, attn_mask=attn_mask)
-        x = self.dropout_module(x)
-
         x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
                                   key_padding_mask=encoder_padding_mask,
                                   incremental_state=incremental_state,
                                   static_kv=True, need_weights=need_attn)
+        x = self.dropout_module(x)
+
+        x, _ = self.mega_layer(x=x, padding_mask = decoder_padding_mask,
+                               incremental_state=incremental_state,
+                               need_weights=False, attn_mask=attn_mask)
         x = self.dropout_module(x)
 
         return x, attn, None
