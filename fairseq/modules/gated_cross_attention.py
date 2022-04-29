@@ -14,6 +14,8 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.relative_positional_bias import RelativePositionalBias
+from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
 
 @with_incremental_state
@@ -27,15 +29,20 @@ class GatedCrossAttention(nn.Module):
         self,
         embed_dim,
         zdim,
+        ndim=2,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
         attention_activation='softmax',
+        bidirectional=False,
+        truncation=None,
+        max_positions=1024,
     ):
         super().__init__()
 
         self.embed_dim = embed_dim
         self.zdim = zdim
+        self.ndim = ndim
         assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
@@ -44,10 +51,15 @@ class GatedCrossAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
+        # self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
+
         self.k_proj = nn.Linear(embed_dim, zdim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
         self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
         self.h_proj = nn.Linear(embed_dim, embed_dim)
+
+        self.max_positions = max_positions
+        self.rel_pos_bias = RelativePositionalBias(max_positions)
 
         self.reset_parameters()
 
@@ -74,20 +86,30 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
 
-    def relu2_attention(self, q, k, key_padding_mask, before_attn_fn):
-        bsz, slen, _ = k.size()
+    def relu2_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
+        bsz, clen, _ = k.size()
+        slen = q.size(1)
         if key_padding_mask is not None:
             # B x L1
             inverse_mask = 1.0 - key_padding_mask.type_as(q)
             # B x 1 x 1
             lengths = inverse_mask.sum(dim=-1).view(bsz, 1, 1)
         else:
-            lengths = slen
+            lengths = clen
             inverse_mask = None
 
+        # L x L1
+        bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
+        if pidx is not None:
+            assert slen == 1
+            # L1
+            bias = bias[pidx]
+        else:
+            # L2 x L1
+            bias = bias[:slen]
+
         # B x L2 x L1
-        qk = torch.bmm(q, k.transpose(1, 2))
-        qk = qk / lengths
+        qk = torch.bmm(q, k.transpose(1, 2)) / lengths + bias
 
         if inverse_mask is not None:
             qk = qk * inverse_mask.unsqueeze(1)
@@ -98,10 +120,23 @@ class GatedCrossAttention(nn.Module):
         attn_weights = utils.relu2(qk)
         return attn_weights
 
-    def softmax_attention(self, q, k, key_padding_mask, before_attn_fn):
+    def softmax_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
+        bsz, clen, _ = k.size()
+        slen = q.size(1)
+
+        # L x L1
+        bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
+        if pidx is not None:
+            assert slen == 1
+            # L1
+            bias = bias[pidx]
+        else:
+            # L2 x L1
+            bias = bias[:slen]
+
         q = q * self.scaling
         # B x L2 x L1
-        qk = torch.bmm(q, k.transpose(1, 2))
+        qk = torch.bmm(q, k.transpose(1, 2)) + bias
 
         if key_padding_mask is not None:
             qk = qk.masked_fill(key_padding_mask.unsqueeze(1).to(torch.bool), float('-inf'))
@@ -141,12 +176,14 @@ class GatedCrossAttention(nn.Module):
 
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
+            pidx = 0
             if saved_state is not None and "prev_key" in saved_state:
                 # previous time steps are cached - no need to recompute
                 # key and value if they are static
                 assert static_kv
                 key = value = None
         else:
+            pidx = None
             saved_state = None
 
         # L2 x B x (2*D+S)
@@ -165,7 +202,7 @@ class GatedCrossAttention(nn.Module):
             k = self.k_proj(key)
             v = F.silu(self.v_proj(key))
 
-        # N x B x S -> B x N x S
+        # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
         if k is not None:
             k = k.transpose(0, 1)
@@ -185,10 +222,14 @@ class GatedCrossAttention(nn.Module):
             if "prev_key_padding_mask" in saved_state:
                 prev_key_padding_mask = saved_state["prev_key_padding_mask"]
                 key_padding_mask = prev_key_padding_mask
+            if "prev_num_steps" in saved_state:
+                _prev_num_steps = saved_state["prev_num_steps"]
+                pidx = _prev_num_steps + 1.0
 
             saved_state["prev_key"] = k
             saved_state["prev_value"] = v
             saved_state["prev_key_padding_mask"] = key_padding_mask
+            saved_state["prev_num_steps"] = pidx
             # In this branch incremental_state is never None
             assert incremental_state is not None
             self._set_input_buffer(incremental_state, saved_state)
@@ -204,9 +245,9 @@ class GatedCrossAttention(nn.Module):
             assert key_padding_mask.size(1) == ctx_len
 
         if self.attention_activation == 'softmax':
-            attn_weights = self.softmax_attention(q, k, key_padding_mask, before_attn_fn)
+            attn_weights = self.softmax_attention(q, k, key_padding_mask, pidx, before_attn_fn)
         elif self.attention_activation == 'relu2':
-            attn_weights = self.relu2_attention(q, k, key_padding_mask, before_attn_fn)
+            attn_weights = self.relu2_attention(q, k, key_padding_mask, pidx, before_attn_fn)
         else:
             raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
 
@@ -246,7 +287,7 @@ class GatedCrossAttention(nn.Module):
         if input_buffer is not None:
             for k in input_buffer.keys():
                 input_buffer_k = input_buffer[k]
-                if input_buffer_k is not None:
+                if input_buffer_k is not None and isinstance(input_buffer_k, Tensor):
                     if input_buffer_k.size(0) == new_order.size(0):
                         break
                     input_buffer[k] = input_buffer_k.index_select(0, new_order)

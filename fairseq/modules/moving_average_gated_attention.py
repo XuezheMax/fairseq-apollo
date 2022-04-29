@@ -105,8 +105,6 @@ class MovingAverageGatedAttention(nn.Module):
             lengths = slen
             inverse_mask = None
 
-        # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3))
         # C x C
         bias = self.rel_pos_bias(slen)
         if slen != q.size(2):
@@ -114,7 +112,9 @@ class MovingAverageGatedAttention(nn.Module):
             # 1 x C
             bias = bias[-1:]
 
-        qk = qk / lengths + bias
+        # B x K x C x C
+        qk = torch.matmul(q, k.transpose(2, 3)) / lengths + bias
+
         if inverse_mask is not None:
             qk = qk * inverse_mask.unsqueeze(2)
 
@@ -130,8 +130,7 @@ class MovingAverageGatedAttention(nn.Module):
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
         q = q * self.scaling
-        # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3))
+
         # C x C
         bias = self.rel_pos_bias(slen)
         if slen != q.size(2):
@@ -139,7 +138,8 @@ class MovingAverageGatedAttention(nn.Module):
             # 1 x C
             bias = bias[-1:]
 
-        qk = qk + bias
+        # B x K x C x C
+        qk = torch.matmul(q, k.transpose(2, 3)) + bias
 
         if attn_mask is not None:
             qk = qk + attn_mask
