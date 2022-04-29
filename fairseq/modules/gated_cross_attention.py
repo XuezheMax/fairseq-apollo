@@ -224,7 +224,7 @@ class GatedCrossAttention(nn.Module):
                 key_padding_mask = prev_key_padding_mask
             if "prev_num_steps" in saved_state:
                 _prev_num_steps = saved_state["prev_num_steps"]
-                pidx = _prev_num_steps + 1.0
+                pidx = _prev_num_steps + 1
 
             saved_state["prev_key"] = k
             saved_state["prev_value"] = v
