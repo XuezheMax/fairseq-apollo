@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import math
 
 import numpy as np
 import torch
@@ -177,6 +178,7 @@ class LanguagePairDataset(FairseqDataset):
         self, src, src_sizes, src_dict,
         tgt=None, tgt_sizes=None, tgt_dict=None,
         left_pad_source=True, left_pad_target=False,
+        source_chunk_size=-1, target_chunk_size=-1,
         shuffle=True, input_feeding=True,
         remove_eos_from_source=False, append_eos_to_target=False,
         align_dataset=None,
@@ -199,6 +201,8 @@ class LanguagePairDataset(FairseqDataset):
         self.tgt_dict = tgt_dict
         self.left_pad_source = left_pad_source
         self.left_pad_target = left_pad_target
+        self.source_chunk_size = source_chunk_size
+        self.target_chunk_size = target_chunk_size
         self.shuffle = shuffle
         self.input_feeding = input_feeding
         self.remove_eos_from_source = remove_eos_from_source
@@ -345,7 +349,18 @@ class LanguagePairDataset(FairseqDataset):
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
-        return max(self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
+        if self.tgt_sizes is None:
+            return 0
+
+        src_size = self.src_sizes[index]
+        if 0 < self.source_chunk_size < src_size and src_size % self.source_chunk_size != 0:
+            src_size = math.ceil(src_size / self.source_chunk_size) * self.source_chunk_size
+
+        tgt_size = self.tgt_sizes[index]
+        if 0 < self.target_chunk_size < tgt_size and tgt_size % self.target_chunk_size != 0:
+            tgt_size = math.ceil(tgt_size / self.target_chunk_size) * self.target_chunk_size
+
+        return max(src_size, tgt_size)
 
     def size(self, index):
         """Return an example's size as a float or tuple. This value is used when

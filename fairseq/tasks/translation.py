@@ -39,7 +39,8 @@ def load_langpair_dataset(
     tgt, tgt_dict,
     combine, dataset_impl, upsample_primary,
     left_pad_source, left_pad_target, max_source_positions,
-    max_target_positions, prepend_bos=False, load_alignments=False,
+    max_target_positions, source_chunk_size, target_chunk_size,
+    prepend_bos=False, load_alignments=False,
     truncate_source=False, append_source_id=False,
     num_buckets=0,
     shuffle=True,
@@ -127,6 +128,8 @@ def load_langpair_dataset(
         tgt_dataset, tgt_dataset_sizes, tgt_dict,
         left_pad_source=left_pad_source,
         left_pad_target=left_pad_target,
+        source_chunk_size=source_chunk_size,
+        target_chunk_size=target_chunk_size,
         align_dataset=align_dataset, eos=eos,
         num_buckets=num_buckets,
         shuffle=shuffle,
@@ -257,6 +260,9 @@ class TranslationTask(FairseqTask):
         # infer langcode
         src, tgt = self.args.source_lang, self.args.target_lang
 
+        src_chunk_size = getattr(self.args, 'encoder_chunk_size', -1)
+        tgt_chunk_size = getattr(self.args, 'decoder_chunk_size', -1)
+
         self.datasets[split] = load_langpair_dataset(
             data_path, split, src, self.src_dict, tgt, self.tgt_dict,
             combine=combine, dataset_impl=self.args.dataset_impl,
@@ -265,6 +271,8 @@ class TranslationTask(FairseqTask):
             left_pad_target=self.args.left_pad_target,
             max_source_positions=self.args.max_source_positions,
             max_target_positions=self.args.max_target_positions,
+            source_chunk_size=src_chunk_size,
+            target_chunk_size=tgt_chunk_size,
             load_alignments=self.args.load_alignments,
             truncate_source=self.args.truncate_source,
             num_buckets=self.args.num_batch_buckets,
