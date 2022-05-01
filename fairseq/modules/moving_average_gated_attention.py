@@ -105,6 +105,10 @@ class MovingAverageGatedAttention(nn.Module):
             lengths = slen
             inverse_mask = None
 
+        if attn_mask is not None:
+            # C x 1
+            lengths = attn_mask.sum(dim=-1, keepdim=True)
+
         # C x C
         bias = self.rel_pos_bias(slen)
         if slen != q.size(2):
