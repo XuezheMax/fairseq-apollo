@@ -9,13 +9,11 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
-from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
 
 @with_incremental_state
@@ -34,8 +32,6 @@ class GatedCrossAttention(nn.Module):
         hidden_dropout=0.0,
         activation='tanh',
         attention_activation='softmax',
-        bidirectional=False,
-        truncation=None,
         max_positions=1024,
     ):
         super().__init__()
@@ -51,11 +47,9 @@ class GatedCrossAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
-
         self.k_proj = nn.Linear(embed_dim, zdim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.mx_proj = nn.Linear(embed_dim, 3 * embed_dim + zdim)
+        self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
         self.h_proj = nn.Linear(embed_dim, embed_dim)
 
         self.max_positions = max_positions
@@ -80,8 +74,8 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.v_proj.bias, 0.0)
 
-        nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.mx_proj.bias, 0.0)
+        nn.init.normal_(self.q_proj.weight, mean=0.0, std=std)
+        nn.init.constant_(self.q_proj.bias, 0.0)
 
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
@@ -190,12 +184,9 @@ class GatedCrossAttention(nn.Module):
             pidx = None
             saved_state = None
 
-        # L2 x B x D
-        mx = self.move(query, padding_mask, incremental_state)
-        mx = self.hidden_dropout(mx)
-        # L2 x B x (3*D+S)
-        base = self.mx_proj(mx)
-        u, r, q, hx = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim, self.embed_dim], dim=-1)
+        # L2 x B x (2*D+S)
+        base = self.q_proj(query)
+        u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
 
         # L2 x B x D
         u = torch.sigmoid(u)
@@ -266,7 +257,7 @@ class GatedCrossAttention(nn.Module):
         h = torch.bmm(kernel, v).transpose(0, 1)
         h = self.hidden_dropout(h)
         # L2 x B x D
-        h = self.activation(hx + self.h_proj(h * r))
+        h = self.activation(self.h_proj(h * r))
         out = torch.addcmul(query, u, h - query)
 
         if need_weights:
