@@ -66,14 +66,18 @@ class MultiHeadEMA(nn.Module):
             _, V = torch.linalg.eig(A)
             V_inv = V.conj().real.transpose(0, 1)
             self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
+
+            self.delta.div_(self.scale)
+            self.alpha.div_(self.scale)
+            self.beta.div_(self.scale)
             # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def calc_coeffs(self):
         # D x N x 1
-        p = torch.sigmoid(self.delta)
-        alpha = torch.sigmoid(self.alpha)
+        p = torch.sigmoid(self.delta * self.scale)
+        alpha = torch.sigmoid(self.alpha * self.scale)
         q = 1.0 - p * alpha
         self._coeffs = (p, q)
         return p, q
@@ -83,7 +87,7 @@ class MultiHeadEMA(nn.Module):
         p, q = self.calc_coeffs()
         # D x N x L
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
-        kernel = (p * self.beta) * torch.exp(vander)
+        kernel = (p * (self.beta * self.scale)) * torch.exp(vander)
         # D x L
         self._kernel = torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
         return self._kernel
@@ -110,7 +114,7 @@ class MultiHeadEMA(nn.Module):
     def step(self, x, hx=None):
         p, q = self.coeffs()
         # (D x N) x (B x D x 1) -> B x D x N
-        h = (p * self.beta).squeeze(-1) * x
+        h = (p * (self.beta * self.scale)).squeeze(-1) * x
         if hx is not None:
             h = h + q.squeeze(-1) * hx
         # B x D
@@ -135,7 +139,7 @@ class MultiHeadEMA(nn.Module):
         assert embed_dim == self.embed_dim
 
         # L x B x D
-        residual = x * self.omega
+        residual = x * (self.omega * self.scale)
 
         # L x B x D -> B x D x L
         x = x.permute(1, 2, 0)
