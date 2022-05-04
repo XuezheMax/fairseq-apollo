@@ -12,6 +12,8 @@ from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAtt
 from fairseq.modules.gated_cross_attention import GatedCrossAttention
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
+from fairseq.modules.layer_norm import LayerNorm
+from fairseq.modules.scale_norm import ScaleNorm
 
 
 class MegaEncoderLayer(nn.Module):
@@ -25,7 +27,7 @@ class MegaEncoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
         self.mega_layer = self.build_layer(self.embed_dim, args)
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.normalization = self.build_normalization(self.embed_dim, args.normalization_type)
 
     def build_layer(self, embed_dim, args):
         return MovingAverageGatedAttention(
@@ -33,6 +35,7 @@ class MegaEncoderLayer(nn.Module):
             zdim=args.encoder_z_dim,
             hdim=args.encoder_hidden_dim,
             ndim=args.encoder_n_dim,
+            dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.encoder_chunk_size,
@@ -42,6 +45,14 @@ class MegaEncoderLayer(nn.Module):
             attention_activation=args.attention_activation_fn,
             bidirectional=True,
         )
+
+    def build_normalization(self, embedding_dim, norm_type):
+        if norm_type == 'layernorm':
+            return LayerNorm(embedding_dim)
+        elif norm_type == 'scalenorm':
+            return ScaleNorm(dim=-1)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
     def forward(self, x, encoder_padding_mask):
         """
@@ -54,7 +65,7 @@ class MegaEncoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         x, _ = self.mega_layer(x, encoder_padding_mask)
-        x = self.dropout_module(x)
+        x = self.normalization(x)
         return x
 
 
@@ -68,9 +79,12 @@ class MegaDecoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
+        self.mega_layer_norm = self.build_normalization(self.embed_dim, args.normalization_type)
+
         self.cross_attn = self.build_cross_attn(self.embed_dim, args)
+        self.cross_attn_norm = self.build_normalization(self.embed_dim, args.normalization_type)
+
         self.need_attn = False
         self.onnx_trace = False
 
@@ -80,6 +94,7 @@ class MegaDecoderLayer(nn.Module):
             zdim=args.decoder_z_dim,
             hdim=args.decoder_hidden_dim,
             ndim=args.decoder_n_dim,
+            dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.decoder_chunk_size,
@@ -95,12 +110,21 @@ class MegaDecoderLayer(nn.Module):
             embed_dim=embed_dim,
             zdim=args.decoder_z_dim,
             ndim=args.decoder_n_dim,
+            dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             max_positions=max(args.max_target_positions, args.max_source_positions),
         )
+
+    def build_normalization(self, embedding_dim, norm_type):
+        if norm_type == 'layernorm':
+            return LayerNorm(embedding_dim)
+        elif norm_type == 'scalenorm':
+            return ScaleNorm(dim=-1)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -131,14 +155,14 @@ class MegaDecoderLayer(nn.Module):
         x, _ = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
                                incremental_state=incremental_state,
                                need_weights=False, attn_mask=attn_mask)
-        x = self.dropout_module(x)
+        x = self.mega_layer_norm(x)
 
         x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
                                   padding_mask=decoder_padding_mask,
                                   key_padding_mask=encoder_padding_mask,
                                   incremental_state=incremental_state,
                                   static_kv=True, need_weights=need_attn)
-        x = self.dropout_module(x)
+        x = self.cross_attn_norm(x)
 
         return x, attn, None
 

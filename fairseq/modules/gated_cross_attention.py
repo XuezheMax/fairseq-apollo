@@ -28,9 +28,10 @@ class GatedCrossAttention(nn.Module):
         embed_dim,
         zdim,
         ndim=2,
+        dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
-        activation='tanh',
+        activation='silu',
         attention_activation='softmax',
         max_positions=1024,
     ):
@@ -39,11 +40,11 @@ class GatedCrossAttention(nn.Module):
         self.embed_dim = embed_dim
         self.zdim = zdim
         self.ndim = ndim
-        assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
+        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
@@ -252,12 +253,13 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
+        v = self.hidden_dropout(v)
         kernel = self.attention_dropout(attn_weights)
         # B x L2 x D -> L2 x B x D
         h = torch.bmm(kernel, v).transpose(0, 1)
-        h = self.hidden_dropout(h)
         # L2 x B x D
         h = self.activation(self.h_proj(h * r))
+        h = self.dropout_module(h)
         out = torch.addcmul(query, u, h - query)
 
         if need_weights:

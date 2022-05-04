@@ -98,21 +98,20 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
         parser.add_argument('--decoder-output-dim', type=int, metavar='N',
-                            help='decoder output dimension (extra linear layer '
-                                 'if different from decoder embed dim')
+                            help='decoder output dimension (extra linear layer if different from decoder embed dim')
 
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
-                            help='share encoder, decoder and output embeddings'
-                                 ' (requires shared dictionary and embed dim)')
+                            help='share encoder, decoder and output embeddings (requires shared dictionary and embed dim)')
 
         parser.add_argument('--adaptive-softmax-cutoff', metavar='EXPR',
                             help='comma separated list of adaptive softmax cutoff points. Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--embedding-normalization', choices=['layernorm', 'scalenorm', None], default=None,
-                            help='add normalization to embedding if not None')
+        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'], help='normalization type')
+        parser.add_argument('--normalize-embedding', action='store_true',
+                            help='normalize embedding for Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
         # fmt: on
@@ -234,15 +233,16 @@ class MegaEncoder(FairseqEncoder):
         self.chunk_size = args.encoder_chunk_size
         self.embed_tokens = embed_tokens
 
-        embed_norm = getattr(args, 'embedding_normalization', None)
-        if embed_norm is None:
+        norm_type = args.normalization_type
+        normalize_embedding = getattr(args, 'normalize_embedding', False)
+        if normalize_embedding:
             self.embed_norm = None
-        elif embed_norm == 'layernorm':
+        elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embed_dim)
-        elif embed_norm == 'scalenorm':
+        elif norm_type == 'scalenorm':
             self.embed_norm = ScaleNorm(dim=-1)
         else:
-            raise ValueError('Unknown norm type: {}'.format(embed_norm))
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
@@ -427,15 +427,16 @@ class MegaDecoder(FairseqIncrementalDecoder):
         else:
             self.project_in_dim = None
 
-        embed_norm = getattr(args, 'embedding_normalization', None)
-        if embed_norm is None:
+        norm_type = args.normalization_type
+        normalize_embedding = getattr(args, 'normalize_embedding', False)
+        if normalize_embedding:
             self.embed_norm = None
-        elif embed_norm == 'layernorm':
+        elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embed_dim)
-        elif embed_norm == 'scalenorm':
+        elif norm_type == 'scalenorm':
             self.embed_norm = ScaleNorm(dim=-1)
         else:
-            raise ValueError('Unknown norm type: {}'.format(embed_norm))
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
@@ -698,7 +699,8 @@ def base_architecture(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.activation_dropout = getattr(args, "hidden_dropout", 0.0)
     args.dropout = getattr(args, "dropout", 0.1)
-    args.norm_type = getattr(args, 'embedding_normalization', 'layernorm')
+    args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
+    args.normalize_embedding = getattr(args, 'normalize_embedding', False)
 
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
@@ -706,7 +708,7 @@ def base_architecture(args):
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
 
-    args.activation_fn = getattr(args, 'activation_fn', 'tanh')
+    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
