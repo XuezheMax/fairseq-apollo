@@ -145,6 +145,7 @@ class LRAModel(FairseqEncoderModel):
 
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm', 'batchnorm'])
+        parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
 
         parser.add_argument('--chunk-size', type=int, metavar='N',
@@ -299,6 +300,7 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
                 norm_type=args.norm_type,
+                normalize_embedding=args.normalize_embedding,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 truncation=getattr(args, 'truncation_length', None),
                 max_seq_len=args.max_positions,

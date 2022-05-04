@@ -62,6 +62,7 @@ class MegaLRAEncoder(nn.Module):
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
         norm_type: str = 'scalenorm',
+        normalize_embedding: bool = False,
         layerdrop: float = 0.0,
         truncation: int = None,
         max_seq_len: int = 256,
@@ -86,7 +87,7 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
                                                  self.vocab_size, self.padding_idx,
-                                                 norm_type, export)
+                                                 norm_type, normalize_embedding, export)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -108,12 +109,14 @@ class MegaLRAEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
+                norm_type=norm_type,
                 export=export
             )
             for _ in range(self.num_layers)
         ])
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, export):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, normalize_embedding, export):
+        norm_type = None if not normalize_embedding else norm_type
         if embedding_type == 'sparse':
             embed_tokens = NormalizedEmbedding(vocab_size, embedding_dim, padding_idx, norm_type, export)
             return embed_tokens
@@ -135,6 +138,7 @@ class MegaLRAEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
+        norm_type,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -150,6 +154,7 @@ class MegaLRAEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
+            norm_type=norm_type,
             export=export
         )
 
@@ -222,7 +227,9 @@ class NormalizedEmbedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim, padding_idx, norm_type, export=False):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        if norm_type == 'layernorm':
+        if norm_type is None:
+            self.embed_norm = None
+        elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             self.embed_norm = ScaleNorm(dim=-1)
@@ -236,5 +243,6 @@ class NormalizedEmbedding(nn.Module):
 
     def forward(self, tokens):
         x = self.embed(tokens)
-        x = self.embed_norm(x)
+        if self.embed_norm is not None:
+            x = self.embed_norm(x)
         return x

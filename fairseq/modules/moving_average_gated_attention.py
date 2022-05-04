@@ -31,6 +31,7 @@ class MovingAverageGatedAttention(nn.Module):
         zdim,
         hdim,
         ndim=2,
+        dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
         activation='tanh',
@@ -46,11 +47,11 @@ class MovingAverageGatedAttention(nn.Module):
         self.hdim = hdim
         self.zdim = zdim
         self.ndim=ndim
-        assert activation in ['tanh', 'sin']
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
+        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
@@ -300,12 +301,13 @@ class MovingAverageGatedAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
+        v = self.hidden_dropout(v)
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
-        h = self.hidden_dropout(h)
         # L x B x E -> L x B x D
         h = self.activation(hx + self.h_proj(h * r))
+        h = self.dropout_module(h)
         # L x B x D
         out = torch.addcmul(x, u, h - x)
 

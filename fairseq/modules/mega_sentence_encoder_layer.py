@@ -10,7 +10,8 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
-from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.layer_norm import LayerNorm
+from fairseq.modules.scale_norm import ScaleNorm
 
 
 class MegaSentenceEncoderLayer(nn.Module):
@@ -32,21 +33,33 @@ class MegaSentenceEncoderLayer(nn.Module):
         max_positions: int = 1024,
         activation='tanh',
         attention_activation='softmax',
+        norm_type: str = 'scalenorm',
         export: bool = False,
     ) -> None:
         super().__init__()
 
         # Initialize parameters
         self.embedding_dim = embedding_dim
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
         self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, n_dim,
-                                    attention_dropout, hidden_dropout,
+                                    dropout, attention_dropout, hidden_dropout,
                                     activation, attention_activation,
                                     chunk_size, truncation, max_positions)
 
+        self.normalization = self.build_normalization(norm_type, embedding_dim, export)
+
+    def build_normalization(self, norm_type, embedding_dim, export):
+        if norm_type == 'layernorm':
+            return LayerNorm(embedding_dim, export=export)
+        elif norm_type == 'scalenorm':
+            return ScaleNorm(dim=-1)
+        elif norm_type == 'batchnorm':
+            return nn.BatchNorm1d(embedding_dim)
+        else:
+            raise ValueError('Unknown norm type: {}'.format(norm_type))
+
     def build_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
-                    attention_dropout, hidden_dropout,
+                    dropout, attention_dropout, hidden_dropout,
                     activation, attention_activation,
                     chunk_size, truncation, max_positions):
         return MovingAverageGatedAttention(
@@ -54,6 +67,7 @@ class MegaSentenceEncoderLayer(nn.Module):
             zdim=z_dim,
             hdim=hidden_dim,
             ndim=n_dim,
+            dropout=dropout,
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             chunk_size=chunk_size,
@@ -63,6 +77,15 @@ class MegaSentenceEncoderLayer(nn.Module):
             attention_activation=attention_activation,
             bidirectional=True,
         )
+
+    def normalize(self, x):
+        if isinstance(self.normalization, nn.BatchNorm1d):
+            assert x.dim() == 3
+            x = x.permute(1, 2, 0)
+            x = self.normalization(x)
+            return x.permute(2, 0, 1)
+        else:
+            return self.normalization(x)
 
     def forward(
         self,
@@ -74,5 +97,5 @@ class MegaSentenceEncoderLayer(nn.Module):
         if self.chunk_size > 0:
             assert seq_len % self.chunk_size == 0, 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
         x, attn = self.net(x, x_padding_mask)
-        x = self.dropout_module(x)
+        x = self.normalize(x)
         return x, attn
