@@ -7,10 +7,8 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
-from fairseq import utils
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
 from fairseq.modules.gated_cross_attention import GatedCrossAttention
-from fairseq.modules.fairseq_dropout import FairseqDropout
 from torch import Tensor
 from fairseq.modules.layer_norm import LayerNorm
 from fairseq.modules.scale_norm import ScaleNorm
@@ -115,7 +113,9 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
+            truncation=args.truncation_length,
             max_positions=max(args.max_target_positions, args.max_source_positions),
+            bidirectional=False,
         )
 
     def build_normalization(self, embedding_dim, norm_type):
