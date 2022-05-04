@@ -34,7 +34,7 @@ class MovingAverageGatedAttention(nn.Module):
         dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
-        activation='tanh',
+        activation='silu',
         attention_activation='softmax',
         bidirectional=False,
         chunk_size=-1,

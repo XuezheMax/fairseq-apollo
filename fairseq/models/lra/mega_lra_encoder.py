@@ -55,7 +55,7 @@ class MegaLRAEncoder(nn.Module):
         hidden_dim: int = 1024,
         z_dim: int = 128,
         n_dim=2,
-        activation='tanh',
+        activation='silu',
         attention_activation='softmax',
         dropout: float = 0.0,
         attention_dropout: float = 0.0,

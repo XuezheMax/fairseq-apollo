@@ -31,7 +31,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         chunk_size: int = -1,
         truncation=None,
         max_positions: int = 1024,
-        activation='tanh',
+        activation='silu',
         attention_activation='softmax',
         norm_type: str = 'scalenorm',
         export: bool = False,
