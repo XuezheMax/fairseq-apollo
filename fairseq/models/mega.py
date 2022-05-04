@@ -235,7 +235,7 @@ class MegaEncoder(FairseqEncoder):
 
         norm_type = args.normalization_type
         normalize_embedding = getattr(args, 'normalize_embedding', False)
-        if normalize_embedding:
+        if not normalize_embedding:
             self.embed_norm = None
         elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embed_dim)
@@ -429,7 +429,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         norm_type = args.normalization_type
         normalize_embedding = getattr(args, 'normalize_embedding', False)
-        if normalize_embedding:
+        if not normalize_embedding:
             self.embed_norm = None
         elif norm_type == 'layernorm':
             self.embed_norm = LayerNorm(embed_dim)
@@ -697,7 +697,7 @@ def base_architecture(args):
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
-    args.activation_dropout = getattr(args, "hidden_dropout", 0.0)
+    args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
     args.dropout = getattr(args, "dropout", 0.1)
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
