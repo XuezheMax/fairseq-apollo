@@ -366,6 +366,7 @@ def base_architecture(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
+    args.normalize_embedding = getattr(args, 'normalize_embedding', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.adaptive_input = getattr(args, "adaptive_input", False)
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_ffn_embed_dim * 2 if args.layer_type == 'lstm' else args.encoder_embed_dim)
