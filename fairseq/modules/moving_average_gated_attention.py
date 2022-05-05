@@ -193,7 +193,7 @@ class MovingAverageGatedAttention(nn.Module):
             saved_state = None
 
         # L x B x E
-        v = F.silu(self.v_proj(x))
+        v = self.activation(self.v_proj(x))
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)

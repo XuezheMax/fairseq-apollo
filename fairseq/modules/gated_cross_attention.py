@@ -207,7 +207,7 @@ class GatedCrossAttention(nn.Module):
         else:
             # L1 x B x S
             k = self.k_proj(key)
-            v = F.silu(self.v_proj(key))
+            v = self.activation(self.v_proj(key))
 
         # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
