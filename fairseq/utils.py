@@ -491,10 +491,6 @@ def get_activation_fn(activation: str) -> Callable:
         return gelu_accurate
     elif activation == 'silu':
         return F.silu
-    elif activation == "tanh":
-        return torch.tanh
-    elif activation == 'sin':
-        return torch.sin
     elif activation == "linear":
         return lambda x: x
     else:
@@ -507,8 +503,6 @@ def get_available_activation_fns() -> List:
         "gelu",
         "gelu_fast",  # deprecated
         "gelu_accurate",
-        "tanh",
-        "sin",
         "linear",
         "silu",
     ]

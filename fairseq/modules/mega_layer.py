@@ -113,9 +113,7 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
-            truncation=args.truncation_length,
             max_positions=max(args.max_target_positions, args.max_source_positions),
-            bidirectional=False,
         )
 
     def build_normalization(self, embedding_dim, norm_type):
