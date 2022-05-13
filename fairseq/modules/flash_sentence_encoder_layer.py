@@ -48,6 +48,8 @@ class FlashSentenceEncoderLayer(nn.Module):
             return LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             return ScaleNorm(dim=-1)
+        elif norm_type == 'batchnorm':
+            return nn.BatchNorm1d(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
@@ -61,13 +63,22 @@ class FlashSentenceEncoderLayer(nn.Module):
             max_positions=max_positions
         )
 
+    def normalize(self, x):
+        if isinstance(self.pre_norm, nn.BatchNorm1d):
+            assert x.dim() == 3
+            x = x.permute(1, 2, 0)
+            x = self.pre_norm(x)
+            return x.permute(2, 0, 1)
+        else:
+            return self.pre_norm(x)
+
     def forward(
         self,
         x: torch.Tensor,
         x_padding_mask: Optional[torch.Tensor] = None,
     ):
         residual = x
-        x = self.pre_norm(x)
+        x = self.normalize(x)
 
         x, attn = self.gau(x, x_padding_mask)
 
