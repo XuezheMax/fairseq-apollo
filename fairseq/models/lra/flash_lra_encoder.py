@@ -106,6 +106,8 @@ class FlashLRAEncoder(nn.Module):
             return LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             return ScaleNorm(dim=-1)
+        elif norm_type == 'batchnorm':
+            return nn.BatchNorm1d(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
@@ -141,6 +143,15 @@ class FlashLRAEncoder(nn.Module):
             max_positions=max_positions,
             export=export
         )
+
+    def normalize(self, x):
+        if isinstance(self.final_norm, nn.BatchNorm1d):
+            assert x.dim() == 3
+            x = x.permute(1, 2, 0)
+            x = self.final_norm(x)
+            return x.permute(2, 0, 1)
+        else:
+            return self.final_norm(x)
 
     def forward(
             self,
@@ -180,7 +191,7 @@ class FlashLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        x = self.final_norm(x)
+        x = self.normalize(x)
 
         if padding_mask is not None:
             x = x.masked_fill(padding_mask.transpose(0, 1).unsqueeze(-1), 0.0)
