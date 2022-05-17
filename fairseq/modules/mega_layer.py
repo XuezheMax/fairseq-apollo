@@ -74,14 +74,18 @@ class MegaDecoderLayer(nn.Module):
         args (argparse.Namespace): parsed command-line arguments
     """
 
-    def __init__(self, args):
+    def __init__(self, args, no_cross_attention=False):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.mega_layer_norm = self.build_normalization(self.embed_dim, args.normalization_type)
 
-        self.cross_attn = self.build_cross_attn(self.embed_dim, args)
-        self.cross_attn_norm = self.build_normalization(self.embed_dim, args.normalization_type)
+        if no_cross_attention:
+            self.cross_attn = None
+            self.cross_attn_norm = None
+        else:
+            self.cross_attn = self.build_cross_attn(self.embed_dim, args)
+            self.cross_attn_norm = self.build_normalization(self.embed_dim, args.normalization_type)
 
         self.need_attn = False
         self.onnx_trace = False
@@ -150,17 +154,18 @@ class MegaDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        x, _ = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
-                               incremental_state=incremental_state,
-                               need_weights=False, attn_mask=attn_mask)
+        x, attn = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
+                                  incremental_state=incremental_state,
+                                  need_weights=False, attn_mask=attn_mask)
         x = self.mega_layer_norm(x)
 
-        x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
-                                  padding_mask=decoder_padding_mask,
-                                  key_padding_mask=encoder_padding_mask,
-                                  incremental_state=incremental_state,
-                                  static_kv=True, need_weights=need_attn)
-        x = self.cross_attn_norm(x)
+        if self.cross_attn is not None:
+            x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
+                                      padding_mask=decoder_padding_mask,
+                                      key_padding_mask=encoder_padding_mask,
+                                      incremental_state=incremental_state,
+                                      static_kv=True, need_weights=need_attn)
+            x = self.cross_attn_norm(x)
 
         return x, attn, None
 
