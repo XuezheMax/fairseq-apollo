@@ -59,7 +59,7 @@ class MultiHeadEMA(nn.Module):
         with torch.no_grad():
             # delta & alpha
             nn.init.normal_(self.delta, mean=1.385, std=0.2)
-            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+            nn.init.normal_(self.alpha, mean=-1.1, std=0.2)
             # beta
             A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
             B = torch.ones(self.ndim, 1)
