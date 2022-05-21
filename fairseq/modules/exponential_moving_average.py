@@ -60,8 +60,9 @@ class MultiHeadEMA(nn.Module):
             # delta & alpha
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            # beta & gamma & omega
-            nn.init.normal_(self.beta, mean=0.0, std=1.0)
+            # beta
+            self.beta.normal_(mean=1.0, std=0.02)
+            # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
