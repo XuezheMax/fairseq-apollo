@@ -60,13 +60,8 @@ class MultiHeadEMA(nn.Module):
             # delta & alpha
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            # beta
-            A = torch.tril(torch.ones(self.ndim, self.ndim)) - torch.eye(self.ndim) / 2
-            B = torch.ones(self.ndim, 1)
-            _, V = torch.linalg.eig(A)
-            V_inv = V.conj().real.transpose(0, 1)
-            self.beta.normal_(mean=0.0, std=0.02).add_(torch.mm(V_inv, B))
-            # gamma & omega
+            # beta & gamma & omega
+            nn.init.normal_(self.beta, mean=0.0, std=1.0)
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
