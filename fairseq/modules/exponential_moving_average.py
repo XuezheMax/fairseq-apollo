@@ -60,8 +60,11 @@ class MultiHeadEMA(nn.Module):
             # delta & alpha
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            # beta
-            self.beta.normal_(mean=1.0, std=0.02)
+            # beta [1, -1, 1, -1, ...] seems more stable.
+            val = torch.ones(self.ndim, 1)
+            idx = torch.tensor(list(range(1, self.ndim, 2)))
+            val.index_fill_(0, idx, -1.0)
+            self.beta.normal_(mean=0.0, std=0.02).add_(val)
             # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
