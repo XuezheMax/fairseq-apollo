@@ -5,7 +5,9 @@
 
 import numpy as np
 import torch
-
+import logging
+from fairseq.data import TokenBlockDataset
+logger = logging.getLogger(__name__)
 from . import data_utils, FairseqDataset
 
 
@@ -175,11 +177,15 @@ class MonolingualDataset(FairseqDataset):
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
+        if hasattr(self.dataset, 'left_pad_to_fixed_size') and self.dataset.left_pad_to_fixed_size:
+            return self.dataset.max_example_size
         return self.sizes[index]
 
     def size(self, index):
         """Return an example's size as a float or tuple. This value is used when
         filtering a dataset with ``--max-positions``."""
+        if hasattr(self.dataset, 'left_pad_to_fixed_size') and self.dataset.left_pad_to_fixed_size:
+            return self.dataset.max_example_size
         return self.sizes[index]
 
     def ordered_indices(self):
@@ -198,3 +204,9 @@ class MonolingualDataset(FairseqDataset):
 
     def prefetch(self, indices):
         self.dataset.prefetch(indices)
+
+    def set_epoch(self, epoch):
+        logger.debug('Monolingual dataset reindex at the beginning of epoch {}!'.format(epoch))
+        assert isinstance(self.dataset, TokenBlockDataset)
+        self.dataset.reindex(epoch)
+        self.sizes = np.array(self.dataset.sizes)

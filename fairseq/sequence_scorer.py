@@ -26,7 +26,7 @@ class SequenceScorer(object):
             if symbols_to_strip_from_output is not None else {self.eos})
 
     @torch.no_grad()
-    def generate(self, models, sample, **kwargs):
+    def generate(self, models, sample, incremental_states=None, **kwargs):
         """Score a batch of translations."""
         net_input = sample['net_input']
 
@@ -59,7 +59,10 @@ class SequenceScorer(object):
         avg_attn = None
         for model in models:
             model.eval()
-            decoder_out = model(**net_input)
+            if incremental_states is not None:
+                decoder_out = model.decoder.forward(sample['net_input']['src_tokens'], incremental_states)
+            else:
+                decoder_out = model(**net_input)
             attn = decoder_out[1] if len(decoder_out) > 1 else None
             if type(attn) is dict:
                 attn = attn.get('attn', None)

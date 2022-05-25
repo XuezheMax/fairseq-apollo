@@ -656,6 +656,64 @@ class Trainer(object):
 
         return logging_output
 
+    @metrics.aggregate("valid")
+    def mega_lm_valid_step(self, sample, raise_oom=False, incremental_states=None):
+        """Do forward pass in evaluation mode."""
+        if self._dummy_batch == "DUMMY":
+            self._dummy_batch = sample
+        if self.tpu:
+            import torch_xla.core.xla_model as xm
+            xm.rendezvous('valid_step')  # wait for all workers
+            xm.mark_step()
+
+        with torch.no_grad():
+            self.model.eval()
+            self.criterion.eval()
+
+            sample = self._prepare_sample(sample)
+            if sample is None:
+                sample = self._prepare_sample(self._dummy_batch)
+                is_dummy_batch = True
+            else:
+                is_dummy_batch = False
+
+            try:
+                _loss, sample_size, logging_output = self.task.valid_step(
+                    sample, self.model, self.criterion, incremental_states=incremental_states
+                )
+            except RuntimeError as e:
+                if "out of memory" in str(e):
+                    self._log_oom(e)
+                    if not raise_oom:
+                        logger.warning(
+                            "ran out of memory in validation step, retrying batch"
+                        )
+                        for p in self.model.parameters():
+                            if p.grad is not None:
+                                p.grad = None  # free some memory
+                        if self.cuda:
+                            torch.cuda.empty_cache()
+                        return self.valid_step(sample, raise_oom=True)
+                raise e
+
+            logging_outputs = [logging_output]
+            if is_dummy_batch:
+                if torch.is_tensor(sample_size):
+                    sample_size.zero_()
+                else:
+                    sample_size *= 0.
+
+        # gather logging outputs from all replicas
+        if self.data_parallel_world_size > 1:
+            logging_outputs, (sample_size,) = self._aggregate_logging_outputs(
+                logging_outputs, sample_size, ignore=is_dummy_batch,
+            )
+
+        # log validation stats
+        logging_output = self._reduce_and_log_stats(logging_outputs, sample_size)
+
+        return logging_output
+
     def zero_grad(self):
         self.optimizer.zero_grad()
 

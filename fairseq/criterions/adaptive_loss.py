@@ -31,7 +31,7 @@ class AdaptiveLoss(FairseqCriterion):
             )
         return cls(task, args.sentence_avg)
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, incremental_states=None):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -43,7 +43,11 @@ class AdaptiveLoss(FairseqCriterion):
         assert hasattr(model.decoder, 'adaptive_softmax') and model.decoder.adaptive_softmax is not None
         adaptive_softmax = model.decoder.adaptive_softmax
 
-        net_output = model(**sample['net_input'])
+        if incremental_states is not None:
+            # is mega LM
+            net_output = model.decoder.forward(sample['net_input']['src_tokens'], incremental_states)
+        else:
+            net_output = model(**sample['net_input'])
         orig_target = model.get_targets(sample, net_output)
 
         nsentences = orig_target.size(0)

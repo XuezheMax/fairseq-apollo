@@ -47,7 +47,8 @@ cdef np.ndarray[DTYPE_t, ndim=2] _fast_convert_to_np_array(list list_of_list):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
-cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, ndim=1] sizes, str break_mode, int block_size, int document_sep_len):
+cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, ndim=1] sizes, str break_mode,
+    int block_size, int document_sep_len, int block_multiple_min, int block_multiple_max, list block_sizes):
     cdef DTYPE_t tok_idx = 0
     cdef DTYPE_t sz_idx = 0
     cdef DTYPE_t curr_size = 0
@@ -57,6 +58,7 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
     cdef DTYPE_t[:] sizes_view = sizes
     cdef np.ndarray[DTYPE_t, ndim=2] slice_indices
     cdef list slice_indices_list = []
+    cdef DTYPE_t counter = 0
 
     if break_mode is None or break_mode == 'none':
         slice_indices = _get_slice_indices_none_mode(sizes, block_size)
@@ -73,6 +75,10 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
             slice_indices_list.append((tok_idx, tok_idx + curr_size))
         slice_indices = _fast_convert_to_np_array(slice_indices_list)
     elif break_mode == 'complete_doc':
+        if block_multiple_max > 1:
+            block_size = block_sizes[counter]
+        else:
+            block_size = block_multiple_min * block_size
         while sz_idx < len(sizes_view):
             if (
                 (curr_size + sizes_view[sz_idx] <= block_size or curr_size == 0)
@@ -87,6 +93,9 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
                     slice_indices_list.append((tok_idx, tok_idx + curr_size))
                 tok_idx += curr_size
                 curr_size = 0
+                if block_multiple_max > 1:
+                    counter += 1
+                    block_size = block_sizes[counter]
                 if sizes_view[sz_idx] == document_sep_len:
                     tok_idx += sizes_view[sz_idx]
                     sz_idx += 1

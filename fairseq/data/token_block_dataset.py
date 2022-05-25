@@ -8,6 +8,11 @@ import torch
 
 from fairseq.data import FairseqDataset, plasma_utils
 
+from fairseq.data.token_block_utils_fast import (
+    _get_slice_indices_fast,
+    _get_block_to_dataset_index_fast,
+)
+
 
 class TokenBlockDataset(FairseqDataset):
     """Break a Dataset of tokens into blocks.
@@ -30,6 +35,7 @@ class TokenBlockDataset(FairseqDataset):
         document_sep_len (int, optional): document separator size (required for
             'complete_doc' break mode). Typically 1 if the sentences have eos
             and 0 otherwise.
+        variant_block_size_multiples (tuple, optional): each chunk is e.g. [3, 6] times of a block size
     """
     def __init__(
         self,
@@ -41,17 +47,20 @@ class TokenBlockDataset(FairseqDataset):
         break_mode=None,
         include_targets=False,
         document_sep_len=1,
+        variant_block_size_multiples=None,
+        seed=0,
+        left_pad_to_fixed_size=False,
     ):
-        try:
-            from fairseq.data.token_block_utils_fast import (
-                _get_slice_indices_fast,
-                _get_block_to_dataset_index_fast,
-            )
-        except ImportError:
-            raise ImportError(
-                'Please build Cython components with: `pip install --editable .` '
-                'or `python setup.py build_ext --inplace`'
-            )
+        # try:
+        #     from fairseq.data.token_block_utils_fast import (
+        #         _get_slice_indices_fast,
+        #         _get_block_to_dataset_index_fast,
+        #     )
+        # except ImportError:
+        #     raise ImportError(
+        #         'Please build Cython components with: `pip install --editable .` '
+        #         'or `python setup.py build_ext --inplace`'
+        #     )
 
         super().__init__()
         self.dataset = dataset
@@ -69,13 +78,32 @@ class TokenBlockDataset(FairseqDataset):
                 sizes = sizes.numpy()
             sizes = sizes.astype(np.int64)
 
+        if variant_block_size_multiples is not None:
+            self.variant_block_multiple_min, self.variant_block_multiple_max = variant_block_size_multiples[0], \
+                                                                    variant_block_size_multiples[1]
+        else:
+            self.variant_block_multiple_min, self.variant_block_multiple_max = 1, 1
+
         break_mode = break_mode if break_mode is not None else 'none'
 
         # For "eos" break-mode, block_size is not required parameters.
         if break_mode == "eos" and block_size is None:
             block_size = 0
 
-        slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len)
+        self.input_data_sizes = sizes
+        self.break_mode = break_mode
+        self.block_size = block_size
+        self.document_sep_len = document_sep_len
+        self._cur_epoch = 1
+        self.seed = seed
+        self.left_pad_to_fixed_size = left_pad_to_fixed_size
+
+        if self.variant_block_multiple_max > 1:
+            block_sizes = [i * block_size for i in range(variant_block_size_multiples[0], variant_block_size_multiples[1] + 1)]
+            k = len(sizes) // 2
+            blocks = np.random.choice(block_sizes, k)
+        slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len,
+                                                self.variant_block_multiple_min, self.variant_block_multiple_max, blocks)
         self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
 
         # build index mapping block indices to the underlying dataset indices
@@ -99,6 +127,37 @@ class TokenBlockDataset(FairseqDataset):
         self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
         self._sizes = plasma_utils.PlasmaArray(self._sizes)
         self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
+        # max document size for padding, only used for mega LM at inference time
+        self.max_example_size = max(self._sizes)
+
+    def reindex(self, epoch):
+        if epoch == self.epoch:
+            return
+
+        rng = np.random.RandomState(
+            [
+                42,  # magic number
+                self.seed % (2 ** 32),  # global seed
+                self._cur_epoch,  # epoch index
+            ]
+        )
+        block_sizes = [i * self.block_size for i in
+                       range(self.variant_block_multiple_min, self.variant_block_multiple_max + 1)]
+        k = len(self.dataset) // 2
+        blocks = rng.choice(block_sizes, k)
+        slice_indices = _get_slice_indices_fast(self.input_data_sizes, self.break_mode, self.block_size, self.document_sep_len,
+                                                self.variant_block_multiple_min, self.variant_block_multiple_max, blocks)
+        self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
+
+        # build index mapping block indices to the underlying dataset indices
+        block_to_dataset_index = _get_block_to_dataset_index_fast(
+            self.input_data_sizes,
+            slice_indices,
+        )
+        self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
+        self._sizes = plasma_utils.PlasmaArray(self._sizes)
+        self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
+        self._cur_epoch = epoch
 
     @property
     def slice_indices(self):
@@ -127,6 +186,9 @@ class TokenBlockDataset(FairseqDataset):
         length = slice_e - slice_s
         s, e = start_offset, start_offset + length
         item = buffer[s:e]
+
+        if self.left_pad_to_fixed_size:
+            item = torch.cat(item, item.new(self.max_example_size-len(item)).fill_(self.pad))
 
         if self.include_targets:
             # *target* is the original sentence (=item)

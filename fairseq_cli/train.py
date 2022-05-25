@@ -12,6 +12,7 @@ import logging
 import math
 import random
 import sys
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -27,7 +28,7 @@ from fairseq.data import iterators
 from fairseq.logging import meters, metrics, progress_bar
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
 from fairseq.trainer import Trainer
-
+from torch import Tensor
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -130,6 +131,10 @@ def main(args):
         )
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
+
+    if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
+        test_subsets = args.test_subset.split(",")
+        test_losses = validate_mega_lm(args, trainer, task, epoch_itr, test_subsets)
 
 
 def should_stop_early(args, valid_loss):
@@ -244,7 +249,10 @@ def validate_and_save(args, trainer, task, epoch_itr, valid_subsets, end_of_epoc
     # Validate
     valid_losses = [None]
     if do_validate:
-        valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
+        if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
+            valid_losses = validate_mega_lm(args, trainer, task, epoch_itr, valid_subsets)
+        else:
+            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
 
     # Stopping conditions
     max_update = args.max_update or math.inf
@@ -302,6 +310,69 @@ def validate(args, trainer, task, epoch_itr, subsets):
         with metrics.aggregate(new_root=True) as agg:
             for sample in progress:
                 trainer.valid_step(sample)
+
+        # log validation stats
+        stats = get_valid_stats(args, trainer, agg.get_smoothed_values())
+        progress.print(stats, tag=subset, step=trainer.get_num_updates())
+
+        valid_losses.append(stats[args.best_checkpoint_metric])
+    return valid_losses
+
+
+def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
+    """Evaluate the model on the validation set(s) and return the losses.
+       Validate for language modeling task, specifically mega LM. """
+
+    if args.fixed_validation_seed is not None:
+        # set fixed seed for every validation
+        utils.set_torch_seed(args.fixed_validation_seed)
+
+    valid_losses = []
+    for subset in subsets:
+        logger.info('begin validation on "{}" subset'.format(subset))
+
+        # Initialize data iterator
+        itr = trainer.get_valid_iterator(subset).next_epoch_itr(shuffle=False)
+        if getattr(args, "tpu", False):
+            itr = utils.tpu_data_loader(itr)
+        progress = progress_bar.progress_bar(
+            itr,
+            log_format=args.log_format,
+            log_interval=args.log_interval,
+            epoch=epoch_itr.epoch,
+            prefix=f"valid on '{subset}' subset",
+            tensorboard_logdir=(
+                args.tensorboard_logdir if distributed_utils.is_master(args) else None
+            ),
+            default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
+        )
+
+        # create a new root metrics aggregator so validation metrics
+        # don't pollute other aggregators (e.g., train meters)
+        with metrics.aggregate(new_root=True) as agg:
+            for sample in progress:
+                # todo: recalculate a larger tokens_per_batch at validation time
+                # a specific assertion for debugging
+                assert sample['net_input']['src_lengths'][0] == task.dataset(subset).dataset.max_example_size
+                total_size = sample['net_input']['src_lengths'][0]
+                chunk_size = args.decoder_chunk_size
+                batch_size = sample['net_input']['src_lengths']
+                incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
+
+                for i in range(0, total_size, chunk_size):
+                    new_sample = {
+                        'id': sample['id'],
+                        'nsentences': sample['nsentences'],
+                        'ntokens': chunk_size * batch_size,
+                        'net_input': {
+                            'src_tokens': sample['src_tokens'][i: i+chunk_size],
+                            'src_lengths': torch.LongTensor([
+                                chunk_size for _ in range(batch_size)
+                            ]),
+                        },
+                        'target': sample['target'][i: i+chunk_size],
+                    }
+                    trainer.mega_lm_valid_step(new_sample, incremental_states=incremental_states)
 
         # log validation stats
         stats = get_valid_stats(args, trainer, agg.get_smoothed_values())

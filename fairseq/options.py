@@ -359,6 +359,9 @@ def add_dataset_args(parser, train=False, gen=False):
         group.add_argument('--valid-subset', default='valid', metavar='SPLIT',
                            help='comma separated list of data subsets to use for validation'
                                 ' (e.g. train, valid, test)')
+        group.add_argument('--test-subset', default='valid', metavar='SPLIT',
+                           help='comma separated list of data subsets to use for test'
+                                ' (e.g. train, valid, test)')
         group.add_argument('--validate-interval', type=int, default=1, metavar='N',
                            help='validate every N epochs')
         group.add_argument('--validate-interval-updates', type=int, default=0, metavar='N',

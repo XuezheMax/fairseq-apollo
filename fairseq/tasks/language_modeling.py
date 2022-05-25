@@ -15,6 +15,7 @@ from fairseq.data import (
     data_utils,
     Dictionary,
     IdDataset,
+    FairseqDataset,
     MonolingualDataset,
     NestedDictionaryDataset,
     NumelDataset,
@@ -94,13 +95,20 @@ class LanguageModelingTask(FairseqTask):
         parser.add_argument('--shorten-data-split-list', default='',
                             help='comma-separated list of dataset splits to apply shortening to, '
                                  'e.g., "train,valid" (default: all dataset splits)')
+        parser.add_argument('--variant-block-multiple-min', default=1, type=int,
+                            help='the block size is at least this multiple of one chunk size')
+        parser.add_argument('--variant-block-multiple-max', default=1, type=int,
+                            help='the block size is at most this multiple of one chunk size')
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
         super().__init__(args)
         self.dictionary = dictionary
         self.output_dictionary = output_dictionary or dictionary
-
+        # added by Chunting: if chunk_size > 0, this is for Mega LM which takes K chunks as a training example
+        # and one chunk as a valid/test example
+        self.chunk_size = args.decoder_chunk_size if hasattr(args, 'decoder_chunk_size') else -1
+        self.is_mega_lm = True if hasattr(args, 'decoder_chunk_size') else False
         if targets is None:
             targets = ["future"]
         self.targets = targets
@@ -187,14 +195,24 @@ class LanguageModelingTask(FairseqTask):
             self.args.seed,
         )
 
+        if split == 'train':
+            chunk_size = self.args.decoder_chunk_size if hasattr(self.args, 'decoder_chunk_size') else self.args.tokens_per_sample
+        else:
+            # at inference, read data by documents for mega lm
+            chunk_size = 1000000 if self.is_mega_lm else self.args.tokens_per_sample
+
         dataset = TokenBlockDataset(
             dataset,
             dataset.sizes,
-            self.args.tokens_per_sample,
+            chunk_size,
             pad=self.dictionary.pad(),
             eos=self.dictionary.eos(),
             break_mode=self.args.sample_break_mode,
             include_targets=True,
+            variant_block_size_multiples=(self.args.variant_block_multiple_min,
+                                          self.args.variant_block_multiple_max) if split == 'train' else (1, 1),
+            seed=self.args.seed,
+            left_pad_to_fixed_size=False if split == 'train' else True,
         )
 
         add_eos_for_other_targets = (
@@ -288,3 +306,75 @@ class LanguageModelingTask(FairseqTask):
         """Return the :class:`~fairseq.data.Dictionary` for the language
         model."""
         return self.output_dictionary
+
+    def valid_step(self, sample, model, criterion, incremental_states=None):
+        if not self.is_mega_lm:
+            loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
+            return loss, sample_size, logging_output
+        else:
+            # todo: criterion currently limited to adaptive_loss
+            assert incremental_states is not None
+            model.eval()
+            with torch.no_grad():
+                loss, sample_size, logging_output = criterion(model, sample, incremental_states=incremental_states)
+            return loss, sample_size, logging_output
+
+    # we need to override get_batch_iterator because we want to reset the epoch iterator each time
+    def get_batch_iterator(
+            self, dataset, max_tokens=None, max_sentences=None, max_positions=None,
+            ignore_invalid_inputs=False, required_batch_size_multiple=1,
+            seed=1, num_shards=1, shard_id=0, num_workers=0, epoch=1,
+    ):
+        """
+        Get an iterator that yields batches of data from the given dataset.
+
+        Args:
+            dataset (~fairseq.data.FairseqDataset): dataset to batch
+            max_tokens (int, optional): max number of tokens in each batch
+                (default: None).
+            max_sentences (int, optional): max number of sentences in each
+                batch (default: None).
+            max_positions (optional): max sentence length supported by the
+                model (default: None).
+            ignore_invalid_inputs (bool, optional): don't raise Exception for
+                sentences that are too long (default: False).
+            required_batch_size_multiple (int, optional): require batch size to
+                be a multiple of N (default: 1).
+            seed (int, optional): seed for random number generator for
+                reproducibility (default: 1).
+            num_shards (int, optional): shard the data iterator into N
+                shards (default: 1).
+            shard_id (int, optional): which shard of the data iterator to
+                return (default: 0).
+            num_workers (int, optional): how many subprocesses to use for data
+                loading. 0 means the data will be loaded in the main process
+                (default: 0).
+            epoch (int, optional): the epoch to start the iterator from
+                (default: 0).
+        Returns:
+            ~fairseq.iterators.EpochBatchIterator: a batched iterator over the
+                given dataset split
+        """
+        assert isinstance(dataset, FairseqDataset)
+        if dataset in self.dataset_to_epoch_iter:
+            return self.dataset_to_epoch_iter[dataset]
+        if (
+            dataset.variant_block_multiple_max == 1
+        ):
+            batch_iter = super().get_batch_iterator(
+                dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
+                ignore_invalid_inputs=ignore_invalid_inputs, required_batch_size_multiple=required_batch_size_multiple,
+                seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
+            )
+            # already done in super().get_batch_iterator
+            # self.dataset_to_epoch_iter[dataset] = batch_iter
+            return batch_iter
+
+        self.dataset_to_epoch_iter = {}
+        epoch_iter = super().get_batch_iterator(
+            dataset, max_tokens, max_sentences, max_positions,
+            ignore_invalid_inputs, required_batch_size_multiple,
+            seed, num_shards, shard_id, num_workers, epoch,
+        )
+        self.dataset_to_epoch_iter = {}
+        return epoch_iter
