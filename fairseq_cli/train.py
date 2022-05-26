@@ -61,7 +61,7 @@ def main(args):
         checkpoint_utils.verify_checkpoint_directory(args.save_dir)
 
         # wandb
-        if args.wandb_project != "none": 
+        if args.wandb_project and args.wandb_project != "none": 
             wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
             "WANDB_NAME", os.path.basename(args.save_dir)))
 
