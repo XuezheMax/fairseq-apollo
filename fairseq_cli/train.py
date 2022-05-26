@@ -28,6 +28,11 @@ from fairseq.logging import meters, metrics, progress_bar
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
 from fairseq.trainer import Trainer
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -52,6 +57,11 @@ def main(args):
 
     if distributed_utils.is_master(args):
         checkpoint_utils.verify_checkpoint_directory(args.save_dir)
+
+        # wandb
+        if args.wandb_project != "none": 
+            wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
+            "WANDB_NAME", os.path.basename(args.save_dir)))
 
     # Print args
     logger.info(args)

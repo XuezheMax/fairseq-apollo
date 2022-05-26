@@ -380,7 +380,7 @@ class WandBProgressBarWrapper(BaseProgressBar):
 
         # reinit=False to ensure if wandb.init() is called multiple times
         # within one process it still references the same run
-        wandb.init(project=wandb_project, reinit=False, name=run_name)
+        # wandb.init(project=wandb_project, reinit=False, name=run_name)
 
     def __iter__(self):
         return iter(self.wrapped_bar)
