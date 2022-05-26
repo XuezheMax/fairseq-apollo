@@ -103,7 +103,7 @@ class TokenBlockDataset(FairseqDataset):
             k = len(sizes) // 2
             blocks = np.random.choice(block_sizes, k)
         else:
-            blocks = np.ones(len(sizes)) * block_size
+            blocks = list(np.ones(len(sizes)) * block_size)
         slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len,
                                                 self.variant_block_multiple_min, self.variant_block_multiple_max, blocks)
         self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
@@ -126,11 +126,12 @@ class TokenBlockDataset(FairseqDataset):
                 sizes,
                 slice_indices,
             )
+        # max document size for padding, only used for mega LM at inference time
+        self.max_example_size = max(self._sizes)
+
         self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
         self._sizes = plasma_utils.PlasmaArray(self._sizes)
         self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
-        # max document size for padding, only used for mega LM at inference time
-        self.max_example_size = max(self._sizes)
 
     def reindex(self, epoch):
         if epoch == self.epoch:

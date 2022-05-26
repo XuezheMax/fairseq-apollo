@@ -474,11 +474,11 @@ def base_lm_architecture(args):
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
 
-    args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
-    args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)
+    args.adaptive_input = getattr(args, 'adaptive_input', False)
+    args.adaptive_input_factor = getattr(args, 'adaptive_input_factor', 4)
+    args.adaptive_input_cutoff = getattr(args, 'adaptive_input_cutoff', None)
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
-    args.adaptive_input = getattr(args, "adaptive_input", False)
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
