@@ -196,7 +196,7 @@ class LanguageModelingTask(FairseqTask):
         )
 
         if split == 'train':
-            chunk_size = self.args.decoder_chunk_size if hasattr(self.args, 'decoder_chunk_size') else self.args.tokens_per_sample
+            chunk_size = self.args.decoder_chunk_size if self.is_mega_lm else self.args.tokens_per_sample
         else:
             # at inference, read data by documents for mega lm
             chunk_size = 1000000 if self.is_mega_lm else self.args.tokens_per_sample

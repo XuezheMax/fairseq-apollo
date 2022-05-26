@@ -452,14 +452,6 @@ def Linear(in_features, out_features, bias=True):
 
 @register_model_architecture("mega_lm", "mega_lm")
 def base_lm_architecture(args):
-    args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
-    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1536)
-    args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
-    args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
-    args.encoder_layers = getattr(args, "encoder_layers", 6)
-    args.encoder_chunk_size = getattr(args, 'encoder_chunk_size', -1)
-
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1536)
@@ -500,14 +492,12 @@ def mega_lm_big(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 12)
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
     args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 4096)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 16)
     base_lm_architecture(args)
 
 
 @register_model_architecture('mega_lm', 'mega_lm_adaptive_base')
 def mega_lm_adaptive_base(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.dropout = getattr(args, 'dropout', 0.3)
     args.adaptive_input = getattr(args, 'adaptive_input', True)
     args.tie_adaptive_weights = getattr(args, 'tie_adaptive_weights', True)
@@ -525,7 +515,6 @@ def mega_lm_adaptive_base(args):
 def mega_lm_adaptive_big(args):
     # todo
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
-    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.dropout = getattr(args, 'dropout', 0.3)
     args.adaptive_input = getattr(args, 'adaptive_input', True)
     args.tie_adaptive_weights = getattr(args, 'tie_adaptive_weights', True)

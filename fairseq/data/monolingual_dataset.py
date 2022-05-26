@@ -6,7 +6,6 @@
 import numpy as np
 import torch
 import logging
-from fairseq.data import TokenBlockDataset
 logger = logging.getLogger(__name__)
 from . import data_utils, FairseqDataset
 
@@ -207,6 +206,6 @@ class MonolingualDataset(FairseqDataset):
 
     def set_epoch(self, epoch):
         logger.debug('Monolingual dataset reindex at the beginning of epoch {}!'.format(epoch))
-        assert isinstance(self.dataset, TokenBlockDataset)
+        # assert isinstance(self.dataset, TokenBlockDataset)
         self.dataset.reindex(epoch)
         self.sizes = np.array(self.dataset.sizes)

@@ -102,6 +102,8 @@ class TokenBlockDataset(FairseqDataset):
             block_sizes = [i * block_size for i in range(variant_block_size_multiples[0], variant_block_size_multiples[1] + 1)]
             k = len(sizes) // 2
             blocks = np.random.choice(block_sizes, k)
+        else:
+            blocks = np.ones(len(sizes)) * block_size
         slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len,
                                                 self.variant_block_multiple_min, self.variant_block_multiple_max, blocks)
         self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
