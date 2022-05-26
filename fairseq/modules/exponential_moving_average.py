@@ -106,7 +106,44 @@ class MultiHeadEMA(nn.Module):
         else:
             return self._coeffs
 
-    def step(self, x, hx=None):
+    def step(self, x, length, hx=None):
+        if length == 1:
+            return self.one_step(x, hx=hx)
+
+        # D x N x 1
+        p, q = self.calc_coeffs()
+        # D x N x L+1
+        vander = torch.arange(length + 1).to(p).view(1, 1, length + 1) * torch.log(q)
+        vander = torch.exp(vander)
+        if hx is not None:
+            # D x N x L * D x N x 1 -> D x N x L
+            k = vander[:, :, 1:] * (self.gamma * self.scale).unsqueeze(-1)
+            ox = torch.einsum('bdn,dnl->bdl', hx, k)
+            # D x N * B x D x N -> B x D x N
+            hh = vander[:, :, -1] * hx
+        else:
+            ox = None
+            hh = None
+
+        # D x N x L
+        vander = vander[:, :, :-1]
+        kernel = (p * self.beta) * vander
+        k = torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
+
+        k_f = torch.fft.rfft(k, n=2 * length)
+        x_f = torch.fft.rfft(x, n=2 * length)
+        # B x D x L
+        out = torch.fft.irfft(x_f * k_f, n=2 * length)[..., 0:length]
+        if ox is not None:
+            out = out + ox
+
+        h = torch.einsum('bdl,dnl->bdn', x, kernel)
+        if hh is not None:
+            h = h + hh
+        # L x B x D, B x D x N
+        return out.permute(2, 0, 1), h
+
+    def one_step(self, x, hx=None):
         p, q = self.coeffs()
         # (D x N) x (B x D x 1) -> B x D x N
         h = (p * self.beta).squeeze(-1) * x
@@ -114,7 +151,8 @@ class MultiHeadEMA(nn.Module):
             h = h + q.squeeze(-1) * hx
         # B x D
         out = torch.einsum('bdn,dn->bd', h, self.gamma * self.scale)
-        return out, h
+        # 1 x B x D, B x D x N
+        return out.unsqueeze(0), h
 
     def forward(
         self,
@@ -142,17 +180,16 @@ class MultiHeadEMA(nn.Module):
 
         assert not self.bidirectional or incremental_state is None, 'Bidirectional EMV does not support incremental state'
         if incremental_state is not None:
-            assert seq_len == 1
             saved_state = self._get_input_buffer(incremental_state)
             if 'prev_state' in saved_state:
                 h = saved_state['prev_state']
             else:
                 h = None
-            out, h = self.step(x, hx=h)
+            out, h = self.step(x, seq_len, hx=h)
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
             # B x D -> 1 x B x D
-            out = F.silu(out.unsqueeze(0) + residual)
+            out = F.silu(out + residual)
         else:
             # D x L
             k = self.kernel(seq_len)
