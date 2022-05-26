@@ -12,9 +12,11 @@ import logging
 import math
 import random
 import sys
+import os
 
 import numpy as np
 import torch
+
 from fairseq import (
     checkpoint_utils,
     distributed_utils,
@@ -314,7 +316,7 @@ def validate(args, trainer, task, epoch_itr, subsets):
             ),
             default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
             wandb_project=(
-                args.wandb_project 
+                args.wandb_project
                 if distributed_utils.is_master(args) and args.wandb_project != "none"
                 else None
             ),
