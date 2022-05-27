@@ -442,10 +442,11 @@ def import_user_module(args):
 
 
 def relu2(x, onnx_trace: bool = False):
+    ubd = 1.0
     if onnx_trace:
-        return torch.square(F.relu(x.float()))
+        return torch.square(torch.clamp(x.float(), max=ubd, min=0.0))
     else:
-        return torch.square(F.relu(x))
+        return torch.square(torch.clamp(x, max=ubd, min=0.0))
 
 
 def softmax(x, dim: int, onnx_trace: bool = False):
