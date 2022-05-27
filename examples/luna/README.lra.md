@@ -37,7 +37,7 @@ cp $0 ${SAVE}/run.sh
 model=luna_lra_listop lra
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 --find-unused-parameters \
-    -a ${model} --task long_range_arena \
+    -a ${model} --task lra-text --input-type text \
     --optimizer adam --lr 0.0001 --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
     --encoder-projection-length ${plen} \
     --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric \
@@ -55,7 +55,7 @@ python -u train.py ${DATA} \
 model=luna_lra_imdb
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 --find-unused-parameters \
-    -a ${model} --task long_range_arena \
+    -a ${model} --task lra-text --input-type text \
     --optimizer adam --lr 0.00005  \
     --dropout 0.3 --attention-dropout 0.3 \
     --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
@@ -74,7 +74,7 @@ python -u train.py ${DATA} \
 model=luna_lra_aan
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 --find-unused-parameters \
-    -a ${model} --task long_range_arena \
+    -a ${model} --task lra-text --input-type text \
     --optimizer adam --lr 0.0005 --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
     --encoder-projection-length $plen \
     --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric \
@@ -91,7 +91,7 @@ python -u train.py ${DATA} \
 model=luna_lra_cifar10
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 \
-    -a ${model} --task long_range_arena \
+    -a ${model} --task lra-text --input-type text \
     --encoder-projection-length $plen --find-unused-parameters \
     --attention-dropout 0.1 \
     --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric \
@@ -109,7 +109,7 @@ python -u train.py ${DATA} \
 model=luna_lra_pf32
 python -u train.py ${DATA} \
     --seed $seed --ddp-backend c10d --fp16 \
-    -a ${model} --task long_range_arena \
+    -a ${model} --task lra-text --input-type text \
     --encoder-projection-length $plen --find-unused-parameters \
     --dropout 0.2 \
     --best-checkpoint-metric accuracy --maximize-best-checkpoint-metric \
