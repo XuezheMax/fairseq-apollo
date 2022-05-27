@@ -216,6 +216,7 @@ class MovingAverageGatedAttention(nn.Module):
         v = v.transpose(0, 1)
 
         if saved_state is not None:
+            assert self.chunk_size < 0 or q.size(1) <= self.chunk_size
             # saved states are stored with shape (bsz, seq_len, dim)
             if "prev_key" in saved_state:
                 prev_key = saved_state["prev_key"]
@@ -244,9 +245,10 @@ class MovingAverageGatedAttention(nn.Module):
             else:
                 curr_len = k.size(1) % self.chunk_size
                 if curr_len == 0:
-                    del saved_state["prev_key"]
-                    del saved_state["prev_value"]
-                    del saved_state["prev_key_padding_mask"]
+                    if "prev_key" in saved_state:
+                        del saved_state["prev_key"]
+                        del saved_state["prev_value"]
+                        del saved_state["prev_key_padding_mask"]
                 else:
                     saved_state["prev_key"] = k
                     saved_state["prev_value"] = v

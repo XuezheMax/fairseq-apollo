@@ -13,9 +13,11 @@ import math
 import random
 import sys
 from typing import Dict, List, Optional
+import os
 
 import numpy as np
 import torch
+
 from fairseq import (
     checkpoint_utils,
     distributed_utils,
@@ -29,6 +31,12 @@ from fairseq.logging import meters, metrics, progress_bar
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
 from fairseq.trainer import Trainer
 from torch import Tensor
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -53,6 +61,11 @@ def main(args):
 
     if distributed_utils.is_master(args):
         checkpoint_utils.verify_checkpoint_directory(args.save_dir)
+
+        # wandb
+        if args.wandb_project and args.wandb_project != "none": 
+            wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
+            "WANDB_NAME", os.path.basename(args.save_dir)))
 
     # Print args
     logger.info(args)
@@ -190,6 +203,14 @@ def train(args, trainer, task, epoch_itr):
             args.tensorboard_logdir if distributed_utils.is_master(args) else None
         ),
         default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
+        wandb_project=(
+            args.wandb_project
+            if distributed_utils.is_master(args) and args.wandb_project != "none"
+            else None
+        ),
+        wandb_run_name=os.environ.get(
+            "WANDB_NAME", os.path.basename(args.save_dir)
+        ),
     )
 
     trainer.begin_epoch(epoch_itr.epoch)
@@ -303,6 +324,14 @@ def validate(args, trainer, task, epoch_itr, subsets):
                 args.tensorboard_logdir if distributed_utils.is_master(args) else None
             ),
             default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
+            wandb_project=(
+                args.wandb_project
+                if distributed_utils.is_master(args) and args.wandb_project != "none"
+                else None
+            ),
+            wandb_run_name=os.environ.get(
+                "WANDB_NAME", os.path.basename(args.save_dir)
+            ),
         )
 
         # create a new root metrics aggregator so validation metrics
