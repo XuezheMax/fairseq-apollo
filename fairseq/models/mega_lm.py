@@ -11,7 +11,6 @@ from fairseq.models import (
     register_model,
     register_model_architecture,
 )
-from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
@@ -335,8 +334,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                 - the decoder's features of shape `(batch, tgt_len, embed_dim)`
                 - a dictionary with any model-specific outputs
         """
-        if incremental_state is not None:
-            prev_output_tokens = prev_output_tokens[:, -1:]
 
         bsz, seq_len = prev_output_tokens.size()
         if 0 < self.chunk_size < seq_len and seq_len % self.chunk_size != 0:
@@ -372,7 +369,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         x = x.transpose(0, 1)
 
         # decoder layers
-        attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
             if incremental_state is None and not full_context_alignment:
@@ -391,7 +387,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         # remove padding tokens for chunk
         if num_paddings > 0:
             x = x[:seq_len]
-            attn = attn[:, :seq_len]
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
@@ -399,7 +394,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        return x, {"inner_states": inner_states}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""
@@ -454,7 +449,7 @@ def Linear(in_features, out_features, bias=True):
 def base_lm_architecture(args):
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
-    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1536)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1664)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', 128)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', 16)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
@@ -482,38 +477,22 @@ def base_lm_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 2048)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
 
 @register_model_architecture('mega_lm', 'mega_lm_big')
 def mega_lm_big(args):
-    # todo
-    args.decoder_layers = getattr(args, 'decoder_layers', 12)
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 4096)
-    base_lm_architecture(args)
-
-
-@register_model_architecture('mega_lm', 'mega_lm_adaptive_base')
-def mega_lm_adaptive_base(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
-    args.dropout = getattr(args, 'dropout', 0.3)
-    args.adaptive_input = getattr(args, 'adaptive_input', True)
-    args.tie_adaptive_weights = getattr(args, 'tie_adaptive_weights', True)
-    args.adaptive_input_cutoff = getattr(args, 'adaptive_input_cutoff', '20000,60000')
-    args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', '20000,60000')
-    args.adaptive_softmax_dropout = getattr(args, 'adaptive_softmax_dropout', 0.2)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_dropout = getattr(args, 'activation_dropout', 0.1)
-    args.no_decoder_final_norm = getattr(args, 'no_decoder_final_norm', True)
-    args.tie_adaptive_proj = getattr(args, 'tie_adaptive_proj', True)
+    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 3328)
+    args.decoder_z_dim = getattr(args, 'decoder_z_dim', 256)
     base_lm_architecture(args)
 
 
+@register_model_architecture('mega_lm', 'mega_lm_wiki103')
 @register_model_architecture('mega_lm', 'mega_lm_adaptive_big')
 def mega_lm_adaptive_big(args):
-    # todo
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
     args.dropout = getattr(args, 'dropout', 0.3)
     args.adaptive_input = getattr(args, 'adaptive_input', True)
@@ -522,7 +501,6 @@ def mega_lm_adaptive_big(args):
     args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', '20000,60000')
     args.adaptive_softmax_dropout = getattr(args, 'adaptive_softmax_dropout', 0.2)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_dropout = getattr(args, 'activation_dropout', 0.1)
-    args.no_decoder_final_norm = getattr(args, 'no_decoder_final_norm', True)
+    args.hidden_dropout = getattr(args, 'hidden_dropout', 0.1)
     args.tie_adaptive_proj = getattr(args, 'tie_adaptive_proj', True)
     mega_lm_big(args)

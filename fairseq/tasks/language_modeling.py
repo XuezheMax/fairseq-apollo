@@ -358,8 +358,9 @@ class LanguageModelingTask(FairseqTask):
         assert isinstance(dataset, FairseqDataset)
         if dataset in self.dataset_to_epoch_iter:
             return self.dataset_to_epoch_iter[dataset]
+        # dataset.dataset is token_block_dataset
         if (
-            dataset.variant_block_multiple_max == 1
+            dataset.dataset.variant_block_multiple_max == 1
         ):
             batch_iter = super().get_batch_iterator(
                 dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,

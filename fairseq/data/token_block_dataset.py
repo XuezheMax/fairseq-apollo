@@ -100,8 +100,8 @@ class TokenBlockDataset(FairseqDataset):
 
         if self.variant_block_multiple_max > 1:
             block_sizes = [i * block_size for i in range(variant_block_size_multiples[0], variant_block_size_multiples[1] + 1)]
-            k = len(sizes) // 2
-            blocks = np.random.choice(block_sizes, k)
+            k = len(sizes)
+            blocks = list(np.random.choice(block_sizes, k))
         else:
             blocks = list(np.ones(len(sizes)) * block_size)
         slice_indices = _get_slice_indices_fast(sizes, break_mode, block_size, document_sep_len,
@@ -134,7 +134,7 @@ class TokenBlockDataset(FairseqDataset):
         self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
 
     def reindex(self, epoch):
-        if epoch == self.epoch:
+        if epoch == self._cur_epoch:
             return
 
         rng = np.random.RandomState(
@@ -147,7 +147,7 @@ class TokenBlockDataset(FairseqDataset):
         block_sizes = [i * self.block_size for i in
                        range(self.variant_block_multiple_min, self.variant_block_multiple_max + 1)]
         k = len(self.dataset) // 2
-        blocks = rng.choice(block_sizes, k)
+        blocks = list(rng.choice(block_sizes, k))
         slice_indices = _get_slice_indices_fast(self.input_data_sizes, self.break_mode, self.block_size, self.document_sep_len,
                                                 self.variant_block_multiple_min, self.variant_block_multiple_max, blocks)
         self._sizes = slice_indices[:, 1] - slice_indices[:, 0]
