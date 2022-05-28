@@ -725,7 +725,7 @@ def mega_wmt_en_de(args):
 @register_model_architecture("mega", "mega_wmt_en_de_big")
 def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
-    args.encoder_ffn_embed_dim = getattr(args, "encoder_hidden_dim", 3328)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 3328)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 256)
     args.dropout = getattr(args, "dropout", 0.3)
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
