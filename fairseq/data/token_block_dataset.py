@@ -191,7 +191,7 @@ class TokenBlockDataset(FairseqDataset):
         item = buffer[s:e]
 
         if self.left_pad_to_fixed_size:
-            item = torch.cat(item, item.new(self.max_example_size-len(item)).fill_(self.pad))
+            item = torch.cat([item, item.new(self.max_example_size-len(item)).fill_(self.pad)])
 
         if self.include_targets:
             # *target* is the original sentence (=item)
@@ -209,6 +209,9 @@ class TokenBlockDataset(FairseqDataset):
                 else:
                     past_target = buffer[s - 2 : e - 2]
 
+            if self.left_pad_to_fixed_size:
+                source = torch.cat([source, source.new(self.max_example_size-len(source)).fill_(self.pad)])
+                past_target = torch.cat([past_target, past_target.new(self.max_example_size - len(past_target)).fill_(self.pad)])
             return source, item, past_target
 
         return item

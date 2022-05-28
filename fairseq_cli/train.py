@@ -376,15 +376,22 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
             default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
         )
 
+        total_size = task.dataset(subset).dataset.max_example_size
+        chunk_size = args.decoder_chunk_size
+
         # create a new root metrics aggregator so validation metrics
         # don't pollute other aggregators (e.g., train meters)
         with metrics.aggregate(new_root=True) as agg:
             for sample in progress:
                 # todo: recalculate a larger tokens_per_batch at validation time
+                if not sample:
+                    for _ in range(0, total_size, chunk_size):
+                        incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
+                        trainer.mega_lm_valid_step(new_sample, incremental_states=incremental_states)
+                    continue
+
                 # a specific assertion for debugging
                 assert sample['net_input']['src_lengths'][0] == task.dataset(subset).dataset.max_example_size
-                total_size = sample['net_input']['src_lengths'][0]
-                chunk_size = args.decoder_chunk_size
                 batch_size = sample['net_input']['src_lengths']
                 incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
@@ -394,12 +401,10 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
                         'nsentences': sample['nsentences'],
                         'ntokens': chunk_size * batch_size,
                         'net_input': {
-                            'src_tokens': sample['src_tokens'][i: i+chunk_size],
-                            'src_lengths': torch.LongTensor([
-                                chunk_size for _ in range(batch_size)
-                            ]),
+                            'src_tokens': sample['net_input']['src_tokens'][:, i: i+chunk_size],
+                            'src_lengths': sample['net_input']['src_lengths'].new(batch_size).fill_(chunk_size),
                         },
-                        'target': sample['target'][i: i+chunk_size],
+                        'target': sample['target'][:, i: i+chunk_size],
                     }
                     trainer.mega_lm_valid_step(new_sample, incremental_states=incremental_states)
 
