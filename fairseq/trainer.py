@@ -77,6 +77,7 @@ class Trainer(object):
                 _set_module_by_path(self._model, path, ref)
 
         self._dummy_batch = "DUMMY"  # indicates we don't have a dummy batch at first
+        self._dummy_valid_batch = "DUMMY"
         self._lr_scheduler = None
         self._num_updates = 0
         self._num_xla_compiles = 0  # for TPUs
@@ -659,8 +660,8 @@ class Trainer(object):
     @metrics.aggregate("valid")
     def mega_lm_valid_step(self, sample, raise_oom=False, incremental_states=None):
         """Do forward pass in evaluation mode."""
-        if self._dummy_batch == "DUMMY":
-            self._dummy_batch = sample
+        if self._dummy_valid_batch == "DUMMY":
+            self._dummy_valid_batch = sample
         if self.tpu:
             import torch_xla.core.xla_model as xm
             xm.rendezvous('valid_step')  # wait for all workers
@@ -672,7 +673,7 @@ class Trainer(object):
 
             sample = self._prepare_sample(sample)
             if sample is None:
-                sample = self._prepare_sample(self._dummy_batch)
+                sample = self._prepare_sample(self._dummy_valid_batch)
                 is_dummy_batch = True
             else:
                 is_dummy_batch = False

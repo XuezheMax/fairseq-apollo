@@ -362,6 +362,7 @@ class LanguageModelingTask(FairseqTask):
         if (
             dataset.dataset.variant_block_multiple_max == 1
         ):
+            # valid / test of mega LM or normal LM
             batch_iter = super().get_batch_iterator(
                 dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
                 ignore_invalid_inputs=ignore_invalid_inputs, required_batch_size_multiple=required_batch_size_multiple,
