@@ -11,9 +11,11 @@ def remove_blank(fname, fwrite):
                 break
             while title.strip() == "":
                 title = fin.readline()
-            assert title.strip().startswith("= ")
+            print(title)
+            assert title.lstrip().startswith("= ")
             fout.write(title)
             blank_line = fin.readline()
+            print(blank_line)
             assert blank_line.strip() == ""
             line = fin.readline()
             while line.strip() != "":
