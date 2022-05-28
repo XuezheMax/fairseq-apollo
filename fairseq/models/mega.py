@@ -680,7 +680,7 @@ def Linear(in_features, out_features, bias=True):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1536)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1664)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
     args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
@@ -716,4 +716,18 @@ def base_architecture(args):
 
 @register_model_architecture("mega", "mega_wmt_en_de")
 def mega_wmt_en_de(args):
+    args.dropout = getattr(args, "dropout", 0.2)
+    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
+    args.hidden_dropout = getattr(args, "hidden_dropout", 0.1)
+    base_architecture(args)
+
+
+@register_model_architecture("mega", "mega_wmt_en_de_big")
+def transformer_vaswani_wmt_en_de_big(args):
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_hidden_dim", 3328)
+    args.encoder_z_dim = getattr(args, 'encoder_z_dim', 256)
+    args.dropout = getattr(args, "dropout", 0.3)
+    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
+    args.hidden_dropout = getattr(args, "hidden_dropout", 0.1)
     base_architecture(args)
