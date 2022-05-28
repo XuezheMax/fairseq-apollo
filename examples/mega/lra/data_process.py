@@ -156,8 +156,11 @@ def pathfinder(data_path, resolution):
 def main(args):
     dataset = args.dataset
     data_path = args.data_path
+    resolution = args.resolution
     if dataset == 'cifar10':
         cifar10(data_path)
+    elif dataset == 'pathfinder':
+        pathfinder(data_path, resolution)
     else:
         pass
 
