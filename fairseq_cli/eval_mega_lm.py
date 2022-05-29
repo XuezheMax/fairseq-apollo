@@ -90,6 +90,10 @@ def main(parsed_args, **unused_kwargs):
 
     # reduce tokens per sample by the required context window size
     args.tokens_per_sample -= args.context_window
+
+    logger.info("Loaded args!")
+    logger.info(args)
+
     task = tasks.setup_task(args)
 
     # Load dataset splits
@@ -160,14 +164,14 @@ def main(parsed_args, **unused_kwargs):
 
     wps_meter = TimeMeter()
 
+    total_size = task.dataset(args.gen_subset).dataset.max_example_size
+    chunk_size = args.decoder_chunk_size
     for doc_sample in progress:
         if 'net_input' not in doc_sample:
             continue
 
         # a specific assertion for debugging
         assert doc_sample['net_input']['src_lengths'][0] == task.dataset(args.gen_subset).dataset.max_example_size
-        total_size = doc_sample['net_input']['src_lengths'][0]
-        chunk_size = args.decoder_chunk_size
         batch_size = doc_sample['net_input']['src_lengths']
         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
@@ -177,12 +181,10 @@ def main(parsed_args, **unused_kwargs):
                 'nsentences': doc_sample['nsentences'],
                 'ntokens': chunk_size * batch_size,
                 'net_input': {
-                    'src_tokens': doc_sample['src_tokens'][i: i + chunk_size],
-                    'src_lengths': torch.LongTensor([
-                        chunk_size for _ in range(batch_size)
-                    ]),
+                    'src_tokens': doc_sample['net_input']['src_tokens'][:, i: i + chunk_size],
+                    'src_lengths': doc_sample['net_input']['src_lengths'].new(batch_size).fill_(chunk_size),
                 },
-                'target': doc_sample['target'][i: i + chunk_size],
+                'target': doc_sample['target'][:, i: i + chunk_size],
             }
 
             sample = utils.move_to_cuda(sample) if use_cuda else sample
