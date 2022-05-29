@@ -360,7 +360,8 @@ class LanguageModelingTask(FairseqTask):
             return self.dataset_to_epoch_iter[dataset]
         # dataset.dataset is token_block_dataset
         if (
-            dataset.dataset.variant_block_multiple_max == 1
+            not hasattr(dataset.dataset, 'variant_block_multiple_max') or
+                (hasattr(dataset.dataset, 'variant_block_multiple_max') and dataset.dataset.variant_block_multiple_max == 1)
         ):
             # valid / test of mega LM or normal LM
             batch_iter = super().get_batch_iterator(
