@@ -63,6 +63,10 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
     if break_mode is None or break_mode == 'none':
         slice_indices = _get_slice_indices_none_mode(sizes, block_size)
     elif break_mode == 'complete':
+        if block_multiple_max > 1:
+            block_size = block_sizes[counter]
+        else:
+            block_size = block_multiple_min * block_size
         while sz_idx < len(sizes_view):
             if curr_size + sizes_view[sz_idx] <= block_size or curr_size == 0:
                 curr_size += sizes_view[sz_idx]
@@ -71,6 +75,9 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
                 slice_indices_list.append((tok_idx, tok_idx + curr_size))
                 tok_idx += curr_size
                 curr_size = 0
+                if block_multiple_max > 1:
+                    counter += 1
+                    block_size = block_sizes[counter]
         if curr_size > 0:
             slice_indices_list.append((tok_idx, tok_idx + curr_size))
         slice_indices = _fast_convert_to_np_array(slice_indices_list)
