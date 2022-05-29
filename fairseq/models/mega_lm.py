@@ -485,7 +485,7 @@ def base_lm_architecture(args):
 def mega_lm_big(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
-    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 3456)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 3328)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', 256)
     base_lm_architecture(args)
 
