@@ -109,6 +109,37 @@ cpdef np.ndarray[DTYPE_t, ndim=2] _get_slice_indices_fast(np.ndarray[DTYPE_t, nd
         if curr_size > 1:
             slice_indices_list.append((tok_idx, tok_idx + curr_size))
         slice_indices = _fast_convert_to_np_array(slice_indices_list)
+    elif break_mode == 'complete_doc_with_boundary':
+        if block_multiple_max > 1:
+            block_size = block_sizes[counter]
+        else:
+            block_size = block_multiple_min * block_size
+        while sz_idx < len(sizes_view):
+            if (
+                (curr_size + sizes_view[sz_idx] <= block_size or curr_size == 0)
+                # an empty sentence indicates end-of-document:
+                and sizes_view[sz_idx] != document_sep_len
+            ):
+                curr_size += sizes_view[sz_idx]
+                sz_idx += 1
+            else:
+                # Only keep non-empty documents.
+                if curr_size > 1:
+                     if sizes_view[sz_idx] == document_sep_len:
+                        slice_indices_list.append((tok_idx, tok_idx + curr_size + 1))
+                     else:
+                        slice_indices_list.append((tok_idx, tok_idx + curr_size))
+                tok_idx += curr_size
+                curr_size = 0
+                if block_multiple_max > 1:
+                    counter += 1
+                    block_size = block_sizes[counter]
+                if sizes_view[sz_idx] == document_sep_len:
+                    tok_idx += sizes_view[sz_idx]
+                    sz_idx += 1
+        if curr_size > 1:
+            slice_indices_list.append((tok_idx, tok_idx + curr_size))
+        slice_indices = _fast_convert_to_np_array(slice_indices_list)
     elif break_mode == 'eos':
         slice_indices = np.zeros((len(sizes), 2), dtype=DTYPE)
         cumsum = sizes.cumsum(axis=0)
