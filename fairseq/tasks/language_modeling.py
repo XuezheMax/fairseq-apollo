@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import math
 import os
 
 import numpy as np
@@ -99,6 +100,9 @@ class LanguageModelingTask(FairseqTask):
                             help='the block size is at least this multiple of one chunk size')
         parser.add_argument('--variant-block-multiple-max', default=1, type=int,
                             help='the block size is at most this multiple of one chunk size')
+        parser.add_argument('--valid-block', default="size:100000000", help="either size:value or splits:value, "
+                                                                            "the former is the block size, "
+                                                                            "the latter is the number of blocks")
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -198,8 +202,12 @@ class LanguageModelingTask(FairseqTask):
         if split == 'train':
             chunk_size = self.args.decoder_chunk_size if self.is_mega_lm else self.args.tokens_per_sample
         else:
-            # at inference, read data by documents for mega lm
-            chunk_size = 1000000 if self.is_mega_lm else self.args.tokens_per_sample
+            if self.is_mega_lm:
+                # at inference, read data by documents for mega lm by setting chunk_size to be a very large number
+                k, v = self.args.valid_block.split(":")
+                chunk_size = int(v) if k == "size" else math.floor(sum(dataset.sizes) / float(v))
+            else:
+                chunk_size = self.args.tokens_per_sample
 
         dataset = TokenBlockDataset(
             dataset,

@@ -234,7 +234,7 @@ def main(parsed_args, **unused_kwargs):
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
     logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
-        gen_timer.n, gen_timer.sum, 1. / gen_timer.avg
+        count, gen_timer.sum, 1. / gen_timer.avg
     ))
     logger.info('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
         avg_nll_loss, 2**avg_nll_loss
