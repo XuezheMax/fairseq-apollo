@@ -45,7 +45,7 @@ class CosineSchedule(FairseqLRScheduler):
 
         assert self.max_lr > self.min_lr, 'max_lr must be more than lr'
 
-        warmup_end_lr = args.max_lr
+        warmup_end_lr = self.max_lr
         if args.warmup_init_lr < 0:
             args.warmup_init_lr = self.min_lr
 
