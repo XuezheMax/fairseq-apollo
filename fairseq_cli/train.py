@@ -387,7 +387,7 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
                 if not sample:
                     for _ in range(0, total_size, chunk_size):
                         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
-                        trainer.mega_lm_valid_step(new_sample, incremental_states=incremental_states)
+                        trainer.mega_lm_valid_step(sample, incremental_states=incremental_states)
                     continue
 
                 # a specific assertion for debugging
