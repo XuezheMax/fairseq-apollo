@@ -40,14 +40,14 @@ class CosineSchedule(FairseqLRScheduler):
                 ' Consider --lr-scheduler=fixed instead.'
             )
 
-        warmup_end_lr = args.max_lr
-        if args.warmup_init_lr < 0:
-            args.warmup_init_lr = args.lr[0]
-
-        self.min_lr = args.lr[0]
-        self.max_lr = args.max_lr
+        self.min_lr = max(0.0, args.min_lr)
+        self.max_lr = args.lr[0]
 
         assert self.max_lr > self.min_lr, 'max_lr must be more than lr'
+
+        warmup_end_lr = args.max_lr
+        if args.warmup_init_lr < 0:
+            args.warmup_init_lr = self.min_lr
 
         self.t_mult = args.t_mult
         self.period = args.lr_period_updates
@@ -77,8 +77,6 @@ class CosineSchedule(FairseqLRScheduler):
                             help='warmup the learning rate linearly for the first N updates')
         parser.add_argument('--warmup-init-lr', default=-1, type=float, metavar='LR',
                             help='initial learning rate during warmup phase; default is args.lr')
-        parser.add_argument('--max-lr', type=float, metavar='LR',
-                            help='max learning rate, must be more than args.lr')
         parser.add_argument('--t-mult', default=1, type=float, metavar='LR',
                             help='factor to grow the length of each period')
         parser.add_argument('--lr-period-updates', default=-1, type=float, metavar='LR',
