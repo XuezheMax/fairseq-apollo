@@ -25,6 +25,8 @@ class RealNumberEmbedding(nn.Module):
             self._embed_norm = ScaleNorm(dim=-1)
         elif norm_type == 'batchnorm':
             self._embed_norm = nn.BatchNorm1d(embedding_dim)
+        elif norm_type == 'syncbatchnorm':
+            self._embed_norm = nn.SyncBatchNorm(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
@@ -37,7 +39,7 @@ class RealNumberEmbedding(nn.Module):
     def embed_norm(self, emb):
         if self._embed_norm is None:
             return emb
-        elif isinstance(self._embed_norm, nn.BatchNorm1d):
+        elif isinstance(self._embed_norm, nn.modules.batchnorm._BatchNorm):
             emb = emb.transpose(-2, -1)
             emb = self._embed_norm(emb)
             return emb.transpose(-2, -1)

@@ -55,6 +55,8 @@ class MegaSentenceEncoderLayer(nn.Module):
             return ScaleNorm(dim=-1)
         elif norm_type == 'batchnorm':
             return nn.BatchNorm1d(embedding_dim)
+        elif norm_type == 'syncbatchnorm':
+            return nn.SyncBatchNorm(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
@@ -79,7 +81,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         )
 
     def normalize(self, x):
-        if isinstance(self.normalization, nn.BatchNorm1d):
+        if isinstance(self.normalization, nn.modules.batchnorm._BatchNorm):
             assert x.dim() == 3
             x = x.permute(1, 2, 0)
             x = self.normalization(x)
