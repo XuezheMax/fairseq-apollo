@@ -77,6 +77,8 @@ class CosineSchedule(FairseqLRScheduler):
                             help='warmup the learning rate linearly for the first N updates')
         parser.add_argument('--warmup-init-lr', default=-1, type=float, metavar='LR',
                             help='initial learning rate during warmup phase; default is args.lr')
+        parser.add_argument('--min-lr', type=float, metavar='LR', default=0.0,
+                            help='max learning rate, must be more than args.lr')
         parser.add_argument('--t-mult', default=1, type=float, metavar='LR',
                             help='factor to grow the length of each period')
         parser.add_argument('--lr-period-updates', default=-1, type=float, metavar='LR',
