@@ -13,6 +13,7 @@ import math
 import os
 from typing import Dict, List, Optional
 
+import numpy as np
 import torch
 from torch import Tensor
 
@@ -175,86 +176,128 @@ def main(parsed_args, **unused_kwargs):
         batch_size = len(doc_sample['net_input']['src_lengths'])
         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
-        for i in range(0, total_size, chunk_size):
-            sample = {
-                'id': doc_sample['id'],
-                'nsentences': doc_sample['nsentences'],
-                'ntokens': doc_sample['target'][:, i: i + chunk_size].ne(task.dictionary.pad()).sum().item(),
-                'net_input': {
-                    'src_tokens': doc_sample['net_input']['src_tokens'][:, i: i + chunk_size],
-                    'src_lengths': doc_sample['net_input']['src_tokens'].ne(task.dictionary.pad()).sum(1),
-                },
-                'target': doc_sample['target'][:, i: i + chunk_size],
-            }
+        logger.info("number docs: {}".format(batch_size))
+        assert batch_size == 1
+        tot_tokens = doc_sample['net_input']['src_tokens'].ne(task.dictionary.pad()).sum().item()
+        logger.info("number tokens: {}".format(tot_tokens))
+        pad = task.dictionary.pad()
+        new_toks = np.empty([tot_tokens, tot_tokens], dtype=np.int64)
+        new_tgts = np.full([tot_tokens, tot_tokens], pad, dtype=np.int64)
+        src_tokens = doc_sample['net_input']['src_tokens']
+        target = doc_sample['target']
+        assert src_tokens.size() == target.size()
+        dict_len = len(task.dictionary)
+        logger.info("vocabulary size = {}".format(dict_len))
+        dict = np.arange(dict_len)
+        start_idxs = [0] * tot_tokens
 
-            sample = utils.move_to_cuda(sample) if use_cuda else sample
+        for i in range(tot_tokens):
+            new_toks[i] = src_tokens[0]
+            new_toks[i][i+1:] = np.random.choice(dict, tot_tokens - i - 1)
+            new_tgts[i, i] = target[0][i]
+            start_idxs[i] = i
+        new_sample = {'id': torch.from_numpy(np.zeros(tot_tokens, dtype=np.int64)),
+                      'nsentences': tot_tokens,
+                      'ntokens': np.ones(tot_tokens, dtype=np.int64),
+                      'net_input': {
+                          'src_tokens': torch.from_numpy(new_toks),
+                          'src_lengths': np.ones(tot_tokens, dtype=np.int64),
+                        },
+                      'target': torch.from_numpy(new_tgts),
+                      'start_indices': start_idxs
+                      }
+        bsz = 50
+        for j in range(0, tot_tokens, bsz):
+            batch_sample = {'id': new_sample['id'][j:j+bsz],
+                            'nsentences': bsz if j+bsz < tot_tokens else tot_tokens-j,
+                            'ntokens': new_sample['ntokens'][j:j+bsz],
+                            'net_input': {
+                                'src_tokens': new_sample['net_input']['src_tokens'][j:j+bsz],
+                                'src_lengths': new_sample['net_input']['src_tokens'][j:j+bsz],
+                              },
+                            'target': new_sample['target'][j:j+bsz],
+                            'start_indices': new_sample['start_indices'][j:j+bsz]
+                      }
+            for i in range(0, total_size, chunk_size):
+                sample = {
+                    'id': batch_sample['id'],
+                    'nsentences': batch_sample['nsentences'],
+                    'ntokens': batch_sample['target'][:, i: i + chunk_size].ne(task.dictionary.pad()).sum().item(),
+                    'net_input': {
+                        'src_tokens': batch_sample['net_input']['src_tokens'][:, i: i + chunk_size],
+                        'src_lengths': batch_sample['net_input']['src_tokens'].ne(task.dictionary.pad()).sum(1),
+                    },
+                    'target': batch_sample['target'][:, i: i + chunk_size],
+                }
 
-            gen_timer.start()
-            hypos = scorer.generate(models, sample, incremental_states=incremental_states)
-            gen_timer.stop(sample['ntokens'])
+                sample = utils.move_to_cuda(sample) if use_cuda else sample
 
-            for i, hypos_i in enumerate(hypos):
-                hypo = hypos_i[0]
-                sample_id = sample['id'][i]
+                gen_timer.start()
+                hypos = scorer.generate(models, sample, incremental_states=incremental_states)
+                gen_timer.stop(sample['ntokens'])
 
-                tokens = hypo['tokens']
-                tgt_len = tokens.numel()
-                pos_scores = hypo['positional_scores'].float()
+                for i, hypos_i in enumerate(hypos):
+                    hypo = hypos_i[0]
+                    sample_id = sample['id'][i]
 
-                if args.add_bos_token:
-                    assert hypo['tokens'][0].item() == task.target_dictionary.bos()
-                    tokens = tokens[1:]
-                    pos_scores = pos_scores[1:]
+                    tokens = hypo['tokens']
+                    tgt_len = tokens.numel()
+                    pos_scores = hypo['positional_scores'].float()
 
-                skipped_toks = 0
-                if bpe_toks is not None:
-                    for i in range(tgt_len - 1):
-                        if tokens[i].item() in bpe_toks:
-                            skipped_toks += 1
-                            pos_scores[i + 1] += pos_scores[i]
-                            pos_scores[i] = 0
+                    if args.add_bos_token:
+                        assert hypo['tokens'][0].item() == task.target_dictionary.bos()
+                        tokens = tokens[1:]
+                        pos_scores = pos_scores[1:]
 
-                inf_scores = pos_scores.eq(float('inf')) | pos_scores.eq(float('-inf'))
-                if inf_scores.any():
-                    logger.info(
-                        'skipping tokens with inf scores:',
-                        task.target_dictionary.string(tokens[inf_scores.nonzero()])
-                    )
-                    pos_scores = pos_scores[(~inf_scores).nonzero()]
-                score_sum += pos_scores.sum().cpu()
-                count += pos_scores.numel() - skipped_toks
+                    skipped_toks = 0
+                    if bpe_toks is not None:
+                        for i in range(tgt_len - 1):
+                            if tokens[i].item() in bpe_toks:
+                                skipped_toks += 1
+                                pos_scores[i + 1] += pos_scores[i]
+                                pos_scores[i] = 0
 
-                if args.output_word_probs or args.output_word_stats:
-                    w = ''
-                    word_prob = []
-                    is_bpe = False
-                    for i in range(len(tokens)):
-                        w_ind = tokens[i].item()
-                        w += task.source_dictionary[w_ind]
-                        if bpe_toks is not None and w_ind in bpe_toks:
-                            w = w[:-bpe_len]
-                            is_bpe = True
-                        else:
-                            word_prob.append((w, pos_scores[i].item()))
-
-                            next_prob = None
-                            ind = i + 1
-                            while ind < len(tokens):
-                                if pos_scores[ind].item() != 0:
-                                    next_prob = pos_scores[ind]
-                                    break
-                                ind += 1
-
-                            word_stats.setdefault(w, WordStat(w, is_bpe)).add(pos_scores[i].item(), next_prob)
-                            is_bpe = False
-                            w = ''
-                    if args.output_word_probs:
+                    inf_scores = pos_scores.eq(float('inf')) | pos_scores.eq(float('-inf'))
+                    if inf_scores.any():
                         logger.info(
-                            str(int(sample_id)) + " "
-                            + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
+                            'skipping tokens with inf scores:',
+                            task.target_dictionary.string(tokens[inf_scores.nonzero()])
                         )
+                        pos_scores = pos_scores[(~inf_scores).nonzero()]
+                    score_sum += pos_scores.sum().cpu()
+                    count += pos_scores.numel() - skipped_toks
 
-            wps_meter.update(sample['ntokens'])
+                    if args.output_word_probs or args.output_word_stats:
+                        w = ''
+                        word_prob = []
+                        is_bpe = False
+                        for i in range(len(tokens)):
+                            w_ind = tokens[i].item()
+                            w += task.source_dictionary[w_ind]
+                            if bpe_toks is not None and w_ind in bpe_toks:
+                                w = w[:-bpe_len]
+                                is_bpe = True
+                            else:
+                                word_prob.append((w, pos_scores[i].item()))
+
+                                next_prob = None
+                                ind = i + 1
+                                while ind < len(tokens):
+                                    if pos_scores[ind].item() != 0:
+                                        next_prob = pos_scores[ind]
+                                        break
+                                    ind += 1
+
+                                word_stats.setdefault(w, WordStat(w, is_bpe)).add(pos_scores[i].item(), next_prob)
+                                is_bpe = False
+                                w = ''
+                        if args.output_word_probs:
+                            logger.info(
+                                str(int(sample_id)) + " "
+                                + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
+                            )
+
+            wps_meter.update(batch_sample['ntokens'])
             progress.log({'wps': round(wps_meter.avg)})
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
