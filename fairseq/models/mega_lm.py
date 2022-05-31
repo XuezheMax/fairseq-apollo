@@ -510,7 +510,7 @@ def mega_lm_adaptive_big(args):
 def mega_lm_adaptive_big(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 12)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
-    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1664)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1792)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', 128)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', 16)
     args.dropout = getattr(args, 'dropout', 0.1)
