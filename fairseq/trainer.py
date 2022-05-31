@@ -661,7 +661,7 @@ class Trainer(object):
     def mega_lm_valid_step(self, sample, raise_oom=False, incremental_states=None):
         """Do forward pass in evaluation mode."""
         if self._dummy_valid_batch == "DUMMY":
-            if not sample:
+            if sample:
                 self._dummy_valid_batch = sample
             else:
                 dummy_train = self._dummy_batch
