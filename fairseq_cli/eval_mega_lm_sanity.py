@@ -174,7 +174,6 @@ def main(parsed_args, **unused_kwargs):
         # a specific assertion for debugging
         assert doc_sample['net_input']['src_lengths'][0] == task.dataset(args.gen_subset).dataset.max_example_size
         batch_size = len(doc_sample['net_input']['src_lengths'])
-        incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
         logger.info("number docs: {}".format(batch_size))
         assert batch_size == 1
@@ -219,6 +218,7 @@ def main(parsed_args, **unused_kwargs):
                             'target': new_sample['target'][j:j+bsz],
                             'start_indices': new_sample['start_indices'][j:j+bsz]
                       }
+            incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
             for i in range(0, total_size, chunk_size):
                 sample = {
                     'id': batch_sample['id'],
