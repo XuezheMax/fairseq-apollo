@@ -18,7 +18,7 @@ class CrossEntropyCriterion(FairseqCriterion):
         super().__init__(task)
         self.sentence_avg = sentence_avg
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, incremental_states=None):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -26,7 +26,11 @@ class CrossEntropyCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        net_output = model(**sample['net_input'])
+        if incremental_states is not None:
+            # is mega LM
+            net_output = model.decoder.forward(sample['net_input']['src_tokens'], incremental_states)
+        else:
+            net_output = model(**sample['net_input'])
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
