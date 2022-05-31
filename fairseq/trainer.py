@@ -676,7 +676,7 @@ class Trainer(object):
                             'src_tokens': dummy_train['net_input']['src_tokens'].new(dummy_bsz, chunk_size).fill_(pad),
                             'src_lengths': dummy_train['net_input']['src_lengths'].new(dummy_bsz).fill_(chunk_size),
                         },
-                        'target': dummy_train['target'].new(dummy_bsz).fill_(pad),
+                        'target': dummy_train['target'].new(dummy_bsz, chunk_size).fill_(pad),
                     }
         if self.tpu:
             import torch_xla.core.xla_model as xm
