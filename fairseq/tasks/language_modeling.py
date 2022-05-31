@@ -231,7 +231,7 @@ class LanguageModelingTask(FairseqTask):
             k, v = self.args.valid_block.split(":")
             # to prevent the samples being filtered
             if k == 'size':
-                logger.info("Max document length of {} set = {}.".format(split, max(dataset.sizes)))
+                logger.info("Max document length of {} set = {}, number of documents = {}.".format(split, max(dataset.sizes), len(dataset.sizes)))
                 self.args.max_tokens_valid = max(dataset.sizes) * 2
 
         add_eos_for_other_targets = (
