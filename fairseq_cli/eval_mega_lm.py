@@ -179,7 +179,7 @@ def main(parsed_args, **unused_kwargs):
             sample = {
                 'id': doc_sample['id'],
                 'nsentences': doc_sample['nsentences'],
-                'ntokens': chunk_size * batch_size,
+                'ntokens': doc_sample['target'][:, i: i + chunk_size].ne(task.dictionary.pad()).sum(),
                 'net_input': {
                     'src_tokens': doc_sample['net_input']['src_tokens'][:, i: i + chunk_size],
                     'src_lengths': doc_sample['net_input']['src_lengths'].new(batch_size).fill_(chunk_size),

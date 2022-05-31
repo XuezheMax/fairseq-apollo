@@ -399,7 +399,7 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
                     new_sample = {
                         'id': sample['id'],
                         'nsentences': sample['nsentences'],
-                        'ntokens': chunk_size * batch_size,
+                        'ntokens': sample['target'][:, i: i + chunk_size].ne(task.dictionary.pad()).sum(),
                         'net_input': {
                             'src_tokens': sample['net_input']['src_tokens'][:, i: i+chunk_size],
                             'src_lengths': sample['net_input']['src_lengths'].new(batch_size).fill_(chunk_size),
