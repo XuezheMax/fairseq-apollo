@@ -206,10 +206,9 @@ class LanguageModelingTask(FairseqTask):
                 # at inference, read data by documents for mega lm by setting chunk_size to be a very large number
                 k, v = self.args.valid_block.split(":")
                 chunk_size = int(v) if k == "size" else math.floor(sum(dataset.sizes) / float(v))
+                # to prevent the samples being filtered
                 if k == "splits":
-                    # if k == "size", one sample is a document
                     # when k is splits, one sample can be extremely long as chunk_size,
-                    # to prevent the samples being filtered
                     self.args.max_tokens_valid = chunk_size * 2
             else:
                 chunk_size = self.args.tokens_per_sample
@@ -227,6 +226,12 @@ class LanguageModelingTask(FairseqTask):
             seed=self.args.seed,
             left_pad_to_fixed_size=False if split == 'train' else True,
         )
+
+        if split != 'train' and self.is_mega_lm:
+            k, v = self.args.valid_block.split(":")
+            # to prevent the samples being filtered
+            if k == 'size':
+                self.args.max_tokens_valid = max(dataset.sizes) + 10
 
         add_eos_for_other_targets = (
             self.args.sample_break_mode is not None
