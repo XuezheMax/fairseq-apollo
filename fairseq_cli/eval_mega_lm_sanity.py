@@ -161,7 +161,7 @@ def main(parsed_args, **unused_kwargs):
         bpe_toks = None
         bpe_len = 0
 
-    word_stats = dict()
+    word_stats = {}
 
     wps_meter = TimeMeter()
 
@@ -190,6 +190,7 @@ def main(parsed_args, **unused_kwargs):
         logger.info("vocabulary size = {}".format(dict_len))
         dict = np.arange(dict_len)
         start_idxs = [0] * tot_tokens
+        assert total_size == tot_tokens
 
         for i in range(tot_tokens):
             new_toks[i] = src_tokens[0]
@@ -198,7 +199,7 @@ def main(parsed_args, **unused_kwargs):
             start_idxs[i] = i
         new_sample = {'id': torch.from_numpy(np.zeros(tot_tokens, dtype=np.int64)),
                       'nsentences': tot_tokens,
-                      'ntokens': np.ones(tot_tokens, dtype=np.int64),
+                      'ntokens': tot_tokens,
                       'net_input': {
                           'src_tokens': torch.from_numpy(new_toks),
                           'src_lengths': np.ones(tot_tokens, dtype=np.int64),
@@ -210,7 +211,7 @@ def main(parsed_args, **unused_kwargs):
         for j in range(0, tot_tokens, bsz):
             batch_sample = {'id': new_sample['id'][j:j+bsz],
                             'nsentences': bsz if j+bsz < tot_tokens else tot_tokens-j,
-                            'ntokens': new_sample['ntokens'][j:j+bsz],
+                            'ntokens': bsz if j+bsz < tot_tokens else tot_tokens-j,
                             'net_input': {
                                 'src_tokens': new_sample['net_input']['src_tokens'][j:j+bsz],
                                 'src_lengths': new_sample['net_input']['src_tokens'][j:j+bsz],
@@ -297,7 +298,7 @@ def main(parsed_args, **unused_kwargs):
                                 + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
                             )
 
-            wps_meter.update(batch_sample['ntokens'])
+            wps_meter.update(int(batch_sample['ntokens']))
             progress.log({'wps': round(wps_meter.avg)})
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
