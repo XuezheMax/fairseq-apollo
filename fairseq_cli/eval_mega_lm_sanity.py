@@ -206,20 +206,23 @@ def main(parsed_args, **unused_kwargs):
                       'target': torch.from_numpy(new_tgts),
                       'start_indices': start_idxs
                       }
+        start_indices = list(range(384)) + [0]*106 + [0]*106 + list(range(106))
         bsz = 50
+        kk = 0
         for j in range(0, tot_tokens, bsz):
             batch_sample = {'id': new_sample['id'][j:j+bsz],
                             'nsentences': bsz if j+bsz < tot_tokens else tot_tokens-j,
                             'ntokens': bsz if j+bsz < tot_tokens else tot_tokens-j,
                             'net_input': {
                                 'src_tokens': new_sample['net_input']['src_tokens'][j:j+bsz],
-                                'src_lengths': new_sample['net_input']['src_tokens'][j:j+bsz],
+                                'src_lengths': new_sample['net_input']['src_lengths'][j:j+bsz],
                               },
                             'target': new_sample['target'][j:j+bsz],
                             'start_indices': new_sample['start_indices'][j:j+bsz]
                       }
             incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
             for i in range(0, total_size, chunk_size):
+                ss = len(batch_sample['net_input']['src_tokens'][:, i: i + chunk_size])
                 sample = {
                     'id': batch_sample['id'],
                     'nsentences': batch_sample['nsentences'],
@@ -229,7 +232,10 @@ def main(parsed_args, **unused_kwargs):
                         'src_lengths': batch_sample['net_input']['src_tokens'].ne(task.dictionary.pad()).sum(1),
                     },
                     'target': batch_sample['target'][:, i: i + chunk_size],
+                    'start_indices': start_indices[kk:kk+ss]
                 }
+                print(kk, kk+ss)
+                kk += ss
 
                 sample = utils.move_to_cuda(sample) if use_cuda else sample
 
