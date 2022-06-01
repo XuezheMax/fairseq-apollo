@@ -208,14 +208,14 @@ def main(parsed_args, **unused_kwargs):
                       }
         start_indices = []
         for p in range(0, 350, 50):
-            start_indices = start_indices + list(range(p, p+50)) + list(range(p, p+50))
+            start_indices = start_indices + list(range(p, p+50)) + [0]*50
         start_indices += list(range(350, 384))
         start_indices += [0] * 16
         start_indices += [0] * 34
         start_indices += list(range(0, 16))
         start_indices += [0] * 50
         start_indices += list(range(16, 66))
-        start_indices += [0] * 50
+        start_indices += [0] * 40
         start_indices += list(range(66, 106))
         bsz = 50
         kk = 0

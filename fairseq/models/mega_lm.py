@@ -297,12 +297,10 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self,
         prev_output_tokens,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
             incremental_state,
-            full_context_alignment,
         )
 
     """
@@ -315,7 +313,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self,
         prev_output_tokens,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
     ):
         """
         Similar to *forward* but only return features.
@@ -324,10 +321,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         Translate with Transformer Models" (Garg et al., EMNLP 2019).
 
         Args:
-            full_context_alignment (bool, optional): don't apply
-                auto-regressive mask to self-attention (default: False).
-            alignment_layer (int, optional): return mean alignment over
-                heads at this layer (default: last layer).
 
         Returns:
             tuple:
@@ -371,7 +364,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         # decoder layers
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
-            if incremental_state is None and not full_context_alignment:
+            if x.size(0) > 1:
                 attn_mask = self.buffered_future_mask(x)
             else:
                 attn_mask = None
