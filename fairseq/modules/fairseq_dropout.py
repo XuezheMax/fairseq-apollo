@@ -65,7 +65,13 @@ class FairseqFeatureDropout(nn.Module):
 
     def forward(self, x, inplace: bool = False):
         if self.training or self.apply_during_inference:
-            return F.dropout2d(x, p=self.p, training=True, inplace=inplace)
+            if x.dim() == 2:
+                return F.dropout(x, p=self.p, training=True, inplace=inplace)
+            elif x.dim() == 3:
+                return F.dropout2d(x.unsqueeze(3), p=self.p, training=True, inplace=inplace).squeeze(3)
+            else:
+                assert x.dim() == 4
+                return F.dropout2d(x, p=self.p, training=True, inplace=inplace)
         else:
             return x
 
@@ -92,3 +98,6 @@ class FairseqFeatureDropout(nn.Module):
                 self.apply_during_inference = True
             else:
                 logger.info('Disabling dropout for module: {}'.format(name))
+
+    def extra_repr(self) -> str:
+        return 'p={}'.format(self.p)

@@ -10,8 +10,7 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
-from fairseq.modules.layer_norm import LayerNorm
-from fairseq.modules.scale_norm import ScaleNorm
+from fairseq.modules.sequence_norm import SequenceNorm
 
 
 class MegaSentenceEncoderLayer(nn.Module):
@@ -46,19 +45,7 @@ class MegaSentenceEncoderLayer(nn.Module):
                                     activation, attention_activation,
                                     chunk_size, truncation, max_positions)
 
-        self.normalization = self.build_normalization(norm_type, embedding_dim, export)
-
-    def build_normalization(self, norm_type, embedding_dim, export):
-        if norm_type == 'layernorm':
-            return LayerNorm(embedding_dim, export=export)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
-        elif norm_type == 'batchnorm':
-            return nn.BatchNorm1d(embedding_dim)
-        elif norm_type == 'syncbatchnorm':
-            return nn.SyncBatchNorm(embedding_dim)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
+        self.norm = SequenceNorm(norm_type, embedding_dim, export=export)
 
     def build_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
                     dropout, attention_dropout, hidden_dropout,
@@ -80,15 +67,6 @@ class MegaSentenceEncoderLayer(nn.Module):
             bidirectional=True,
         )
 
-    def normalize(self, x):
-        if isinstance(self.normalization, nn.modules.batchnorm._BatchNorm):
-            assert x.dim() == 3
-            x = x.permute(1, 2, 0)
-            x = self.normalization(x)
-            return x.permute(2, 0, 1)
-        else:
-            return self.normalization(x)
-
     def forward(
         self,
         x: torch.Tensor,
@@ -99,5 +77,5 @@ class MegaSentenceEncoderLayer(nn.Module):
         if self.chunk_size > 0:
             assert seq_len % self.chunk_size == 0, 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
         x, attn = self.net(x, x_padding_mask)
-        x = self.normalize(x)
+        x = self.norm(x)
         return x, attn

@@ -13,7 +13,7 @@ from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
@@ -52,6 +52,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
         self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.ema_dropout = FairseqFeatureDropout(dropout, module_name=self.__class__.__name__)
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
@@ -197,7 +198,8 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.hidden_dropout(mx)
+        # L x B x D -> B x D x L -> L x B x D
+        mx = self.ema_dropout(mx.permute(1, 2, 0)).permute(2, 0, 1)
         # L x B x D -> L x B x (2*D+S+E)
         base = self.mx_proj(mx)
         u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
