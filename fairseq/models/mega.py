@@ -21,8 +21,7 @@ from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
-    LayerNorm,
-    ScaleNorm,
+    SequenceNorm,
     MegaEncoderLayer,
     MegaDecoderLayer
 )
@@ -67,6 +66,8 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='dropout probability for attention weights')
         parser.add_argument('--hidden-dropout', '--relu-dropout', type=float, metavar='D',
                             help='dropout probability for hidden vectors in Mega.')
+        parser.add_argument('--feature-dropout', action='store_true',
+                            help='apply feature dropout')
 
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
@@ -109,7 +110,10 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='comma separated list of adaptive softmax cutoff points. Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'], help='normalization type')
+        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'],
+                            help='normalization type')
+        parser.add_argument('--normalize-before', action='store_true',
+                            help='apply normalization layer before each encoder block')
         parser.add_argument('--normalize-embedding', action='store_true',
                             help='normalize embedding for Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
@@ -225,7 +229,7 @@ class MegaEncoder(FairseqEncoder):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
@@ -235,18 +239,15 @@ class MegaEncoder(FairseqEncoder):
 
         norm_type = args.normalization_type
         normalize_embedding = getattr(args, 'normalize_embedding', False)
-        if not normalize_embedding:
-            self.embed_norm = None
-        elif norm_type == 'layernorm':
-            self.embed_norm = LayerNorm(embed_dim)
-        elif norm_type == 'scalenorm':
-            self.embed_norm = ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
+        normalize_before = getattr(args, 'normalize_before', False)
+        assert not normalize_embedding or not normalize_before
+        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
+
+        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
 
     def build_encoder_layer(self, args):
         return MegaEncoderLayer(args)
@@ -284,7 +285,7 @@ class MegaEncoder(FairseqEncoder):
         if self.embed_norm is not None:
             x = self.embed_norm(x)
 
-        x = self.dropout_module(x)
+        x = self.embedding_dropout(x)
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
@@ -309,6 +310,9 @@ class MegaEncoder(FairseqEncoder):
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
+
+        if self.final_norm is not None:
+            x = self.final_norm(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -407,7 +411,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
         input_embed_dim = embed_tokens.embedding_dim
@@ -429,18 +433,15 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         norm_type = args.normalization_type
         normalize_embedding = getattr(args, 'normalize_embedding', False)
-        if not normalize_embedding:
-            self.embed_norm = None
-        elif norm_type == 'layernorm':
-            self.embed_norm = LayerNorm(embed_dim)
-        elif norm_type == 'scalenorm':
-            self.embed_norm = ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
+        normalize_before = getattr(args, 'normalize_before', False)
+        assert not normalize_embedding or not normalize_before
+        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
+
+        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
 
         if embed_dim != self.output_embed_dim and not args.tie_adaptive_weights:
             self.project_out_dim = Linear(embed_dim, self.output_embed_dim, bias=False)
@@ -578,7 +579,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if self.embed_norm is not None:
             x = self.embed_norm(x)
 
-        x = self.dropout_module(x)
+        x = self.embedding_dropout(x)
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -610,6 +611,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
             inner_states.append(x)
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
+
+        if self.final_norm is not None:
+            x = self.final_norm(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -699,7 +703,10 @@ def base_architecture(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
     args.dropout = getattr(args, "dropout", 0.1)
+    args.feature_dropout = getattr(args, 'feature_dropout', False)
+
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
+    args.normalize_before = getattr(args, 'normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
 
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
