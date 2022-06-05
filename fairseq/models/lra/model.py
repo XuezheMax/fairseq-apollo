@@ -23,8 +23,6 @@ from fairseq.models.lra.flash_lra_encoder import FlashLRAEncoder
 from fairseq.models.lra.mega_lra_encoder import MegaLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
-logger = logging.getLogger(__name__)
-
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
@@ -81,6 +79,8 @@ class LRAModel(FairseqEncoderModel):
                             metavar='D', help='dropout probability for attention weights')
         parser.add_argument('--act-dropout', type=float,
                             metavar='D', help='dropout probability after activation in FFN')
+        parser.add_argument('--feature-dropout', action='store_true',
+                            help='apply feature dropout')
 
         # Arguments related to hidden states and self-attention
         parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
@@ -208,7 +208,6 @@ class LRAModel(FairseqEncoderModel):
             args.max_source_positions = args.max_positions
         if not hasattr(args, 'decoder_embed_dim'):
             args.decoder_embed_dim = args.encoder_embed_dim
-        logger.info(args)
         encoder = LRAEncoder(args, task)
         return cls(args, encoder, task)
 
@@ -300,11 +299,13 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
                 norm_type=args.norm_type,
+                normalize_before=args.encoder_normalize_before,
                 normalize_embedding=args.normalize_embedding,
+                feature_dropout=args.feature_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 truncation=getattr(args, 'truncation_length', None),
                 max_seq_len=args.max_positions,
-                sen_rep_type=getattr(args, 'sen_rep_type', 'cls')
+                sen_rep_type=getattr(args, 'sen_rep_type', 'mp')
             )
         else:
             self.encoder = LunaLRAEncoder(
@@ -343,6 +344,7 @@ def base_architecture(args):
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
+    args.feature_dropout = getattr(args, 'feature_dropout', False)
 
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
     args.z_dim = getattr(args, 'z_dim', 128)
@@ -408,6 +410,7 @@ def mega_lra_listop(args):
     args.max_positions = getattr(args, 'max_positions', 2002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
 
@@ -461,6 +464,7 @@ def mega_lra_imdb(args):
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
 
@@ -502,6 +506,7 @@ def mega_lra_aan(args):
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
 
@@ -559,6 +564,7 @@ def mega_lra_cifar10(args):
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1024)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
 
@@ -618,6 +624,7 @@ def mega_lra_pf32(args):
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1024)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
 
@@ -645,4 +652,5 @@ def mega_lra_pf128(args):
     args.chunk_size = getattr(args, 'chunk_size', 4096)
     args.truncation_length = getattr(args, 'truncation_length', 4096)
     args.max_positions = getattr(args, 'max_positions', 128 * 128)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)

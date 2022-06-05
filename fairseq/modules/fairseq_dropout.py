@@ -21,7 +21,7 @@ class FairseqDropout(nn.Module):
         self.module_name = module_name
         self.apply_during_inference = False
 
-    def forward(self, x, inplace: bool = False):
+    def forward(self, x, batch_first: bool = False, inplace: bool = False):
         if self.training or self.apply_during_inference:
             return F.dropout(x, p=self.p, training=True, inplace=inplace)
         else:
@@ -63,15 +63,15 @@ class FairseqFeatureDropout(nn.Module):
         self.module_name = module_name
         self.apply_during_inference = False
 
-    def forward(self, x, inplace: bool = False):
+    def forward(self, x, batch_first: bool = False, inplace: bool = False):
+        assert x.dim() == 3
         if self.training or self.apply_during_inference:
-            if x.dim() == 2:
-                return F.dropout(x, p=self.p, training=True, inplace=inplace)
-            elif x.dim() == 3:
-                return F.dropout2d(x.unsqueeze(3), p=self.p, training=True, inplace=inplace).squeeze(3)
+            if batch_first:
+                # B x L x D -> B x D x L -> B x L x D
+                return F.dropout2d(x.transpose(1, 2), p=self.p, training=True, inplace=inplace).transpose(1, 2)
             else:
-                assert x.dim() == 4
-                return F.dropout2d(x, p=self.p, training=True, inplace=inplace)
+                # L x B x D -> B x D x L -> L x B x D
+                return F.dropout2d(x.permute(1, 2, 0), p=self.p, training=True, inplace=inplace).permute(2, 0, 1)
         else:
             return x
 

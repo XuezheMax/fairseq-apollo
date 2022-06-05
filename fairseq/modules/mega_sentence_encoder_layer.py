@@ -10,7 +10,6 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
-from fairseq.modules.sequence_norm import SequenceNorm
 
 
 class MegaSentenceEncoderLayer(nn.Module):
@@ -32,7 +31,9 @@ class MegaSentenceEncoderLayer(nn.Module):
         max_positions: int = 1024,
         activation='silu',
         attention_activation='softmax',
-        norm_type: str = 'scalenorm',
+        norm_type: str = 'layernorm',
+        prenorm: bool = True,
+        feature_dropout: bool = False,
         export: bool = False,
     ) -> None:
         super().__init__()
@@ -43,14 +44,14 @@ class MegaSentenceEncoderLayer(nn.Module):
         self.net = self.build_layer(embedding_dim, hidden_dim, z_dim, n_dim,
                                     dropout, attention_dropout, hidden_dropout,
                                     activation, attention_activation,
-                                    chunk_size, truncation, max_positions)
-
-        self.norm = SequenceNorm(norm_type, embedding_dim, export=export)
+                                    chunk_size, truncation, max_positions,
+                                    norm_type, prenorm, feature_dropout, export)
 
     def build_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
                     dropout, attention_dropout, hidden_dropout,
                     activation, attention_activation,
-                    chunk_size, truncation, max_positions):
+                    chunk_size, truncation, max_positions,
+                    norm_type, prenorm, feature_dropout, export):
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
@@ -65,6 +66,10 @@ class MegaSentenceEncoderLayer(nn.Module):
             activation=activation,
             attention_activation=attention_activation,
             bidirectional=True,
+            norm_type=norm_type,
+            prenorm=prenorm,
+            feature_dropout=feature_dropout,
+            export=export
         )
 
     def forward(
@@ -77,5 +82,4 @@ class MegaSentenceEncoderLayer(nn.Module):
         if self.chunk_size > 0:
             assert seq_len % self.chunk_size == 0, 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
         x, attn = self.net(x, x_padding_mask)
-        x = self.norm(x)
         return x, attn

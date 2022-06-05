@@ -15,6 +15,7 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
+from fairseq.modules.sequence_norm import SequenceNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
 
@@ -39,7 +40,11 @@ class MovingAverageGatedAttention(nn.Module):
         bidirectional=False,
         chunk_size=-1,
         truncation=None,
+        norm_type='layernorm',
+        prenorm=True,
+        feature_dropout=False,
         max_positions=1024,
+        export=False,
     ):
         super().__init__()
 
@@ -51,11 +56,14 @@ class MovingAverageGatedAttention(nn.Module):
         self.attention_activation = attention_activation
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.ema_dropout = FairseqFeatureDropout(dropout, module_name=self.__class__.__name__)
+        dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
+        self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
+        self.hidden_dropout = dropout_module(hidden_dropout, module_name=self.__class__.__name__)
+        # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
-        self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
+
         self.chunk_size = chunk_size
+        self.prenorm = prenorm
 
         self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
@@ -70,6 +78,8 @@ class MovingAverageGatedAttention(nn.Module):
         self.rel_pos_bias = RelativePositionalBias(max_positions if chunk_size < 0 else chunk_size)
 
         self.reset_parameters()
+
+        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
 
         self.onnx_trace = False
         self.tpu = False
@@ -193,13 +203,17 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
+        residual = x
+        if self.prenorm:
+            x = self.norm(x)
+
         # L x B x E
         v = self.activation(self.v_proj(x))
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        # L x B x D -> B x D x L -> L x B x D
-        mx = self.ema_dropout(mx.permute(1, 2, 0)).permute(2, 0, 1)
+        mx = self.dropout(mx)
+
         # L x B x D -> L x B x (2*D+S+E)
         base = self.mx_proj(mx)
         u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
@@ -305,15 +319,18 @@ class MovingAverageGatedAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
-        v = self.hidden_dropout(v)
+        v = self.hidden_dropout(v, batch_first=True)
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
         h = self.activation(hx + self.h_proj(h * r))
-        h = self.dropout_module(h)
+        h = self.dropout(h)
         # L x B x D
-        out = torch.addcmul(x, u, h - x)
+        out = torch.addcmul(residual, u, h - residual)
+
+        if not self.prenorm:
+            out = self.norm(out)
 
         if need_weights:
             return out, attn_weights
@@ -369,6 +386,6 @@ class MovingAverageGatedAttention(nn.Module):
         return new_padding_mask
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}'.format(self.embed_dim, self.zdim,
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, prenorm={}'.format(self.embed_dim, self.zdim,
                                                                                   self.hdim, self.ndim, self.chunk_size,
-                                                                                  self.attention_activation)
+                                                                                  self.attention_activation, self.prenorm)
