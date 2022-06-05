@@ -481,7 +481,7 @@ def add_optimization_args(parser):
                        metavar='LR_1,LR_2,...,LR_N',
                        help='learning rate for the first N epochs; all epochs >N using LR_N'
                             ' (note: this may be interpreted differently depending on --lr-scheduler)')
-    group.add_argument('--min-lr', default=-1, type=float, metavar='LR',
+    group.add_argument('--stop-min-lr', default=-1, type=float, metavar='LR',
                        help='stop training when the learning rate reaches this minimum')
     group.add_argument('--use-bmuf', default=False, action='store_true',
                        help='specify global optimizer for syncing models on different GPUs/shards')

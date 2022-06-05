@@ -10,8 +10,6 @@ import torch.nn as nn
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
 from fairseq.modules.gated_cross_attention import GatedCrossAttention
 from torch import Tensor
-from fairseq.modules.layer_norm import LayerNorm
-from fairseq.modules.scale_norm import ScaleNorm
 
 
 class MegaEncoderLayer(nn.Module):
@@ -25,7 +23,6 @@ class MegaEncoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
         self.mega_layer = self.build_layer(self.embed_dim, args)
-        self.normalization = self.build_normalization(self.embed_dim, args.normalization_type)
 
     def build_layer(self, embed_dim, args):
         return MovingAverageGatedAttention(
@@ -42,15 +39,10 @@ class MegaEncoderLayer(nn.Module):
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             bidirectional=True,
+            norm_type=args.normalization_type,
+            prenorm=args.normalize_before,
+            feature_dropout=args.feature_dropout,
         )
-
-    def build_normalization(self, embedding_dim, norm_type):
-        if norm_type == 'layernorm':
-            return LayerNorm(embedding_dim)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
     def forward(self, x, encoder_padding_mask):
         """
@@ -63,7 +55,6 @@ class MegaEncoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         x, _ = self.mega_layer(x, encoder_padding_mask)
-        x = self.normalization(x)
         return x
 
 
@@ -78,14 +69,7 @@ class MegaDecoderLayer(nn.Module):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
-        self.mega_layer_norm = self.build_normalization(self.embed_dim, args.normalization_type)
-
-        if no_cross_attention:
-            self.cross_attn = None
-            self.cross_attn_norm = None
-        else:
-            self.cross_attn = self.build_cross_attn(self.embed_dim, args)
-            self.cross_attn_norm = self.build_normalization(self.embed_dim, args.normalization_type)
+        self.cross_attn = None if no_cross_attention else self.build_cross_attn(self.embed_dim, args)
 
         self.need_attn = False
         self.onnx_trace = False
@@ -105,6 +89,9 @@ class MegaDecoderLayer(nn.Module):
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             bidirectional=False,
+            norm_type=args.normalization_type,
+            prenorm=args.normalize_before,
+            feature_dropout=args.feature_dropout,
         )
 
     def build_cross_attn(self, embed_dim, args):
@@ -117,16 +104,11 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
+            norm_type=args.normalization_type,
+            prenorm=args.normalize_before,
+            feature_dropout=args.feature_dropout,
             max_positions=max(args.max_target_positions, args.max_source_positions),
         )
-
-    def build_normalization(self, embedding_dim, norm_type):
-        if norm_type == 'layernorm':
-            return LayerNorm(embedding_dim)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -157,7 +139,6 @@ class MegaDecoderLayer(nn.Module):
         x, attn = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
                                   incremental_state=incremental_state,
                                   need_weights=False, attn_mask=attn_mask)
-        x = self.mega_layer_norm(x)
 
         if self.cross_attn is not None:
             x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
@@ -165,7 +146,6 @@ class MegaDecoderLayer(nn.Module):
                                       key_padding_mask=encoder_padding_mask,
                                       incremental_state=incremental_state,
                                       static_kv=True, need_weights=need_attn)
-            x = self.cross_attn_norm(x)
 
         return x, attn, None
 

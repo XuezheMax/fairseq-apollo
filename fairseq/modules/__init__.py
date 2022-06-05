@@ -21,6 +21,7 @@ from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
 from .layer_norm import Fp32LayerNorm, LayerNorm
 from .scale_norm import ScaleNorm
+from .sequence_norm import SequenceNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
@@ -82,6 +83,7 @@ __all__ = [
     'SamePad',
     'ScalarBias',
     'ScaleNorm',
+    'SequenceNorm',
     'SinusoidalPositionalEmbedding',
     'TransformerSentenceEncoderLayer',
     'TransformerSentenceEncoder',

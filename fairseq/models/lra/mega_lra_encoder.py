@@ -10,10 +10,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fairseq import utils
 from fairseq.modules import (
     ScaleNorm,
     LayerNorm,
+    SequenceNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -54,15 +54,17 @@ class MegaLRAEncoder(nn.Module):
         embedding_dim: int = 512,
         hidden_dim: int = 1024,
         z_dim: int = 128,
-        n_dim=2,
-        activation='silu',
-        attention_activation='softmax',
+        n_dim: int = 16,
+        activation: str = 'silu',
+        attention_activation: str = 'softmax',
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
-        norm_type: str = 'scalenorm',
+        norm_type: str = 'layernorm',
+        normalize_before: bool = False,
         normalize_embedding: bool = False,
+        feature_dropout: bool = False,
         layerdrop: float = 0.0,
         truncation: int = None,
         max_seq_len: int = 256,
@@ -74,7 +76,7 @@ class MegaLRAEncoder(nn.Module):
         super().__init__()
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
@@ -88,6 +90,8 @@ class MegaLRAEncoder(nn.Module):
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
                                                  self.vocab_size, self.padding_idx,
                                                  norm_type, normalize_embedding, export)
+
+        assert not normalize_embedding or not normalize_before
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -110,10 +114,17 @@ class MegaLRAEncoder(nn.Module):
                 activation=activation,
                 attention_activation=attention_activation,
                 norm_type=norm_type,
+                prenorm=normalize_before,
+                feature_dropout=feature_dropout,
                 export=export
             )
             for _ in range(self.num_layers)
         ])
+
+        if normalize_before:
+            self.final_norm = SequenceNorm(norm_type, embedding_dim, export=export)
+        else:
+            self.final_norm = None
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, normalize_embedding, export):
         norm_type = None if not normalize_embedding else norm_type
@@ -139,6 +150,8 @@ class MegaLRAEncoder(nn.Module):
         activation,
         attention_activation,
         norm_type,
+        prenorm,
+        feature_dropout,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -155,6 +168,8 @@ class MegaLRAEncoder(nn.Module):
             activation=activation,
             attention_activation=attention_activation,
             norm_type=norm_type,
+            prenorm=prenorm,
+            feature_dropout=feature_dropout,
             export=export
         )
 
@@ -184,7 +199,7 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
-        x = self.dropout_module(x)
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
@@ -205,6 +220,9 @@ class MegaLRAEncoder(nn.Module):
             x, _ = self.layers[i](x, x_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append(x)
+
+        if self.final_norm is not None:
+            x = self.final_norm(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)

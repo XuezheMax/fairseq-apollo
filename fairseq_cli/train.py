@@ -128,7 +128,7 @@ def main(args):
     train_meter = meters.StopwatchMeter()
     train_meter.start()
 
-    while lr > args.min_lr and epoch_itr.next_epoch_idx <= max_epoch:
+    while lr > args.stop_min_lr and epoch_itr.next_epoch_idx <= max_epoch:
         # train for one epoch
         valid_losses, should_stop = train(args, trainer, task, epoch_itr)
         if should_stop:

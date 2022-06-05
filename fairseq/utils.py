@@ -448,6 +448,13 @@ def relu2(x, onnx_trace: bool = False):
         return torch.square(F.relu(x))
 
 
+def softplus2(x, onnx_trace: bool = False):
+    if onnx_trace:
+        return torch.square(F.softplus(x.float()))
+    else:
+        return torch.square(F.softplus(x))
+
+
 def softmax(x, dim: int, onnx_trace: bool = False):
     if onnx_trace:
         return F.softmax(x.float(), dim=dim)

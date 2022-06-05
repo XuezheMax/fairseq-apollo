@@ -9,8 +9,9 @@ from torch import Tensor, nn
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.fairseq_dropout import FairseqDropout
+from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from fairseq.modules.relative_positional_bias import RelativePositionalBias
+from fairseq.modules.sequence_norm import SequenceNorm
 
 
 @with_incremental_state
@@ -30,7 +31,11 @@ class GatedCrossAttention(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         attention_activation='softmax',
+        norm_type='layernorm',
+        prenorm=True,
+        feature_dropout=False,
         max_positions=1024,
+        export=False,
     ):
         super().__init__()
 
@@ -41,9 +46,14 @@ class GatedCrossAttention(nn.Module):
         self.attention_activation = attention_activation
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
-        self.dropout_module = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
+        self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
+        self.hidden_dropout = dropout_module(hidden_dropout, module_name=self.__class__.__name__)
+        # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
-        self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
+
+        self.prenorm = prenorm
+        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
 
         self.k_proj = nn.Linear(embed_dim, zdim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
@@ -182,8 +192,12 @@ class GatedCrossAttention(nn.Module):
             pidx = None
             saved_state = None
 
+        q = query
+        if self.prenorm:
+            q = self.norm(q)
+
         # L2 x B x (2*D+S)
-        base = self.q_proj(query)
+        base = self.q_proj(q)
         u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
 
         # L2 x B x D
@@ -250,14 +264,17 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
-        v = self.hidden_dropout(v)
+        v = self.hidden_dropout(v, batch_first=True)
         kernel = self.attention_dropout(attn_weights)
         # B x L2 x D -> L2 x B x D
         h = torch.bmm(kernel, v).transpose(0, 1)
         # L2 x B x D
         h = self.activation(self.h_proj(h * r))
-        h = self.dropout_module(h)
+        h = self.dropout(h)
         out = torch.addcmul(query, u, h - query)
+
+        if not self.prenorm:
+            out = self.norm(out)
 
         if need_weights:
             return out, attn_weights
@@ -292,4 +309,5 @@ class GatedCrossAttention(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, ndim={}, attn_act={}'.format(self.embed_dim, self.zdim, self.ndim, self.attention_activation)
+        return 'edim={}, zdim={}, ndim={}, attn_act={}, prenorm={}'.format(self.embed_dim, self.zdim, self.ndim,
+                                                                           self.attention_activation, self.prenorm)
