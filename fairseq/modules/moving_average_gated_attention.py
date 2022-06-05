@@ -64,6 +64,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.chunk_size = chunk_size
         self.prenorm = prenorm
+        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
 
         self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
 
@@ -78,8 +79,6 @@ class MovingAverageGatedAttention(nn.Module):
         self.rel_pos_bias = RelativePositionalBias(max_positions if chunk_size < 0 else chunk_size)
 
         self.reset_parameters()
-
-        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
 
         self.onnx_trace = False
         self.tpu = False
