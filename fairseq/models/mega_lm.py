@@ -14,8 +14,7 @@ from fairseq.models import (
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
-    LayerNorm,
-    ScaleNorm,
+    SequenceNorm,
     AdaptiveInput,
     MegaDecoderLayer
 )
@@ -56,6 +55,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='dropout probability for attention weights')
         parser.add_argument('--hidden-dropout', '--relu-dropout', type=float, metavar='D',
                             help='dropout probability for hidden vectors in Mega.')
+        parser.add_argument('--feature-dropout', action='store_true',
+                            help='apply feature dropout')
 
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
@@ -98,7 +99,10 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--tie-adaptive-proj', action='store_true',
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
 
-        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'], help='normalization type')
+        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'],
+                            help='normalization type')
+        parser.add_argument('--normalize-before', action='store_true',
+                            help='apply normalization layer before each encoder block')
         parser.add_argument('--normalize-embedding', action='store_true',
                             help='normalize embedding for Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
@@ -196,7 +200,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
-        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
         input_embed_dim = embed_tokens.embedding_dim
@@ -218,18 +222,15 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
 
         norm_type = args.normalization_type
         normalize_embedding = getattr(args, 'normalize_embedding', False)
-        if not normalize_embedding:
-            self.embed_norm = None
-        elif norm_type == 'layernorm':
-            self.embed_norm = LayerNorm(embed_dim)
-        elif norm_type == 'scalenorm':
-            self.embed_norm = ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
+        normalize_before = getattr(args, 'normalize_before', False)
+        assert not normalize_embedding or not normalize_before
+        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
+
+        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
 
         if embed_dim != self.output_embed_dim and not args.tie_adaptive_weights:
             self.project_out_dim = Linear(embed_dim, self.output_embed_dim, bias=False)
@@ -344,7 +345,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         if self.embed_norm is not None:
             x = self.embed_norm(x)
 
-        x = self.dropout_module(x)
+        x = self.embedding_dropout(x)
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -373,6 +374,9 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                                      attn_mask=attn_mask, decoder_padding_mask=decoder_padding_mask,
                                      need_attn=False)
             inner_states.append(x)
+
+        if self.final_norm is not None:
+            x = self.final_norm(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -459,7 +463,10 @@ def base_lm_architecture(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
     args.dropout = getattr(args, "dropout", 0.1)
+    args.feature_dropout = getattr(args, 'feature_dropout', False)
+
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
+    args.normalize_before = getattr(args, 'normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
 
     args.adaptive_input = getattr(args, 'adaptive_input', False)
