@@ -64,12 +64,12 @@ class FairseqFeatureDropout(nn.Module):
         self.apply_during_inference = False
 
     def forward(self, x, batch_first: bool = False, inplace: bool = False):
-        assert x.dim() == 3
         if self.training or self.apply_during_inference:
             if batch_first:
                 # B x L x D -> B x D x L -> B x L x D
-                return F.dropout2d(x.transpose(1, 2), p=self.p, training=True, inplace=inplace).transpose(1, 2)
+                return F.dropout2d(x.transpose(-1, -2), p=self.p, training=True, inplace=inplace).transpose(-1, -2)
             else:
+                assert x.dim() == 3
                 # L x B x D -> B x D x L -> L x B x D
                 return F.dropout2d(x.permute(1, 2, 0), p=self.p, training=True, inplace=inplace).permute(2, 0, 1)
         else:
