@@ -577,7 +577,7 @@ def mega_lra_cifar10(args):
 
 
 @register_model_architecture('lra', 'mega_lra_cifar10_ffn')
-def mega_lra_cifar10(args):
+def mega_lra_cifar10_ffn(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 320)
