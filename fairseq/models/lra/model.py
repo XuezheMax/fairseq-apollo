@@ -576,6 +576,27 @@ def mega_lra_cifar10(args):
     base_architecture(args)
 
 
+@register_model_architecture('lra', 'mega_lra_cifar10_ffn')
+def mega_lra_cifar10(args):
+    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
+    args.layer_type = getattr(args, 'layer_type', 'mega')
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 320)
+    args.z_dim = getattr(args, 'z_dim', 96)
+    args.n_dim = getattr(args, 'n_dim', 16)
+    args.encoder_layers = getattr(args, 'encoder_layers', 8)
+    args.activation_fn = getattr(args, 'activation_fn', 'silu')
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 160)
+    args.norm_type = getattr(args, 'norm_type', 'batchnorm')
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 320)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.max_positions = getattr(args, 'max_positions', 1024)
+    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
+    base_architecture(args)
+
+
 @register_model_architecture('lra', 'transformer_lra_pf32')
 def transformer_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
