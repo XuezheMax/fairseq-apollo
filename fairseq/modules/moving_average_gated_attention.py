@@ -31,7 +31,7 @@ class MovingAverageGatedAttention(nn.Module):
         embed_dim,
         zdim,
         hdim,
-        ndim=2,
+        ndim,
         dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
