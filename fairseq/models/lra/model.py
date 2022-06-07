@@ -572,6 +572,11 @@ def mega_lra_cifar10(args):
     base_architecture(args)
 
 
+@register_model_architecture('lra', 'mega_lra_cifar10_ffn')
+def mega_lra_cifar10_ffn(args):
+    mega_lra_cifar10(args)
+
+
 @register_model_architecture('lra', 'transformer_lra_pf32')
 def transformer_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
