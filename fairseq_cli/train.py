@@ -146,7 +146,8 @@ def main(args):
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
     if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
-        trainer.model.analyze_ema(output=True)
+        if trainer.data_parallel_rank == 0:
+            trainer.model.analyze_ema(output=True)
         test_subsets = args.test_subset.split(",")
         test_losses = validate_mega_lm(args, trainer, task, epoch_itr, test_subsets)
 
