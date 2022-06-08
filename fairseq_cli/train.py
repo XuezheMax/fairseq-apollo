@@ -146,6 +146,7 @@ def main(args):
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
     if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
+        trainer.model.analyze_ema(output=True)
         test_subsets = args.test_subset.split(",")
         test_losses = validate_mega_lm(args, trainer, task, epoch_itr, test_subsets)
 
@@ -412,6 +413,7 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])
+        trainer.model.analyze_ema(report=True)
     return valid_losses
 
 

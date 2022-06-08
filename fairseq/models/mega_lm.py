@@ -1,4 +1,6 @@
 import math
+import os
+import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -19,6 +21,8 @@ from fairseq.modules import (
     MegaDecoderLayer
 )
 from torch import Tensor
+import logging
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
@@ -107,6 +111,12 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='normalize embedding for Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
+
+        # analysis of alpha
+        parser.add_argument('--report-ema-alpha', action='store_true', default=False,
+                            help='report the ema weights statistics at the end of each epoch')
+        parser.add_argument('--write-out-alpha', action='store_true', default=False,
+                            help='write the ema weights to files at the end of training')
         # fmt: on
 
     @classmethod
@@ -182,6 +192,35 @@ class MegaLanguageModel(FairseqLanguageModel):
                              log_probs: bool, sample: Optional[Dict[str, Tensor]] = None):
         """Get normalized probabilities (or log probs) from a net's output."""
         return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
+
+    def analyze_ema(self, report=False, output=False):
+        if self.args.report_ema_alpha and report:
+            with torch.no_grad():
+                for lidx, layer in enumerate(self.decoder.layers):
+                    # emb_dim x ndim
+                    alpha = np.squeeze(layer.mega_layer.move.alpha.cpu().numpy(), axis=-1)
+                    ndim_mean = np.mean(alpha, axis=1)
+                    edim_mean = np.mean(ndim_mean)
+                    edim_std = np.std(ndim_mean)
+                    edim_max, edim_min = np.max(ndim_mean), np.min(ndim_mean)
+
+                    ndim_std = np.std(alpha, axis=1)
+                    edim_std_mean = np.mean(ndim_std)
+                    edim_std_std = np.std(ndim_std)
+                    edim_std_max, edim_std_min = np.max(ndim_std), np.min(ndim_std)
+
+                    logger.info("EMA Layer {}, mean of ndim--mean={:.5f},std={:.5f},max={:.5f},min={:.5f}, "
+                                "std of ndim--mean={:.5f},std={:.5f},max={:.5f},min={:.5f}".format(lidx, edim_mean,
+                                                                                                   edim_std, edim_max,
+                                                                                                   edim_min, edim_std_mean,
+                                                                                                   edim_std_std, edim_std_max,
+                                                                                                   edim_std_min))
+        if self.args.write_out_alpha and output:
+            with torch.no_grad():
+                for lidx, layer in enumerate(self.decoder.layers):
+                    # emb_dim x ndim
+                    alpha = np.squeeze(layer.mega_layer.move.alpha.cpu().numpy(), axis=-1)
+                    np.savetxt(os.path.join(self.args.save_dir, "layer{}"), alpha, fmt='%.5f')
 
 
 class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
