@@ -171,7 +171,7 @@ def main(parsed_args, **unused_kwargs):
             continue
 
         # a specific assertion for debugging
-        total_size = doc_sample['net_input']['src_lengths'][0]
+        total_size = doc_sample['net_input']['src_tokens'].size(1)
         batch_size = len(doc_sample['net_input']['src_lengths'])
         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 

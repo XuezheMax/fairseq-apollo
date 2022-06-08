@@ -390,7 +390,7 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
                     continue
 
                 # a specific assertion for debugging
-                total_size = sample['net_input']['src_lengths'][0]
+                total_size = sample['net_input']['src_tokens'].size(1)
                 batch_size = len(sample['net_input']['src_lengths'])
                 incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 

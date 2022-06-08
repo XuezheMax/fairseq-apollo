@@ -231,7 +231,7 @@ class LanguageModelingTask(FairseqTask):
             # to prevent the samples being filtered
             if k == 'size':
                 logger.info("Max document length of {} set = {}, number of documents = {}.".format(split, max(dataset.sizes), len(dataset.sizes)))
-                self.args.max_tokens_valid = max(dataset.sizes) * 2
+                self.args.max_tokens_valid = max(dataset.sizes) * 5
 
         add_eos_for_other_targets = (
             self.args.sample_break_mode is not None
