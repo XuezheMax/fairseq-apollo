@@ -49,7 +49,6 @@ class TokenBlockDataset(FairseqDataset):
         document_sep_len=1,
         variant_block_size_multiples=None,
         seed=0,
-        left_pad_to_fixed_size=False,
     ):
         # try:
         #     from fairseq.data.token_block_utils_fast import (
@@ -96,7 +95,6 @@ class TokenBlockDataset(FairseqDataset):
         self.document_sep_len = document_sep_len
         self._cur_epoch = 1
         self.seed = seed
-        self.left_pad_to_fixed_size = left_pad_to_fixed_size
 
         if self.variant_block_multiple_max > 1:
             block_sizes = [i * block_size for i in range(variant_block_size_multiples[0], variant_block_size_multiples[1] + 1)]
@@ -190,9 +188,6 @@ class TokenBlockDataset(FairseqDataset):
         s, e = start_offset, start_offset + length
         item = buffer[s:e]
 
-        if self.left_pad_to_fixed_size:
-            item = torch.cat([item, item.new(self.max_example_size-len(item)).fill_(self.pad)])
-
         if self.include_targets:
             # *target* is the original sentence (=item)
             # *source* is shifted right by 1 (maybe left-padded with eos)
@@ -209,9 +204,6 @@ class TokenBlockDataset(FairseqDataset):
                 else:
                     past_target = buffer[s - 2 : e - 2]
 
-            if self.left_pad_to_fixed_size:
-                source = torch.cat([source, source.new(self.max_example_size-len(source)).fill_(self.pad)])
-                past_target = torch.cat([past_target, past_target.new(self.max_example_size - len(past_target)).fill_(self.pad)])
             return source, item, past_target
 
         return item

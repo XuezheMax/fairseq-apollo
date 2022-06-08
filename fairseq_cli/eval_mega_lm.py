@@ -131,6 +131,7 @@ def main(parsed_args, **unused_kwargs):
         num_shards=args.num_shards,
         shard_id=args.shard_id,
         num_workers=args.num_workers,
+        sharding=False,
     ).next_epoch_itr(shuffle=False)
     progress = progress_bar.progress_bar(
         itr,

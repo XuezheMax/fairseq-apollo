@@ -224,7 +224,6 @@ class LanguageModelingTask(FairseqTask):
             variant_block_size_multiples=(self.args.variant_block_multiple_min,
                                           self.args.variant_block_multiple_max) if split == 'train' else (1, 1),
             seed=self.args.seed,
-            left_pad_to_fixed_size=False if split == 'train' else True,
         )
 
         if split != 'train' and self.is_mega_lm:
@@ -343,6 +342,7 @@ class LanguageModelingTask(FairseqTask):
             self, dataset, max_tokens=None, max_sentences=None, max_positions=None,
             ignore_invalid_inputs=False, required_batch_size_multiple=1,
             seed=1, num_shards=1, shard_id=0, num_workers=0, epoch=1,
+            sharding=True,
     ):
         """
         Get an iterator that yields batches of data from the given dataset.
@@ -383,11 +383,19 @@ class LanguageModelingTask(FairseqTask):
                 (hasattr(dataset.dataset, 'variant_block_multiple_max') and dataset.dataset.variant_block_multiple_max == 1)
         ):
             # valid / test of mega LM or normal LM
-            batch_iter = super().get_batch_iterator(
-                dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
-                ignore_invalid_inputs=ignore_invalid_inputs, required_batch_size_multiple=required_batch_size_multiple,
-                seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
-            )
+            if sharding:
+                batch_iter = super().get_batch_iterator(
+                    dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
+                    ignore_invalid_inputs=ignore_invalid_inputs, required_batch_size_multiple=required_batch_size_multiple,
+                    seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
+                )
+            else:
+                batch_iter = super().get_batch_iterator(
+                    dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
+                    ignore_invalid_inputs=ignore_invalid_inputs,
+                    required_batch_size_multiple=required_batch_size_multiple,
+                    seed=seed, num_shards=1, shard_id=0, num_workers=num_workers, epoch=epoch,
+                )
             # already done in super().get_batch_iterator
             # self.dataset_to_epoch_iter[dataset] = batch_iter
             return batch_iter

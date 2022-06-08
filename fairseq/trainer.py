@@ -356,21 +356,39 @@ class Trainer(object):
         subset,
     ):
         """Return an EpochBatchIterator over given validation subset for a given epoch."""
-        return self.task.get_batch_iterator(
-            dataset=self.task.dataset(subset),
-            max_tokens=self.args.max_tokens_valid,
-            max_sentences=self.args.max_sentences_valid,
-            max_positions=utils.resolve_max_positions(
-                self.task.max_positions(),
-                self.model.max_positions(),
-            ),
-            ignore_invalid_inputs=self.args.skip_invalid_size_inputs_valid_test,
-            required_batch_size_multiple=self.args.required_batch_size_multiple,
-            seed=self.args.seed,
-            num_shards=self.data_parallel_world_size,
-            shard_id=self.data_parallel_rank,
-            num_workers=self.args.num_workers,
-        )
+        if hasattr(self, 'is_mega_lm') and self.is_mega_lm:
+            return self.task.get_batch_iterator(
+                dataset=self.task.dataset(subset),
+                max_tokens=self.args.max_tokens_valid,
+                max_sentences=self.args.max_sentences_valid,
+                max_positions=utils.resolve_max_positions(
+                    self.task.max_positions(),
+                    self.model.max_positions(),
+                ),
+                ignore_invalid_inputs=self.args.skip_invalid_size_inputs_valid_test,
+                required_batch_size_multiple=self.args.required_batch_size_multiple,
+                seed=self.args.seed,
+                num_shards=self.data_parallel_world_size,
+                shard_id=self.data_parallel_rank,
+                num_workers=self.args.num_workers,
+                sharding=False,
+            )
+        else:
+            return self.task.get_batch_iterator(
+                dataset=self.task.dataset(subset),
+                max_tokens=self.args.max_tokens_valid,
+                max_sentences=self.args.max_sentences_valid,
+                max_positions=utils.resolve_max_positions(
+                    self.task.max_positions(),
+                    self.model.max_positions(),
+                ),
+                ignore_invalid_inputs=self.args.skip_invalid_size_inputs_valid_test,
+                required_batch_size_multiple=self.args.required_batch_size_multiple,
+                seed=self.args.seed,
+                num_shards=self.data_parallel_world_size,
+                shard_id=self.data_parallel_rank,
+                num_workers=self.args.num_workers,
+            )
 
     def begin_epoch(self, epoch):
         """Called at the beginning of each epoch."""
