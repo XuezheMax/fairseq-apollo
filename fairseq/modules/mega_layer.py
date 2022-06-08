@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from fairseq.modules.moving_average_gated_attention import MovingAverageGatedAttention
 from fairseq.modules.gated_cross_attention import GatedCrossAttention
+from fairseq.modules.normalized_feedforward_network import NormalizedFeedForwardNetwork
 from torch import Tensor
 
 
@@ -22,9 +23,13 @@ class MegaEncoderLayer(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
-        self.mega_layer = self.build_layer(self.embed_dim, args)
+        self.mega_layer = self.build_mega_layer(self.embed_dim, args)
+        if args.encoder_ffn_embed_dim > 0:
+            self.nffn = self.build_nffn_layer(self.embed_dim, args)
+        else:
+            self.nffn = None
 
-    def build_layer(self, embed_dim, args):
+    def build_mega_layer(self, embed_dim, args):
         return MovingAverageGatedAttention(
             embed_dim=embed_dim,
             zdim=args.encoder_z_dim,
@@ -44,6 +49,18 @@ class MegaEncoderLayer(nn.Module):
             feature_dropout=args.feature_dropout,
         )
 
+    def build_nffn_layer(self, embed_dim, args):
+        return NormalizedFeedForwardNetwork(
+            embed_dim=embed_dim,
+            ffn_hidden_dim=args.encoder_ffn_embed_dim,
+            dropout=args.dropout,
+            hidden_dropout=args.activation_dropout,
+            activation=args.activation_fn,
+            norm_type=args.normalization_type,
+            prenorm=args.normalize_before,
+            feature_dropout=args.feature_dropout,
+        )
+
     def forward(self, x, encoder_padding_mask):
         """
         Args:
@@ -55,6 +72,9 @@ class MegaEncoderLayer(nn.Module):
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
         x, _ = self.mega_layer(x, encoder_padding_mask)
+        if self.nffn is not None:
+            x = self.nffn(x)
+
         return x
 
 
@@ -70,6 +90,10 @@ class MegaDecoderLayer(nn.Module):
         self.embed_dim = args.decoder_embed_dim
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.cross_attn = None if no_cross_attention else self.build_cross_attn(self.embed_dim, args)
+        if args.decoder_ffn_embed_dim > 0:
+            self.nffn = self.build_nffn_layer(self.embed_dim, args)
+        else:
+            self.nffn = None
 
         self.need_attn = False
         self.onnx_trace = False
@@ -110,6 +134,18 @@ class MegaDecoderLayer(nn.Module):
             max_positions=max(args.max_target_positions, args.max_source_positions),
         )
 
+    def build_nffn_layer(self, embed_dim, args):
+        return NormalizedFeedForwardNetwork(
+            embed_dim=embed_dim,
+            ffn_hidden_dim=args.decoder_ffn_embed_dim,
+            dropout=args.dropout,
+            hidden_dropout=args.activation_dropout,
+            activation=args.activation_fn,
+            norm_type=args.normalization_type,
+            prenorm=args.normalize_before,
+            feature_dropout=args.feature_dropout,
+        )
+
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
 
@@ -146,6 +182,9 @@ class MegaDecoderLayer(nn.Module):
                                       key_padding_mask=encoder_padding_mask,
                                       incremental_state=incremental_state,
                                       static_kv=True, need_weights=need_attn)
+
+        if self.nffn is not None:
+            x = self.nffn(x)
 
         return x, attn, None
 
