@@ -356,7 +356,7 @@ class Trainer(object):
         subset,
     ):
         """Return an EpochBatchIterator over given validation subset for a given epoch."""
-        if hasattr(self, 'is_mega_lm') and self.is_mega_lm:
+        if hasattr(self.task, 'is_mega_lm') and self.task.is_mega_lm:
             return self.task.get_batch_iterator(
                 dataset=self.task.dataset(subset),
                 max_tokens=self.args.max_tokens_valid,
