@@ -376,7 +376,6 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
             default_log_format=("tqdm" if not args.no_progress_bar else "simple"),
         )
 
-        total_size = task.dataset(subset).dataset.max_example_size
         chunk_size = args.decoder_chunk_size
 
         # create a new root metrics aggregator so validation metrics
@@ -385,13 +384,13 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
             for sample in progress:
                 # todo: recalculate a larger tokens_per_batch at validation time
                 if not sample:
-                    for _ in range(0, total_size, chunk_size):
+                    for _ in range(0, chunk_size, chunk_size):
                         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
                         trainer.mega_lm_valid_step(sample, incremental_states=incremental_states)
                     continue
 
                 # a specific assertion for debugging
-                assert sample['net_input']['src_lengths'][0] == task.dataset(subset).dataset.max_example_size
+                total_size = sample['net_input']['src_lengths'][0]
                 batch_size = len(sample['net_input']['src_lengths'])
                 incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 

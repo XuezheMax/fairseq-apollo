@@ -165,14 +165,13 @@ def main(parsed_args, **unused_kwargs):
 
     wps_meter = TimeMeter()
 
-    total_size = task.dataset(args.gen_subset).dataset.max_example_size
     chunk_size = args.decoder_chunk_size
     for doc_sample in progress:
         if 'net_input' not in doc_sample:
             continue
 
         # a specific assertion for debugging
-        assert doc_sample['net_input']['src_lengths'][0] == task.dataset(args.gen_subset).dataset.max_example_size
+        total_size = doc_sample['net_input']['src_lengths'][0]
         batch_size = len(doc_sample['net_input']['src_lengths'])
         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
