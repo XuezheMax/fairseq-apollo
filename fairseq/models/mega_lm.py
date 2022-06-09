@@ -198,6 +198,7 @@ class MegaLanguageModel(FairseqLanguageModel):
         return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
 
     def analyze_ema(self, report=False, output=False):
+        # todo: fixme
         if self.args.report_ema_alpha and report:
             with torch.no_grad():
                 for lidx, layer in enumerate(self.decoder.layers):
