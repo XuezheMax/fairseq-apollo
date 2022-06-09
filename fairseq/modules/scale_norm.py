@@ -8,7 +8,7 @@ import torch.nn as nn
 
 
 class ScaleNorm(nn.Module):
-    def __init__(self, dim, eps=1e-5):
+    def __init__(self, dim, eps=1e-6):
         super().__init__()
         self.dim = dim
         self.eps = eps
