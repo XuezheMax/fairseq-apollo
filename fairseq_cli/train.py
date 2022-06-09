@@ -65,7 +65,7 @@ def main(args):
         # wandb
         if args.wandb_project and args.wandb_project != "none": 
             wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
-            "WANDB_NAME", os.path.basename(args.save_dir)))
+            "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity)
 
     # Print args
     logger.info(args)

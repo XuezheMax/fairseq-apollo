@@ -273,6 +273,7 @@ def get_parser(desc, default_task="translation"):
 
     # wandb
     parser.add_argument('--wandb-project', default=None, help='wandb project name')
+    parser.add_argument('--wandb-entity', default=None, help='wandb sending object, team name')
 
     from fairseq.registry import REGISTRIES
     for registry_name, REGISTRY in REGISTRIES.items():
