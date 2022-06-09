@@ -64,8 +64,10 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
-        parser.add_argument('--hidden-dropout', '--relu-dropout', type=float, metavar='D',
+        parser.add_argument('--hidden-dropout', type=float, metavar='D',
                             help='dropout probability for hidden vectors in Mega.')
+        parser.add_argument('--activation-dropout', type=float, metavar='D',
+                            help='dropout probability after activation in FFN.')
         parser.add_argument('--feature-dropout', action='store_true',
                             help='apply feature dropout')
 
@@ -79,6 +81,8 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='encoder z dimension for Mega')
         parser.add_argument('--encoder-n-dim', type=int, metavar='N',
                             help='encoder n dimension for Mega')
+        parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
+                            help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-chunk-size', type=int, metavar='N',
                             help='chunk size of Mega encoder.')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
@@ -94,6 +98,8 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='decoder z dimension for Mega')
         parser.add_argument('--decoder-n-dim', type=int, metavar='N',
                             help='decoder n dimension for Mega')
+        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+                            help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-chunk-size', type=int, metavar='N',
                             help='chunk size of Mega decoder.')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
@@ -684,7 +690,8 @@ def Linear(in_features, out_features, bias=True):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1664)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1024)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", args.encoder_hidden_dim)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
     args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
     args.encoder_layers = getattr(args, "encoder_layers", 6)
@@ -693,6 +700,7 @@ def base_architecture(args):
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", args.encoder_hidden_dim)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', args.encoder_z_dim)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', args.encoder_n_dim)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
@@ -700,9 +708,10 @@ def base_architecture(args):
     args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
+    args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
-    args.dropout = getattr(args, "dropout", 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     args.feature_dropout = getattr(args, 'feature_dropout', False)
 
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
@@ -723,18 +732,20 @@ def base_architecture(args):
 
 @register_model_architecture("mega", "mega_wmt_en_de")
 def mega_wmt_en_de(args):
-    args.dropout = getattr(args, "dropout", 0.2)
+    args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.1)
     base_architecture(args)
 
 
 @register_model_architecture("mega", "mega_wmt_en_de_big")
 def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 3328)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 2048)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 256)
     args.dropout = getattr(args, "dropout", 0.3)
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.1)
     base_architecture(args)

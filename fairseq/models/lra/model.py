@@ -83,6 +83,8 @@ class LRAModel(FairseqEncoderModel):
                             help='apply feature dropout')
 
         # Arguments related to hidden states and self-attention
+        parser.add_argument('--encoder-hidden-dim', type=int, metavar='N',
+                            help='encoder hidden dimension for Mega')
         parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--z-dim', type=int, metavar='N',
@@ -274,7 +276,7 @@ class LRAEncoder(FairseqEncoder):
                 num_encoder_layers=args.encoder_layers,
                 embedding_type=embedding_type,
                 embedding_dim=args.encoder_embed_dim,
-                hidden_dim=args.encoder_ffn_embed_dim,
+                hidden_dim=args.encoder_hidden_dim,
                 z_dim=args.z_dim,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
@@ -290,7 +292,8 @@ class LRAEncoder(FairseqEncoder):
                 num_encoder_layers=args.encoder_layers,
                 embedding_type=embedding_type,
                 embedding_dim=args.encoder_embed_dim,
-                hidden_dim=args.encoder_ffn_embed_dim,
+                hidden_dim=args.encoder_hidden_dim,
+                ffn_hidden_dim=args.encoder_ffn_embed_dim,
                 z_dim=args.z_dim,
                 n_dim=args.n_dim,
                 activation=args.activation_fn,
@@ -346,7 +349,8 @@ def base_architecture(args):
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
     args.feature_dropout = getattr(args, 'feature_dropout', False)
 
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 2048)
+    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', args.encoder_hidden_dim)
     args.z_dim = getattr(args, 'z_dim', 128)
     args.n_dim = getattr(args, 'n_dim', 2)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -397,7 +401,7 @@ def luna_lra_listop(args):
 def mega_lra_listop(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 160)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 160)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -437,7 +441,7 @@ def luna_lra_imdb_architecture(args):
 def flash_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'flash')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
@@ -452,10 +456,10 @@ def flash_lra_imdb(args):
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
-    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
@@ -494,7 +498,7 @@ def luna_lra_aan_architecture(args):
 def mega_lra_aan(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -535,7 +539,7 @@ def luna_lra_cifar10(args):
 def flash_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'flash')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 512)
     args.z_dim = getattr(args, 'z_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 192)
@@ -551,21 +555,26 @@ def flash_lra_cifar10(args):
 def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 384)
-    args.z_dim = getattr(args, 'z_dim', 128)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 320)
+    args.z_dim = getattr(args, 'z_dim', 96)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 192)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 160)
     args.norm_type = getattr(args, 'norm_type', 'batchnorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 384)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 320)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.chunk_size = getattr(args, 'chunk_size', 128)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
+
+
+@register_model_architecture('lra', 'mega_lra_cifar10_ffn')
+def mega_lra_cifar10_ffn(args):
+    mega_lra_cifar10(args)
 
 
 @register_model_architecture('lra', 'transformer_lra_pf32')
@@ -595,7 +604,7 @@ def luna_lra_pf32(args):
 def flash_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'flash')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 384)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 384)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
@@ -611,7 +620,7 @@ def flash_lra_pf32(args):
 def mega_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 256)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -639,10 +648,10 @@ def luna_lra_pf32(args):
 def mega_lra_pf128(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 128)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 128)
     args.z_dim = getattr(args, 'z_dim', 32)
     args.n_dim = getattr(args, 'n_dim', 16)
-    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.norm_type = getattr(args, 'norm_type', 'batchnorm')

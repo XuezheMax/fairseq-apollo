@@ -53,6 +53,7 @@ class MegaLRAEncoder(nn.Module):
         embedding_type: str = "sparse",
         embedding_dim: int = 512,
         hidden_dim: int = 1024,
+        ffn_hidden_dim: int = 1024,
         z_dim: int = 128,
         n_dim: int = 16,
         activation: str = 'silu',
@@ -103,6 +104,7 @@ class MegaLRAEncoder(nn.Module):
             self.build_mega_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
                 hidden_dim=hidden_dim,
+                ffn_hidden_dim=ffn_hidden_dim,
                 z_dim=z_dim,
                 n_dim=n_dim,
                 dropout=dropout,
@@ -139,6 +141,7 @@ class MegaLRAEncoder(nn.Module):
         self,
         embedding_dim,
         hidden_dim,
+        ffn_hidden_dim,
         z_dim,
         n_dim,
         dropout,
@@ -157,6 +160,7 @@ class MegaLRAEncoder(nn.Module):
         return MegaSentenceEncoderLayer(
             embedding_dim=embedding_dim,
             hidden_dim=hidden_dim,
+            ffn_hidden_dim=ffn_hidden_dim,
             z_dim=z_dim,
             n_dim=n_dim,
             dropout=dropout,
