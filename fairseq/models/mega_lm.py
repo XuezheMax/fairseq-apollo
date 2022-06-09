@@ -59,6 +59,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='dropout probability for attention weights')
         parser.add_argument('--hidden-dropout', '--relu-dropout', type=float, metavar='D',
                             help='dropout probability for hidden vectors in Mega.')
+        parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
+                            help='dropout probability after activation in FFN.')
         parser.add_argument('--feature-dropout', action='store_true',
                             help='apply feature dropout')
 
@@ -72,6 +74,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='decoder z dimension for Mega')
         parser.add_argument('--decoder-n-dim', type=int, metavar='N',
                             help='decoder n dimension for Mega')
+        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+                            help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-chunk-size', type=int, metavar='N',
                             help='chunk size of Mega decoder.')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
@@ -486,6 +490,7 @@ def base_lm_architecture(args):
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1664)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", args.decoder_hidden_dim)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', 128)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', 16)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
@@ -524,7 +529,8 @@ def base_lm_architecture(args):
 def mega_lm_big(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 16)
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
-    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 3328)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 2048)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
     args.decoder_z_dim = getattr(args, 'decoder_z_dim', 256)
     base_lm_architecture(args)
 
@@ -541,6 +547,7 @@ def mega_lm_adaptive_big(args):
     args.adaptive_softmax_dropout = getattr(args, 'adaptive_softmax_dropout', 0.2)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.hidden_dropout = getattr(args, 'hidden_dropout', 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.1)
     args.tie_adaptive_proj = getattr(args, 'tie_adaptive_proj', True)
     mega_lm_big(args)
 
