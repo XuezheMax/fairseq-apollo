@@ -64,9 +64,9 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D',
                             help='dropout probability for attention weights')
-        parser.add_argument('--hidden-dropout', '--relu-dropout', type=float, metavar='D',
+        parser.add_argument('--hidden-dropout', type=float, metavar='D',
                             help='dropout probability for hidden vectors in Mega.')
-        parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
+        parser.add_argument('--activation-dropout', type=float, metavar='D',
                             help='dropout probability after activation in FFN.')
         parser.add_argument('--feature-dropout', action='store_true',
                             help='apply feature dropout')
