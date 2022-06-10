@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from fairseq.modules.layer_norm import LayerNorm
 from fairseq.modules.scale_norm import ScaleNorm
+from fairseq.modules.root_mean_square_norm import RMSNorm
 
 
 class SequenceNorm(nn.Module):
@@ -16,6 +17,8 @@ class SequenceNorm(nn.Module):
             self.norm = LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             self.norm = ScaleNorm(dim=-1, eps=eps)
+        elif norm_type == 'rmsnorm':
+            self.norm = RMSNorm(embedding_dim)
         elif norm_type == 'batchnorm':
             self.norm = nn.BatchNorm1d(embedding_dim)
         elif norm_type == 'syncbatchnorm':
