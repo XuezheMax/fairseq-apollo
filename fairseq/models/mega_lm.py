@@ -554,7 +554,7 @@ def mega_lm_adaptive_big(args):
 
 
 @register_model_architecture('mega_lm', 'mega_lm_enwik8_base')
-def mega_lm_adaptive_big(args):
+def mega_lm_adaptive_big_enwik8(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 12)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1792)
@@ -567,7 +567,7 @@ def mega_lm_adaptive_big(args):
 
 
 @register_model_architecture('mega_lm', 'mega_lm_enwik8_large')
-def mega_lm_adaptive_big(args):
+def mega_lm_adaptive_large_enwik8(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 24)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 2560)
