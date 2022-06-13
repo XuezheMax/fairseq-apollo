@@ -65,7 +65,7 @@ def main(args):
 
         # wandb
         if args.wandb_project and args.wandb_project != "none":
-            resume_training = args.wandb_id is not None
+            resume_training = "must" if args.wandb_id is not None else None
             wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
             "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity, resume=resume_training,
                        id=args.wandb_id)
