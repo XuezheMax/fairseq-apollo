@@ -26,6 +26,7 @@ from fairseq import (
     tasks,
     utils,
 )
+from fairseq.file_io import PathManager
 from fairseq.data import iterators
 from fairseq.logging import meters, metrics, progress_bar
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
@@ -63,9 +64,11 @@ def main(args):
         checkpoint_utils.verify_checkpoint_directory(args.save_dir)
 
         # wandb
-        if args.wandb_project and args.wandb_project != "none": 
+        if args.wandb_project and args.wandb_project != "none":
+            checkpoint_path = os.path.join(args.save_dir, "checkpoint_last.pt")
+            resume_training = PathManager.exists(checkpoint_path)
             wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
-            "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity)
+            "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity, resume=resume_training)
 
     # Print args
     logger.info(args)
