@@ -65,10 +65,10 @@ def main(args):
 
         # wandb
         if args.wandb_project and args.wandb_project != "none":
-            checkpoint_path = os.path.join(args.save_dir, "checkpoint_last.pt")
-            resume_training = PathManager.exists(checkpoint_path)
+            resume_training = args.wandb_id is not None
             wandb.init(project=args.wandb_project, reinit=False, name=os.environ.get(
-            "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity, resume=resume_training)
+            "WANDB_NAME", os.path.basename(args.save_dir)), entity=args.wandb_entity, resume=resume_training,
+                       id=args.wandb_id)
 
     # Print args
     logger.info(args)
