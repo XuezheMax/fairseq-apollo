@@ -148,14 +148,6 @@ def main(args):
     train_meter.stop()
     logger.info("done training in {:.1f} seconds".format(train_meter.sum))
 
-    if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
-        if trainer.data_parallel_rank == 0:
-            trainer.model.analyze_ema(output=True)
-        for test_sub_split in args.test_subset.split(","):
-            task.load_dataset(test_sub_split, combine=False, epoch=1)
-        test_subsets = args.test_subset.split(",")
-        test_losses = validate_mega_lm(args, trainer, task, epoch_itr, test_subsets)
-
 
 def should_stop_early(args, valid_loss):
     # skip check if no validation was done in the current epoch
