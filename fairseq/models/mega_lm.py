@@ -553,6 +553,28 @@ def mega_lm_adaptive_big(args):
     mega_lm_big(args)
 
 
+@register_model_architecture('mega_lm', 'mega_lm_adaptive_base')
+def mega_lm_adaptive_base(args):
+    args.decoder_layers = getattr(args, 'decoder_layers', 16)
+    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 768)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1536)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 1536)
+    args.decoder_z_dim = getattr(args, 'decoder_z_dim', 128)
+
+    args.dropout = getattr(args, 'dropout', 0.3)
+    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
+    args.hidden_dropout = getattr(args, 'hidden_dropout', 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.1)
+
+    args.adaptive_input = getattr(args, 'adaptive_input', True)
+    args.tie_adaptive_weights = getattr(args, 'tie_adaptive_weights', True)
+    args.adaptive_input_cutoff = getattr(args, 'adaptive_input_cutoff', '20000,60000')
+    args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', '20000,60000')
+    args.adaptive_softmax_dropout = getattr(args, 'adaptive_softmax_dropout', 0.2)
+    args.tie_adaptive_proj = getattr(args, 'tie_adaptive_proj', True)
+    base_lm_architecture(args)
+
+
 @register_model_architecture('mega_lm', 'mega_lm_enwik8_base')
 def mega_lm_adaptive_big_enwik8(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 12)
