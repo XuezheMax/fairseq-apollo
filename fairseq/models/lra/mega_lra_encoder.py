@@ -67,7 +67,6 @@ class MegaLRAEncoder(nn.Module):
         normalize_before: bool = False,
         normalize_embedding: bool = False,
         feature_dropout: bool = False,
-        output_proj: bool = True,
         layerdrop: float = 0.0,
         truncation: int = None,
         max_seq_len: int = 256,
@@ -130,7 +129,7 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-        if output_proj:
+        if sen_rep_type == 'mp' and norm_type in ['batchnorm', 'syncbatchnorm']:
             self.out_proj = nn.Linear(self.embedding_dim, self.embedding_dim)
             self.activation = utils.get_activation_fn(activation=activation)
         else:
