@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from fairseq import utils
 from fairseq.modules import (
     ScaleNorm,
     LayerNorm,
@@ -66,6 +67,7 @@ class MegaLRAEncoder(nn.Module):
         normalize_before: bool = False,
         normalize_embedding: bool = False,
         feature_dropout: bool = False,
+        output_proj: bool = True,
         layerdrop: float = 0.0,
         truncation: int = None,
         max_seq_len: int = 256,
@@ -127,6 +129,21 @@ class MegaLRAEncoder(nn.Module):
             self.final_norm = SequenceNorm(norm_type, embedding_dim, export=export)
         else:
             self.final_norm = None
+
+        if output_proj:
+            self.out_proj = nn.Linear(self.embedding_dim, self.embedding_dim)
+            self.activation = utils.get_activation_fn(activation=activation)
+        else:
+            self.out_proj = None
+            self.activation = None
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        std = 0.02
+        if self.out_proj is not None:
+            nn.init.normal_(self.out_proj.weight, mean=0.0, std=std)
+            nn.init.constant_(self.out_proj.bias, 0.0)
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, normalize_embedding, export):
         norm_type = None if not normalize_embedding else norm_type
@@ -227,6 +244,9 @@ class MegaLRAEncoder(nn.Module):
 
         if self.final_norm is not None:
             x = self.final_norm(x)
+
+        if self.out_proj is not None:
+            x = self.activation(self.out_proj(x) + x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
