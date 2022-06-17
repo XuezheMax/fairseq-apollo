@@ -128,14 +128,6 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        std = 0.02
-        if self.out_proj is not None:
-            nn.init.normal_(self.out_proj.weight, mean=0.0, std=std)
-            nn.init.constant_(self.out_proj.bias, 0.0)
-
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, normalize_embedding, export):
         norm_type = None if not normalize_embedding else norm_type
         if embedding_type == 'sparse':
