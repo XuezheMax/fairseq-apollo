@@ -10,7 +10,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fairseq import utils
 from fairseq.modules import (
     ScaleNorm,
     LayerNorm,
@@ -129,13 +128,6 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-        if sen_rep_type == 'mp' and norm_type in ['batchnorm', 'syncbatchnorm']:
-            self.out_proj = nn.Linear(self.embedding_dim, self.embedding_dim)
-            self.activation = utils.get_activation_fn(activation=activation)
-        else:
-            self.out_proj = None
-            self.activation = None
-
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -243,9 +235,6 @@ class MegaLRAEncoder(nn.Module):
 
         if self.final_norm is not None:
             x = self.final_norm(x)
-
-        if self.out_proj is not None:
-            x = self.activation(self.out_proj(x) + x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
