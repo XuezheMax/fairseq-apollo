@@ -213,13 +213,18 @@ class LanguageModelingTask(FairseqTask):
             else:
                 chunk_size = self.args.tokens_per_sample
 
+        if (self.is_mega_lm and split == 'train') or not self.is_mega_lm:
+            break_mode = self.args.sample_break_mode
+        else:
+            break_mode = 'complete_doc_with_boundary'
+
         dataset = TokenBlockDataset(
             dataset,
             dataset.sizes,
             chunk_size,
             pad=self.dictionary.pad(),
             eos=self.dictionary.eos(),
-            break_mode=self.args.sample_break_mode,
+            break_mode=break_mode,
             include_targets=True,
             variant_block_size_multiples=(self.args.variant_block_multiple_min,
                                           self.args.variant_block_multiple_max) if split == 'train' else (1, 1),
