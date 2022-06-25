@@ -231,7 +231,7 @@ class MegaLRAEncoder(nn.Module):
         if self.final_norm is not None:
             x = self.final_norm(x)
 
-        x = self.activation(x)
+        # x = self.activation(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)

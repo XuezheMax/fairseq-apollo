@@ -22,8 +22,7 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    std = (in_features + out_features) ** -0.5
-    nn.init.normal_(m.weight, mean=0.0, std=std)
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
