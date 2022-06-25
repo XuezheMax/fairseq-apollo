@@ -475,7 +475,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
             self.output_projection.weight = self.embed_tokens.weight
         else:
             self.output_projection = nn.Linear(self.output_embed_dim, len(dictionary), bias=False)
-            std = min(self.output_embed_dim ** -0.5, 0.02)
+            std = self.output_embed_dim ** -0.5
             nn.init.normal_(self.output_projection.weight, mean=0, std=std)
 
     def build_decoder_layer(self, args):
@@ -674,7 +674,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
 def Embedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
-    std = min(embedding_dim ** -0.5, 0.02)
+    std = embedding_dim ** -0.5
     nn.init.normal_(m.weight, mean=0, std=std)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m
@@ -682,7 +682,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    std = min((in_features + out_features) ** -0.5, 0.02)
+    std = (in_features + out_features) ** -0.5
     nn.init.normal_(m.weight, mean=0.0, std=std)
     if bias:
         nn.init.constant_(m.bias, 0.0)
