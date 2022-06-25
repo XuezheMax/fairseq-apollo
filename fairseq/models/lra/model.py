@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,8 +11,6 @@ from fairseq.models import (
 )
 from fairseq.modules import (
     FairseqDropout,
-    LayerNorm,
-    SinusoidalPositionalEmbedding
 )
 from fairseq.models.lra.transformer_lra_encoder import TransformerLRAEncoder
 from fairseq.models.lra.luna_lra_encoder import LunaLRAEncoder
@@ -26,7 +22,8 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
+    std = min((in_features + out_features) ** -0.5, 0.02)
+    nn.init.normal_(m.weight, mean=0.0, std=std)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
