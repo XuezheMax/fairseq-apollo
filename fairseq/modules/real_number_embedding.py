@@ -18,7 +18,7 @@ class RealNumberEmbedding(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        std = min(self.embedding_dim ** -0.5, 0.02)
+        std = self.embedding_dim ** -0.5
         nn.init.normal_(self.weight, mean=0.0, std=std)
         nn.init.constant_(self.bias, 0.0)
 
