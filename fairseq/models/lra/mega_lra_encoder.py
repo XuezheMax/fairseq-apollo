@@ -11,8 +11,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fairseq.modules import (
-    ScaleNorm,
-    LayerNorm,
     SequenceNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
@@ -89,10 +87,10 @@ class MegaLRAEncoder(nn.Module):
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
-                                                 self.vocab_size, self.padding_idx,
-                                                 norm_type, normalize_embedding, export)
+                                                 self.vocab_size, self.padding_idx)
 
         assert not normalize_embedding or not normalize_before
+        self.embed_norm = SequenceNorm(norm_type, embedding_dim, export=export) if normalize_embedding else None
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -128,13 +126,12 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, norm_type, normalize_embedding, export):
-        norm_type = None if not normalize_embedding else norm_type
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
-            embed_tokens = NormalizedEmbedding(vocab_size, embedding_dim, padding_idx, norm_type, export)
+            embed_tokens = Embedding(vocab_size, embedding_dim, padding_idx)
             return embed_tokens
         else:
-            embed_tokens = RealNumberEmbedding(embedding_dim, norm_type, export)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -203,6 +200,9 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
+        if self.embed_norm is not None:
+            x = self.embed_norm(x)
+
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
@@ -245,26 +245,16 @@ class MegaLRAEncoder(nn.Module):
             return inner_states, sentence_rep
 
 
-class NormalizedEmbedding(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, padding_idx, norm_type, export=False):
+class Embedding(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, padding_idx):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        if norm_type is None:
-            self.embed_norm = None
-        elif norm_type == 'layernorm':
-            self.embed_norm = LayerNorm(embedding_dim, export=export)
-        elif norm_type == 'scalenorm':
-            self.embed_norm = ScaleNorm(dim=-1)
-        else:
-            raise ValueError('Unknown norm type: {}'.format(norm_type))
-
         self.reset_parameters(embedding_dim)
 
     def reset_parameters(self, embedding_dim):
+        std = min(embedding_dim ** -0.5, 0.02)
         nn.init.normal_(self.embed.weight, mean=0, std=embedding_dim ** -0.5)
 
     def forward(self, tokens):
         x = self.embed(tokens)
-        if self.embed_norm is not None:
-            x = self.embed_norm(x)
         return x

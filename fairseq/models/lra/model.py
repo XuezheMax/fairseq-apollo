@@ -659,7 +659,7 @@ def mega_lra_pf32_small(args):
 
 
 @register_model_architecture('lra', 'luna_lra_pf128')
-def luna_lra_pf32(args):
+def luna_lra_pf128(args):
     args.max_positions = getattr(args, 'max_positions', 128 * 128 + 2)
     args.layer_type = getattr(args, 'layer_type', 'luna')
     transformer_lra_pf32(args)
