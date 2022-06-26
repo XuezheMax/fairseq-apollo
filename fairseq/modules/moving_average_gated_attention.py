@@ -90,7 +90,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        std = 0.02
+        std = (self.embed_dim + self.hdim) ** -0.5
         nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.v_proj.bias, 0.0)
 
