@@ -43,7 +43,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        std = (self.embedding_dim + self.hidden_dim) ** -0.5
+        std = 0.02
         nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
         nn.init.constant_(self.fc1.bias, 0.0)
 

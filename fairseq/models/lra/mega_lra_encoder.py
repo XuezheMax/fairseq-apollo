@@ -17,7 +17,6 @@ from fairseq.modules import (
     MegaSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq import utils
 
 
 class MegaLRAEncoder(nn.Module):
@@ -127,8 +126,6 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-        self.activation = utils.get_activation_fn(activation=activation)
-
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
             embed_tokens = Embedding(vocab_size, embedding_dim, padding_idx)
@@ -230,8 +227,6 @@ class MegaLRAEncoder(nn.Module):
 
         if self.final_norm is not None:
             x = self.final_norm(x)
-
-        # x = self.activation(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
