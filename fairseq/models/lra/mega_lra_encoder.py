@@ -248,7 +248,6 @@ class MegaLRAEncoder(nn.Module):
 class Embedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim, padding_idx):
         super().__init__()
-        self.emb_scale = embedding_dim ** 0.5
         self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx)
         self.reset_parameters(embedding_dim)
 
@@ -257,5 +256,5 @@ class Embedding(nn.Module):
         nn.init.normal_(self.embed.weight, mean=0, std=std)
 
     def forward(self, tokens):
-        x = self.embed(tokens) * self.emb_scale
+        x = self.embed(tokens)
         return x
