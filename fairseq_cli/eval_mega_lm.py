@@ -127,7 +127,7 @@ def main(parsed_args, **unused_kwargs):
 
     # check norms
     amodel = models[0]
-    embeddings = amodel.embeddings
+    embeddings = amodel.decoder.embed_tokens.embeddings
     for emb_seq in embeddings:
         emb, linear = emb_seq[0].weight, emb_seq[1].weight
         norms = torch.linalg.norm(emb, dim=1, ord=2)
@@ -141,7 +141,7 @@ def main(parsed_args, **unused_kwargs):
         print("linear, mean = {}, max = {}, min = {}".format(linear_mean.item(),
                                                              linear_max.item(),
                                                              linear_min.item()))
-        
+
         emb = torch.mm(emb, linear.t())
         norms = torch.linalg.norm(emb, dim=1, ord=2)
         norm_mean, norm_max, norm_min = norms.mean(), norms.max(), norms.min()
@@ -152,13 +152,11 @@ def main(parsed_args, **unused_kwargs):
                                                                                              norm_min.item()))
 
     for ii, (n, p) in enumerate(models[0].named_parameters()):
-        if "FusedLayerNorm" in n:
-            w, b = p.weight, p.bias
-            w_mean, w_max, w_min = w.mean().item(), w.max().item(), w.min().item()
-            b_mean, b_max, b_min = b.mean().item(), b.max().item(), b.min().item()
-            print("Layer {} {} norm: ".format(ii, n))
-            print("w mean = {}, w max = {}, w min = {}".format(w_mean, w_max, w_min))
-            print("b mean = {}, b max = {}, b min = {}".format(b_mean, b_max, b_min))
+        if "norm.norm." in n:
+            print("{}: ".format(n))
+            nn = n.strip().split('.')[-1]
+            w_mean, w_max, w_min = p.mean().item(), p.max().item(), p.min().item()
+            print("{} mean = {}, w max = {}, w min = {}".format(nn, w_mean, w_max, w_min))
 
     task = tasks.setup_task(args)
 
