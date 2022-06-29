@@ -51,7 +51,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.embed_dim = embed_dim
         self.hdim = hdim
         self.zdim = zdim
-        self.ndim=ndim
+        self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None

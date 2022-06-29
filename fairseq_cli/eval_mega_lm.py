@@ -22,7 +22,7 @@ from fairseq.logging import progress_bar
 from fairseq.logging.meters import StopwatchMeter, TimeMeter
 from fairseq.sequence_scorer import SequenceScorer
 from fairseq import distributed_utils
-
+import sys
 
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -94,7 +94,12 @@ def main(parsed_args, **unused_kwargs):
     logger.info("Loaded args!")
     logger.info(args)
 
-    task = tasks.setup_task(args)
+    if args.results_path is not None:
+        os.makedirs(args.results_path, exist_ok=True)
+        output_path = os.path.join(args.results_path, 'generate-{}.txt'.format(args.gen_subset))
+        output_file = open(output_path, 'w', buffering=1, encoding='utf-8')
+    else:
+        output_file = sys.stdout
 
     # Load dataset splits
     task.load_dataset(args.gen_subset)
@@ -106,7 +111,7 @@ def main(parsed_args, **unused_kwargs):
             context_window=args.context_window,
             pad_idx=task.source_dictionary.pad(),
         )
-    logger.info('{} {} {} examples'.format(args.data, args.gen_subset, len(dataset)))
+    print('{} {} {} examples'.format(args.data, args.gen_subset, len(dataset)), file=output_file)
 
     # Optimize ensemble for generation and set the source and dest dicts on the model (required by scorer)
     for model in models:
@@ -119,6 +124,29 @@ def main(parsed_args, **unused_kwargs):
     assert len(models) > 0
 
     logger.info('num. model params: {}'.format(sum(p.numel() for p in models[0].parameters())))
+
+    # check norms
+    amodel = models[0]
+    embeddings = amodel.embeddings
+    for emb in embeddings:
+        weight = emb.weight
+        norms = torch.linalg.norm(weight, dim=0, ord=2)
+        norm_mean, norm_max, norm_min = norms.mean(), norms.max(), norms.min()
+        print("embedding size ({}, {}), mean norm = {}, max norm = {}, min norm = {}".format(weight.size(0),
+                                                                                             weight.size(1),
+                                                                                             norm_mean.item(),
+                                                                                             norm_max.item(),
+                                                                                             norm_min.item()))
+    for ii, (n, p) in enumerate(models[0].named_parameters()):
+        if "FusedLayerNorm" in n:
+            w, b = p.weight, p.bias
+            w_mean, w_max, w_min = w.mean().item(), w.max().item(), w.min().item()
+            b_mean, b_max, b_min = b.mean().item(), b.max().item(), b.min().item()
+            print("Layer {} norm: ".format(ii))
+            print("w mean = {}, w max = {}, w min = {}".format(w_mean, w_max, w_min))
+            print("b mean = {}, b max = {}, b min = {}".format(b_mean, b_max, b_min))
+
+    task = tasks.setup_task(args)
 
     itr = task.get_batch_iterator(
         dataset=dataset,
@@ -249,26 +277,28 @@ def main(parsed_args, **unused_kwargs):
                             is_bpe = False
                             w = ''
                     if args.output_word_probs:
-                        logger.info(
+                        print(
                             str(int(sample_id)) + " "
-                            + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
+                            + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob)), file=output_file
                         )
 
             wps_meter.update(sample['ntokens'])
             progress.log({'wps': round(wps_meter.avg)})
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
-    logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
-        count, gen_timer.sum, 1. / gen_timer.avg
+    print('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
+        count, gen_timer.sum, 1. / gen_timer.avg, file=output_file
     ))
-    logger.info('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
-        avg_nll_loss, 2**avg_nll_loss
+    print('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
+        avg_nll_loss, 2**avg_nll_loss, file=output_file
     ))
 
     if args.output_word_stats:
         for ws in sorted(word_stats.values(), key=lambda x: x.count, reverse=True):
             logger.info(ws)
 
+    if args.results_path is not None:
+        output_file.close()
 
 def cli_main():
     parser = options.get_eval_lm_parser()

@@ -20,7 +20,7 @@ from fairseq.logging import progress_bar
 from fairseq.logging.meters import StopwatchMeter, TimeMeter
 from fairseq.sequence_scorer import SequenceScorer
 from fairseq import distributed_utils
-
+import sys
 
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -86,6 +86,13 @@ def main(parsed_args, **unused_kwargs):
         }:
             setattr(args, arg, getattr(parsed_args, arg))
 
+    if args.results_path is not None:
+        os.makedirs(args.results_path, exist_ok=True)
+        output_path = os.path.join(args.results_path, 'generate-{}.txt'.format(args.gen_subset))
+        output_file = open(output_path, 'w', buffering=1, encoding='utf-8')
+    else:
+        output_file = sys.stdout
+
     # reduce tokens per sample by the required context window size
     args.tokens_per_sample -= args.context_window
     task = tasks.setup_task(args)
@@ -100,7 +107,7 @@ def main(parsed_args, **unused_kwargs):
             context_window=args.context_window,
             pad_idx=task.source_dictionary.pad(),
         )
-    logger.info('{} {} {} examples'.format(args.data, args.gen_subset, len(dataset)))
+    print('{} {} {} examples'.format(args.data, args.gen_subset, len(dataset)), file=output_file)
 
     # Optimize ensemble for generation and set the source and dest dicts on the model (required by scorer)
     for model in models:
@@ -112,7 +119,7 @@ def main(parsed_args, **unused_kwargs):
 
     assert len(models) > 0
 
-    logger.info('num. model params: {}'.format(sum(p.numel() for p in models[0].parameters())))
+    print('num. model params: {}'.format(sum(p.numel() for p in models[0].parameters())), file=output_file)
 
     itr = task.get_batch_iterator(
         dataset=dataset,
@@ -224,26 +231,27 @@ def main(parsed_args, **unused_kwargs):
                         is_bpe = False
                         w = ''
                 if args.output_word_probs:
-                    logger.info(
-                        str(int(sample_id)) + " "
-                        + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob))
-                    )
+                    print(
+                        'S-' + str(int(sample_id)) + " "
+                        + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob)), file=output_file)
 
         wps_meter.update(sample['ntokens'])
         progress.log({'wps': round(wps_meter.avg)})
 
     avg_nll_loss = -score_sum / count / math.log(2)  # convert to base 2
-    logger.info('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
+    print('Evaluated {} tokens in {:.1f}s ({:.2f} tokens/s)'.format(
         count, gen_timer.sum, 1. / gen_timer.avg
-    ))
-    logger.info('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
+    ), file=output_file)
+    print('Loss (base 2): {:.4f}, Perplexity: {:.2f}'.format(
         avg_nll_loss, 2**avg_nll_loss
-    ))
+    ), file=output_file)
 
     if args.output_word_stats:
         for ws in sorted(word_stats.values(), key=lambda x: x.count, reverse=True):
             logger.info(ws)
 
+    if args.results_path is not None:
+        output_file.close()
 
 def cli_main():
     parser = options.get_eval_lm_parser()
