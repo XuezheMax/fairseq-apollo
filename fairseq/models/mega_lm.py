@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
+
 @register_model("mega_lm")
 class MegaLanguageModel(FairseqLanguageModel):
     """
@@ -83,8 +84,6 @@ class MegaLanguageModel(FairseqLanguageModel):
 
         parser.add_argument('--decoder-input-dim', type=int, metavar='N',
                             help='decoder input dimension')
-        parser.add_argument('--decoder-output-dim', type=int, metavar='N',
-                            help='decoder output dimension (extra linear layer if different from decoder embed dim')
 
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
@@ -113,6 +112,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='apply normalization layer before each encoder block')
         parser.add_argument('--normalize-embedding', action='store_true',
                             help='normalize embedding for Mega.')
+        parser.add_argument('--no-scale-embedding', action='store_true',
+                            help='if True, dont scale embeddings')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
 
@@ -149,7 +150,7 @@ class MegaLanguageModel(FairseqLanguageModel):
             assert args.adaptive_input_factor == args.adaptive_softmax_factor
             assert args.adaptive_softmax_cutoff == args.adaptive_input_cutoff, '{} != {}'.format(
                 args.adaptive_softmax_cutoff, args.adaptive_input_cutoff)
-            assert args.decoder_input_dim == args.decoder_output_dim
+            assert args.decoder_input_dim == args.decoder_embed_dim
 
         decoder = MegaDecoderNoCrossAttn(args, src_dict, embed_tokens)
         return cls(args, decoder)
@@ -187,15 +188,6 @@ class MegaLanguageModel(FairseqLanguageModel):
             return_all_hiddens=return_all_hiddens,
         )
         return decoder_out
-
-    # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
-    # I rewrite the get_normalized_probs from Base Class to call the
-    # helper function in the Base Class.
-    @torch.jit.export
-    def get_normalized_probs(self, net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-                             log_probs: bool, sample: Optional[Dict[str, Tensor]] = None):
-        """Get normalized probabilities (or log probs) from a net's output."""
-        return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
 
     def analyze_ema(self, report=False, output=False):
         # todo: fixme
@@ -250,14 +242,15 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
-        self.output_embed_dim = args.decoder_output_dim
 
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
         self.chunk_size = args.decoder_chunk_size
         self.attention_activation = args.attention_activation_fn
+        self.activation = utils.get_activation_fn(args.activation_fn)
 
         self.embed_tokens = embed_tokens
+        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
         if embed_dim != input_embed_dim:
             self.project_in_dim = Linear(input_embed_dim, embed_dim, bias=False)
@@ -275,18 +268,14 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
-
-        if embed_dim != self.output_embed_dim and not args.tie_adaptive_weights:
-            self.project_out_dim = Linear(embed_dim, self.output_embed_dim, bias=False)
-        else:
-            self.project_out_dim = None
+        self.final_proj = Linear(embed_dim, embed_dim, bias=False)
 
         self.adaptive_softmax = None
         self.output_projection = None
         if args.adaptive_softmax_cutoff is not None:
             self.adaptive_softmax = AdaptiveSoftmax(
                 len(dictionary),
-                self.output_embed_dim,
+                self.embed_dim,
                 options.eval_str_list(args.adaptive_softmax_cutoff, type=int),
                 dropout=args.adaptive_softmax_dropout,
                 adaptive_inputs=embed_tokens if args.tie_adaptive_weights else None,
@@ -301,8 +290,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
-            self.output_projection = nn.Linear(self.output_embed_dim, len(dictionary), bias=False)
-            nn.init.normal_(self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5)
+            self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
+            nn.init.normal_(self.output_projection.weight, mean=0, std=self.embed_dim ** -0.5)
 
     def build_decoder_layer(self, args):
         return MegaDecoderLayer(args, no_cross_attention=True)
@@ -381,7 +370,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             num_paddings = 0
 
         # embed tokens
-        x = self.embed_tokens(prev_output_tokens)
+        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
 
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
@@ -422,6 +411,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         if self.final_norm is not None:
             x = self.final_norm(x)
 
+        x = self.activation(self.final_proj(x))
+
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
 
@@ -431,9 +422,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
 
         # T x B x C -> B x T x C
         x = x.transpose(0, 1)
-
-        if self.project_out_dim is not None:
-            x = self.project_out_dim(x)
 
         return x, {"inner_states": inner_states}
 
@@ -480,7 +468,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    nn.init.normal_(m.weight, mean=0.0, std=0.02)
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -496,7 +484,6 @@ def base_lm_architecture(args):
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', 16)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_chunk_size = getattr(args, 'decoder_chunk_size', -1)
-    args.decoder_output_dim = getattr(args, "decoder_output_dim", args.decoder_embed_dim)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
     args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', None)
@@ -513,6 +500,7 @@ def base_lm_architecture(args):
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
     args.normalize_before = getattr(args, 'normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.adaptive_input = getattr(args, 'adaptive_input', False)
     args.adaptive_input_factor = getattr(args, 'adaptive_input_factor', 4)
