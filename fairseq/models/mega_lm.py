@@ -110,6 +110,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='normalization type')
         parser.add_argument('--normalize-before', action='store_true',
                             help='apply normalization layer before each encoder block')
+        parser.add_argument('--no-affine-final-norm', action='store_true',
+                            help='no affine parameters in the final norm.')
         parser.add_argument('--normalize-embedding', action='store_true',
                             help='normalize embedding for Mega.')
         parser.add_argument('--no-scale-embedding', action='store_true',
@@ -267,7 +269,10 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
+        final_norm_affine = True
+        if hasattr(args, 'no_affine_final_norm'):
+            final_norm_affine = not args.no_affine_final_norm
+        self.final_norm = SequenceNorm(norm_type, embed_dim, affine=final_norm_affine) if normalize_before else None
         self.final_proj = Linear(embed_dim, embed_dim, bias=False)
 
         self.adaptive_softmax = None
@@ -501,6 +506,7 @@ def base_lm_architecture(args):
     args.normalize_before = getattr(args, 'normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
+    args.no_affine_final_norm = getattr(args, 'no_affine_final_norm', False)
 
     args.adaptive_input = getattr(args, 'adaptive_input', False)
     args.adaptive_input_factor = getattr(args, 'adaptive_input_factor', 4)
