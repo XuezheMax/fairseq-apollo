@@ -8,18 +8,29 @@ import torch.nn as nn
 
 
 class ScaleNorm(nn.Module):
-    def __init__(self, dim, eps=1e-6):
+    def __init__(self, dim, eps=1e-6, affine=True):
         super().__init__()
         self.dim = dim
         self.eps = eps
-        self.scalar = nn.Parameter(torch.Tensor(1))
+        self.affine = affine
+        if affine:
+            self.scalar = nn.Parameter(torch.Tensor(1))
+        else:
+            self.register_parameter('scalar', None)
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.constant_(self.scalar, 1.0)
+        if self.affine:
+            nn.init.constant_(self.scalar, 1.0)
 
     def forward(self, x):
         mean_square = torch.mean(torch.square(x), dim=self.dim, keepdim=True)
-        x = self.scalar * x * torch.rsqrt(mean_square + self.eps)
+        if self.scalar is not None:
+            x = self.scalar * x
+
+        x = x * torch.rsqrt(mean_square + self.eps)
         return x
+
+    def extra_repr(self) -> str:
+        return 'dim={dim}, eps={eps}, affine={affine}'.format(**self.__dict__)

@@ -11,18 +11,18 @@ from fairseq.modules.root_mean_square_norm import RMSNorm
 
 
 class SequenceNorm(nn.Module):
-    def __init__(self, norm_type, embedding_dim, eps=1e-5, export=False):
+    def __init__(self, norm_type, embedding_dim, eps=1e-5, affine=True, export=False):
         super().__init__()
         if norm_type == 'layernorm':
-            self.norm = LayerNorm(embedding_dim, export=export)
+            self.norm = LayerNorm(embedding_dim, elementwise_affine=affine, export=export)
         elif norm_type == 'scalenorm':
-            self.norm = ScaleNorm(dim=-1, eps=eps)
+            self.norm = ScaleNorm(dim=-1, eps=eps, affine=affine)
         elif norm_type == 'rmsnorm':
-            self.norm = RMSNorm(embedding_dim)
+            self.norm = RMSNorm(embedding_dim, affine=affine)
         elif norm_type == 'batchnorm':
-            self.norm = nn.BatchNorm1d(embedding_dim)
+            self.norm = nn.BatchNorm1d(embedding_dim, affine=affine)
         elif norm_type == 'syncbatchnorm':
-            self.norm = nn.SyncBatchNorm(embedding_dim)
+            self.norm = nn.SyncBatchNorm(embedding_dim, affine=affine)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
