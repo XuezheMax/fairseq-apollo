@@ -33,6 +33,7 @@ class GatedCrossAttention(nn.Module):
         attention_activation='softmax',
         norm_type='layernorm',
         prenorm=True,
+        norm_affine=True,
         feature_dropout=False,
         max_positions=1024,
         export=False,
@@ -53,7 +54,7 @@ class GatedCrossAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
         self.prenorm = prenorm
-        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
+        self.norm = SequenceNorm(norm_type, embed_dim, affine=norm_affine, export=export)
 
         self.k_proj = nn.Linear(embed_dim, zdim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)

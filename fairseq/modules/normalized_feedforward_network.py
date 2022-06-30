@@ -20,6 +20,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         activation='silu',
         norm_type='layernorm',
         prenorm=True,
+        norm_affine=True,
         feature_dropout=False,
         export=False,
     ):
@@ -35,7 +36,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.hidden_dropout = dropout_module(hidden_dropout, module_name=self.__class__.__name__)
 
         self.prenorm = prenorm
-        self.norm = SequenceNorm(norm_type, embed_dim, export=export)
+        self.norm = SequenceNorm(norm_type, embed_dim, affine=norm_affine, export=export)
 
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
