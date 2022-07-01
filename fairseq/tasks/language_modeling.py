@@ -209,14 +209,10 @@ class LanguageModelingTask(FairseqTask):
                 # to prevent the samples being filtered
                 if k == "splits":
                     # when k is splits, one sample can be extremely long as chunk_size,
-                    self.args.max_tokens_valid = chunk_size * 2
+                    self.args.max_tokens = chunk_size * 4
             else:
                 chunk_size = self.args.tokens_per_sample
-
-        if (self.is_mega_lm and split == 'train') or not self.is_mega_lm:
-            break_mode = self.args.sample_break_mode
-        else:
-            break_mode = 'complete_doc_with_boundary'
+        self.chunk_size = chunk_size
 
         dataset = TokenBlockDataset(
             dataset,
@@ -224,7 +220,7 @@ class LanguageModelingTask(FairseqTask):
             chunk_size,
             pad=self.dictionary.pad(),
             eos=self.dictionary.eos(),
-            break_mode=break_mode,
+            break_mode=self.args.sample_break_mode,
             include_targets=True,
             variant_block_size_multiples=(self.args.variant_block_multiple_min,
                                           self.args.variant_block_multiple_max) if split == 'train' else (1, 1),

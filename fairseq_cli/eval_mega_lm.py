@@ -70,6 +70,7 @@ def main(parsed_args, **unused_kwargs):
 
     use_cuda = torch.cuda.is_available() and not parsed_args.cpu
 
+    parsed_args.decoder_chunk_size = 1024  # a hack
     task = tasks.setup_task(parsed_args)
 
     # Load ensemble
@@ -160,13 +161,24 @@ def main(parsed_args, **unused_kwargs):
 
     task = tasks.setup_task(args)
 
+    # itr = task.get_batch_iterator(
+    #     dataset=dataset,
+    #     max_tokens=args.max_tokens or 36000,
+    #     max_sentences=args.max_sentences,
+    #     max_positions=utils.resolve_max_positions(*[
+    #         model.max_positions() for model in models
+    #     ]),
+    #     ignore_invalid_inputs=True,
+    #     num_shards=args.num_shards,
+    #     shard_id=args.shard_id,
+    #     num_workers=args.num_workers,
+    #     sharding=False,
+    # ).next_epoch_itr(shuffle=False)
     itr = task.get_batch_iterator(
         dataset=dataset,
-        max_tokens=args.max_tokens or 36000,
+        max_tokens=max(250000, task.chunk_size),
         max_sentences=args.max_sentences,
-        max_positions=utils.resolve_max_positions(*[
-            model.max_positions() for model in models
-        ]),
+        max_positions=1000000,
         ignore_invalid_inputs=True,
         num_shards=args.num_shards,
         shard_id=args.shard_id,
@@ -215,16 +227,16 @@ def main(parsed_args, **unused_kwargs):
         batch_size = len(doc_sample['net_input']['src_lengths'])
         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
 
-        for i in range(0, total_size, chunk_size):
+        for kk in range(0, total_size, chunk_size):
             sample = {
                 'id': doc_sample['id'],
                 'nsentences': doc_sample['nsentences'],
-                'ntokens': doc_sample['target'][:, i: i + chunk_size].ne(task.dictionary.pad()).sum().item(),
+                'ntokens': doc_sample['target'][:, kk: kk + chunk_size].ne(task.dictionary.pad()).sum().item(),
                 'net_input': {
-                    'src_tokens': doc_sample['net_input']['src_tokens'][:, i: i + chunk_size],
+                    'src_tokens': doc_sample['net_input']['src_tokens'][:, kk: kk + chunk_size],
                     'src_lengths': doc_sample['net_input']['src_tokens'].ne(task.dictionary.pad()).sum(1),
                 },
-                'target': doc_sample['target'][:, i: i + chunk_size],
+                'target': doc_sample['target'][:, kk: kk + chunk_size],
             }
 
             sample = utils.move_to_cuda(sample) if use_cuda else sample
@@ -233,9 +245,9 @@ def main(parsed_args, **unused_kwargs):
             hypos = scorer.generate(models, sample, incremental_states=incremental_states)
             gen_timer.stop(sample['ntokens'])
 
-            for i, hypos_i in enumerate(hypos):
+            for j, hypos_i in enumerate(hypos):
                 hypo = hypos_i[0]
-                sample_id = sample['id'][i]
+                sample_id = sample['id'][j]
 
                 tokens = hypo['tokens']
                 tgt_len = tokens.numel()
@@ -290,7 +302,7 @@ def main(parsed_args, **unused_kwargs):
                             w = ''
                     if args.output_word_probs:
                         print(
-                            str(int(sample_id)) + " "
+                            'S-' + str(int(sample_id)) + " "
                             + ('\t'.join('{} [{:2f}]'.format(x[0], x[1]) for x in word_prob)), file=output_file
                         )
 
