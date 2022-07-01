@@ -137,7 +137,7 @@ class MultiHeadEMA(nn.Module):
         if ox is not None:
             out = out + ox
 
-        h = torch.einsum('bdl,dnl->bdn', x, kernel)
+        h = torch.einsum('bdl,dnl->bdn', x, torch.flip(kernel, dims=[2]))
         if hh is not None:
             h = h + hh
         # L x B x D, B x D x N
