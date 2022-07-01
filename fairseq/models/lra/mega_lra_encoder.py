@@ -88,6 +88,7 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
                                                  self.vocab_size, self.padding_idx)
+        self.embed_scale = math.sqrt(embedding_dim)
 
         assert not normalize_embedding or not normalize_before
         self.embed_norm = SequenceNorm(norm_type, embedding_dim, export=export) if normalize_embedding else None
@@ -194,7 +195,7 @@ class MegaLRAEncoder(nn.Module):
             if not self.traceable and not self.tpu and not padding_mask.any():
                 padding_mask = None
             # B x T -> B x T x D
-            x = self.embed_tokens(tokens)
+            x = self.embed_tokens(tokens) * self.embed_scale
         else:
             padding_mask = None
             # B x T -> B x T x D
