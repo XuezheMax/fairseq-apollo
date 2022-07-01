@@ -450,7 +450,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
-        self.final_proj = Linear(embed_dim, embed_dim, bias=False)
+        # self.final_proj = Linear(embed_dim, embed_dim, bias=False)
 
         self.adaptive_softmax = None
         self.output_projection = None
@@ -619,7 +619,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if self.final_norm is not None:
             x = self.final_norm(x)
 
-        x = self.activation(self.final_proj(x))
+        # x = self.activation(self.final_proj(x))
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
