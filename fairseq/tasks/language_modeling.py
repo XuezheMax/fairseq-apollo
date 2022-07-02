@@ -209,10 +209,10 @@ class LanguageModelingTask(FairseqTask):
                 # to prevent the samples being filtered
                 if k == "splits":
                     # when k is splits, one sample can be extremely long as chunk_size,
-                    self.args.max_tokens = chunk_size * 4
+                    self.args.max_tokens_valid = chunk_size * 4
             else:
                 chunk_size = self.args.tokens_per_sample
-        self.chunk_size = chunk_size
+            self.chunk_size = chunk_size
 
         dataset = TokenBlockDataset(
             dataset,
@@ -385,14 +385,16 @@ class LanguageModelingTask(FairseqTask):
         ):
             # valid / test of mega LM or normal LM
             if sharding:
+                # normal LM
                 batch_iter = super().get_batch_iterator(
                     dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
                     ignore_invalid_inputs=ignore_invalid_inputs, required_batch_size_multiple=required_batch_size_multiple,
                     seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
                 )
             else:
+                # Mega LM
                 batch_iter = super().get_batch_iterator(
-                    dataset, max_tokens=max_tokens, max_sentences=max_sentences, max_positions=max_positions,
+                    dataset, max_tokens=self.args.max_tokens_valid, max_sentences=max_sentences, max_positions=10000000,
                     ignore_invalid_inputs=ignore_invalid_inputs,
                     required_batch_size_multiple=required_batch_size_multiple,
                     seed=seed, num_shards=1, shard_id=0, num_workers=num_workers, epoch=epoch,
