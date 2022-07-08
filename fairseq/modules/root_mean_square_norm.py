@@ -33,4 +33,4 @@ class RMSNorm(nn.Module):
         return x
 
     def extra_repr(self) -> str:
-        return '{number_features}, eps={eps}, affine={affine}'.format(**self.__dict__)
+        return '{num_features}, eps={eps}, affine={affine}'.format(**self.__dict__)
