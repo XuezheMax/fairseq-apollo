@@ -104,7 +104,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
 
-    def relu2_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
+    def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
         if padding_mask is not None:
             # B x K x C
@@ -131,16 +131,22 @@ class MovingAverageGatedAttention(nn.Module):
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3)) / lengths + bias
 
-        if inverse_mask is not None:
-            qk = qk * inverse_mask.unsqueeze(2)
-
-        if attn_mask is not None:
-            qk = qk * attn_mask
-
         if before_attn_fn:
             return qk
 
-        attn_weights = utils.relu2(qk)
+        if self.attention_activation == 'relu2':
+            attn_weights = utils.relu2(qk)
+        elif self.attention_activation == 'laplace':
+            attn_weights = utils.laplace(qk)
+        else:
+            raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
+
+        if inverse_mask is not None:
+            attn_weights = attn_weights * inverse_mask.unsqueeze(2)
+
+        if attn_mask is not None:
+            attn_weights = attn_weights * attn_mask
+
         return attn_weights
 
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -311,10 +317,8 @@ class MovingAverageGatedAttention(nn.Module):
 
         if self.attention_activation == 'softmax':
             attn_weights = self.softmax_attention(q, k, padding_mask, attn_mask, before_attn_fn)
-        elif self.attention_activation == 'relu2':
-            attn_weights = self.relu2_attention(q, k, padding_mask, attn_mask, before_attn_fn)
         else:
-            raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
+            attn_weights = self.element_attention(q, k, padding_mask, attn_mask, before_attn_fn)
 
         if before_attn_fn:
             return attn_weights, v
