@@ -26,8 +26,10 @@ class LinearDecaySchedule(FairseqLRScheduler):
 
         # linearly warmup for the first args.warmup_updates
         if args.warmup_updates > 0:
-            self.warmup_factor = (warmup_end_lr - args.warmup_init_lr) / args.warmup_updates
+            self.warmup_power = args.warmup_power
+            self.warmup_factor = (warmup_end_lr - args.warmup_init_lr) / (args.warmup_updates ** args.warmup_power)
         else:
+            self.warmup_power = 1
             self.warmup_factor = 0
 
         self.end_learning_rate = args.end_learning_rate
@@ -43,6 +45,7 @@ class LinearDecaySchedule(FairseqLRScheduler):
         """Add arguments to the parser for this LR scheduler."""
         parser.add_argument('--warmup-updates', default=0, type=int, metavar='N',
                             help='warmup the learning rate linearly for the first N updates')
+        parser.add_argument('--warmup-power', default=1, type=int, metavar='N', help='the power of warmup')
         parser.add_argument('--warmup-init-lr', default=-1, type=float, metavar='LR',
                             help='initial learning rate during warmup phase; default is args.lr')
         parser.add_argument('--end-learning-rate', default=0.0, type=float)
@@ -64,7 +67,7 @@ class LinearDecaySchedule(FairseqLRScheduler):
     def step_update(self, num_updates):
         """Update the learning rate after each update."""
         if num_updates <= self.args.warmup_updates:
-            self.lr = self.args.warmup_init_lr + num_updates * self.warmup_factor
+            self.lr = self.args.warmup_init_lr + (num_updates ** self.warmup_power) * self.warmup_factor
         elif num_updates >= self.total_num_update:
             self.lr = self.end_learning_rate
         else:
