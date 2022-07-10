@@ -52,7 +52,7 @@ class MegaLanguageModel(FairseqLanguageModel):
         # fmt: off
         parser.add_argument('--activation-fn', choices=utils.get_available_activation_fns(),
                             help='activation function to use')
-        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2'],
+        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'],
                             help='activation function for attention mechanism')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
