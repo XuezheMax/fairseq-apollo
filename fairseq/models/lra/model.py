@@ -123,7 +123,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--activation-fn',
                             choices=utils.get_available_activation_fns(),
                             help='activation function to use')
-        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2'],
+        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'],
                             help='activation function for attention mechanism')
         parser.add_argument('--classifier-activation-fn',
                             choices=utils.get_available_activation_fns(),
@@ -405,7 +405,7 @@ def mega_lra_listop(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 160)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 2002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
@@ -460,7 +460,7 @@ def mega_lra_imdb(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
@@ -503,7 +503,7 @@ def mega_lra_aan(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 2)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 4002)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
@@ -561,16 +561,11 @@ def mega_lra_cifar10(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 320)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.chunk_size = getattr(args, 'chunk_size', 1024)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
-
-
-@register_model_architecture('lra', 'mega_lra_cifar10_ffn')
-def mega_lra_cifar10_ffn(args):
-    mega_lra_cifar10(args)
 
 
 @register_model_architecture('lra', 'transformer_lra_pf32')
@@ -626,28 +621,7 @@ def mega_lra_pf32(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
-    args.max_positions = getattr(args, 'max_positions', 1024)
-    args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
-    base_architecture(args)
-
-
-@register_model_architecture('lra', 'mega_lra_pf32_small')
-def mega_lra_pf32_small(args):
-    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 192)
-    args.z_dim = getattr(args, 'z_dim', 48)
-    args.n_dim = getattr(args, 'n_dim', 16)
-    args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 96)
-    args.norm_type = getattr(args, 'norm_type', 'batchnorm')
-    args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 192)
-    args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
-    args.chunk_size = getattr(args, 'chunk_size', 128)
+    args.chunk_size = getattr(args, 'chunk_size', 1024)
     args.truncation_length = getattr(args, 'truncation_length', 1024)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
@@ -665,17 +639,17 @@ def luna_lra_pf128(args):
 def mega_lra_pf128(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 96)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 128)
     args.z_dim = getattr(args, 'z_dim', 32)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 48)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.norm_type = getattr(args, 'norm_type', 'batchnorm')
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 96)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
-    args.chunk_size = getattr(args, 'chunk_size', 4096)
+    args.chunk_size = getattr(args, 'chunk_size', 128 * 128)
     args.truncation_length = getattr(args, 'truncation_length', 4096)
     args.max_positions = getattr(args, 'max_positions', 128 * 128)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')

@@ -22,7 +22,7 @@ class RMSNorm(nn.Module):
 
     def reset_parameters(self):
         if self.affine:
-            nn.init.constant_(self.scale, 1.0)
+            nn.init.constant_(self.weight, 1.0)
 
     def forward(self, x):
         mean_square = torch.mean(torch.square(x), dim=-1, keepdim=True)
@@ -33,4 +33,4 @@ class RMSNorm(nn.Module):
         return x
 
     def extra_repr(self) -> str:
-        return '{number_features}, eps={eps}, affine={affine}'.format(**self.__dict__)
+        return '{num_features}, eps={eps}, affine={affine}'.format(**self.__dict__)

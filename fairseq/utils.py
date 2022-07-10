@@ -448,11 +448,15 @@ def relu2(x, onnx_trace: bool = False):
         return torch.square(F.relu(x))
 
 
-def softplus2(x, onnx_trace: bool = False):
+# def erf(x):
+#     # return torch.tanh(1.128378 * x + 0.100917 * torch.pow(x, 3))
+#     return torch.erf(x)
+
+def laplace(x, mu=0.707107, sigma=0.282095, onnx_trace: bool = False):
     if onnx_trace:
-        return torch.square(F.softplus(x.float()))
-    else:
-        return torch.square(F.softplus(x))
+        x = x.float()
+    x = (x - mu).div(sigma * math.sqrt(2.0))
+    return 0.5 * (1.0 + torch.erf(x))
 
 
 def softmax(x, dim: int, onnx_trace: bool = False):
