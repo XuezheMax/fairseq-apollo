@@ -33,11 +33,12 @@ def infer_init_method(args, force_distributed=False):
 
     # support torch.distributed.launch
     if all(key in os.environ for key in [
-        'MASTER_ADDR', 'MASTER_PORT', 'WORLD_SIZE', 'RANK'
+        'MASTER_ADDR', 'MASTER_PORT', 'WORLD_SIZE'
     ]):
         args.distributed_init_method = 'env://'
         args.distributed_world_size = int(os.environ['WORLD_SIZE'])
-        args.distributed_rank = int(os.environ['RANK'])
+        args.distributed_rank = int(os.environ['SLURM_PROCID'])
+        args.device_id = int(os.environ.get('SLURM_LOCALID'))
         # processes are created by torch.distributed.launch
         args.distributed_no_spawn = True
 
