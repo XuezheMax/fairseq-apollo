@@ -451,7 +451,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         ):
             if self.attention_activation == 'softmax':
                 self._future_mask = torch.triu(utils.fill_with_neg_inf(torch.zeros(dim, dim)), 1)
-            elif self.attention_activation == 'relu2':
+            elif self.attention_activation in ['relu2', 'laplace']:
                 self._future_mask = torch.tril(torch.ones(dim, dim), 0)
             else:
                 raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
