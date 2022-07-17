@@ -45,7 +45,7 @@ class GatedCrossAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
-        self.scaling = self.zdim ** -0.5
+        self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
         dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
         self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
@@ -143,6 +143,8 @@ class GatedCrossAttention(nn.Module):
             # L2 x L1
             bias = bias[:slen]
 
+        # scaled attention
+        q = q * self.scaling
         # B x L2 x L1
         qk = torch.bmm(q, k.transpose(1, 2)) + bias
 
@@ -217,9 +219,6 @@ class GatedCrossAttention(nn.Module):
             # L1 x B x S
             k = self.k_proj(key)
             v = self.activation(self.v_proj(key))
-
-        # scaled attention
-        q = q * self.scaling
 
         # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
