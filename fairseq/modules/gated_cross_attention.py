@@ -45,7 +45,7 @@ class GatedCrossAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
-        self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
+        self.scaling = self.zdim ** -0.5
 
         dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
         self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
@@ -89,7 +89,7 @@ class GatedCrossAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
 
-    def relu2_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
+    def element_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
         bsz, clen, _ = k.size()
         slen = q.size(1) if pidx is None else pidx + 1
         if key_padding_mask is not None:
@@ -114,13 +114,19 @@ class GatedCrossAttention(nn.Module):
         # B x L2 x L1
         qk = torch.bmm(q, k.transpose(1, 2)) / lengths + bias
 
-        if inverse_mask is not None:
-            qk = qk * inverse_mask.unsqueeze(1)
-
         if before_attn_fn:
             return qk
 
-        attn_weights = utils.relu2(qk)
+        if self.attention_activation == 'relu2':
+            attn_weights = utils.relu2(qk)
+        elif self.attention_activation == 'laplace':
+            attn_weights = utils.laplace(qk)
+        else:
+            raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
+
+        if inverse_mask is not None:
+            attn_weights = attn_weights * inverse_mask.unsqueeze(1)
+
         return attn_weights
 
     def softmax_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
@@ -137,7 +143,6 @@ class GatedCrossAttention(nn.Module):
             # L2 x L1
             bias = bias[:slen]
 
-        q = q * self.scaling
         # B x L2 x L1
         qk = torch.bmm(q, k.transpose(1, 2)) + bias
 
@@ -213,6 +218,9 @@ class GatedCrossAttention(nn.Module):
             k = self.k_proj(key)
             v = self.activation(self.v_proj(key))
 
+        # scaled attention
+        q = q * self.scaling
+
         # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
         if k is not None:
@@ -257,10 +265,8 @@ class GatedCrossAttention(nn.Module):
 
         if self.attention_activation == 'softmax':
             attn_weights = self.softmax_attention(q, k, key_padding_mask, pidx, before_attn_fn)
-        elif self.attention_activation == 'relu2':
-            attn_weights = self.relu2_attention(q, k, key_padding_mask, pidx, before_attn_fn)
         else:
-            raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
+            attn_weights = self.element_attention(q, k, key_padding_mask, pidx, before_attn_fn)
 
         if before_attn_fn:
             return attn_weights, v

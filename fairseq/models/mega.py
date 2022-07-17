@@ -58,7 +58,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         # fmt: off
         parser.add_argument('--activation-fn', choices=utils.get_available_activation_fns(),
                             help='activation function to use')
-        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2'],
+        parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'],
                             help='activation function for attention mechanism')
         parser.add_argument('--dropout', type=float, metavar='D',
                             help='dropout probability')
@@ -655,7 +655,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         ):
             if self.attention_activation == 'softmax':
                 self._future_mask = torch.triu(utils.fill_with_neg_inf(torch.zeros(dim, dim)), 1)
-            elif self.attention_activation == 'relu2':
+            elif self.attention_activation in ['relu2', 'laplace']:
                 self._future_mask = torch.tril(torch.ones(dim, dim), 0)
             else:
                 raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
