@@ -55,7 +55,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
-        self.scaling = self.zdim ** -0.5
+        self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
         dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
         self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
@@ -158,6 +158,8 @@ class MovingAverageGatedAttention(nn.Module):
             # 1 x C
             bias = bias[-1:]
 
+        # scaled attention
+        q = q * self.scaling
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3)) + bias
 
@@ -229,9 +231,6 @@ class MovingAverageGatedAttention(nn.Module):
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
         q, k = torch.unbind(z, dim=2)
-
-        # scaled attention
-        q = q * self.scaling
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
