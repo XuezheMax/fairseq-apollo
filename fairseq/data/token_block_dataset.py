@@ -135,6 +135,7 @@ class TokenBlockDataset(FairseqDataset):
         if epoch == self._cur_epoch:
             return
 
+        self._cur_epoch = epoch
         rng = np.random.RandomState(
             [
                 42,  # magic number
@@ -158,7 +159,6 @@ class TokenBlockDataset(FairseqDataset):
         self._slice_indices = plasma_utils.PlasmaArray(slice_indices)
         self._sizes = plasma_utils.PlasmaArray(self._sizes)
         self._block_to_dataset_index = plasma_utils.PlasmaArray(block_to_dataset_index)
-        self._cur_epoch = epoch
 
     @property
     def slice_indices(self):
