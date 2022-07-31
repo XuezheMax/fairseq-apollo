@@ -219,7 +219,7 @@ class SpeechCommandsDataset(FairseqDataset):
         self.resolution = resolution
 
         self.root = pathlib.Path(path)  # pathlib.Path("./data")
-        base_loc = self.root / "SpeechCommands" / "processed_data"
+        base_loc = self.root / "processed_data"
 
         # import pdb; pdb.set_trace()
 
@@ -244,11 +244,8 @@ class SpeechCommandsDataset(FairseqDataset):
 
         # import pdb; pdb.set_trace()
 
-        if os.path.exists(data_loc):
-        # if False:
-            pass
-        else:
-            # self.download()
+        if not os.path.exists(data_loc):
+            self.download()
             if not self.all_classes:
                 train_X, val_X, test_X, train_y, val_y, test_y = self._process_data(mfcc)
             else:
@@ -319,28 +316,6 @@ class SpeechCommandsDataset(FairseqDataset):
         targets = [s["target"] for s in samples]
         sizes = [len(s) for s in sources]
 
-        # if self.pad:
-        #     target_size = min(max(sizes), self.max_sample_size)
-        # else:
-        #     target_size = min(min(sizes), self.max_sample_size)
-
-        # collated_sources = sources[0].new(len(sources), target_size)
-        # padding_mask = (
-        #     torch.BoolTensor(collated_sources.shape).fill_(False) if self.pad else None
-        # )
-        # for i, (source, size) in enumerate(zip(sources, sizes)):
-        #     diff = size - target_size
-        #     if diff == 0:
-        #         collated_sources[i] = source
-        #     elif diff < 0:
-        #         assert self.pad
-        #         collated_sources[i] = torch.cat(
-        #             [source, source.new_full((-diff,), 0.0)]
-        #         )
-        #         padding_mask[i, diff:] = True
-        #     else:
-        #         collated_sources[i] = self.crop_to_max_size(source, target_size)
-
         def _collate(batch, resolution=1):
             # From https://github.com/pytorch/pytorch/blob/master/torch/utils/data/_utils/collate.py
             elem = batch[0]
@@ -388,13 +363,11 @@ class SpeechCommandsDataset(FairseqDataset):
     #     super().set_epoch(epoch)
 
     def download(self):
-        root = self.root
-        base_loc = root / "SpeechCommands"
+        base_loc = self.root / "SpeechCommands"
         loc = base_loc / "speech_commands.tar.gz"
         if os.path.exists(loc):
             return
-        if not os.path.exists(root):
-            os.mkdir(root)
+
         if not os.path.exists(base_loc):
             os.mkdir(base_loc)
         urllib.request.urlretrieve(

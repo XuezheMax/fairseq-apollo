@@ -3,36 +3,13 @@
 import logging
 import os
 
-import numpy as np
-
-from fairseq import utils
-from fairseq.data import (
-    ConcatSentencesDataset,
-    data_utils,
-    Dictionary,
-    IdDataset,
-    NestedDictionaryDataset,
-    NumSamplesDataset,
-    NumelDataset,
-    OffsetTokensDataset,
-    PixelSequenceDataset,
-    PrependTokenDataset,
-    RawLabelDataset,
-    RightPadDataset,
-    RollDataset,
-    SortDataset,
-    StripTokenDataset,
-    TruncateDataset
-)
-from fairseq.data.shorten_dataset import maybe_shorten_dataset
+from fairseq.data import Dictionary, SpeechCommandsDataset
 from fairseq.tasks import FairseqTask, register_task
-
-from fairseq.data.audio.speech_commands_dataset import SpeechCommandsDataset
 
 logger = logging.getLogger(__name__)
 
-@register_task('sc')
-class SpeechClsTask(FairseqTask):
+@register_task('speech_commands')
+class SpeechCommandsTask(FairseqTask):
     """
     Sentence (or sentence pair) prediction (classification or regression) task.
     Args:
@@ -60,8 +37,6 @@ class SpeechClsTask(FairseqTask):
         parser.add_argument('--sc-dropped-rate', type=float, default=0.0)
         parser.add_argument('--mfcc', action='store_true', default=False)
 
-        # parser.add_argument('--pixel-normalization', type=float, nargs='+', default=None, help='mean and std for pixel normalization.')
-
     def __init__(self, args):
         super().__init__(args)
         if not hasattr(args, 'max_positions'):
@@ -83,7 +58,7 @@ class SpeechClsTask(FairseqTask):
 
     @classmethod
     def setup_task(cls, args, **kwargs):
-        return SpeechClsTask(args)
+        return SpeechCommandsTask(args)
 
     def load_dataset(self, split, combine=False, **kwargs):
         """gtjjjLoad a given dataset split (e.g., train, valid, test)."""
@@ -104,49 +79,6 @@ class SpeechClsTask(FairseqTask):
 
         self.datasets[split] = dataset
         return self.datasets[split]
-
-        # def make_dataset(type):
-        #     split_path = get_path(type, split)
-        #     dataset = PixelSequenceDataset(split_path + '.src', self.normalization)
-        #     return dataset
-
-        # src_ds = make_dataset('input')
-        # with data_utils.numpy_seed(self.args.seed):
-        #     shuffle = np.random.permutation(len(src_ds))
-
-        # src_tokens = TruncateDataset(src_ds, self.args.max_positions)
-        # dataset = {
-        #     'id': IdDataset(),
-        #     'net_input': {
-        #         'src_tokens': src_tokens,
-        #         'src_lengths': NumelDataset(src_tokens, reduce=False),
-        #     },
-        #     'nsentences': NumSamplesDataset(),
-        #     'ntokens': NumelDataset(src_tokens, reduce=True),
-        # }
-
-        # label_path = get_path('label', split) + '.label'
-        # if os.path.exists(label_path):
-        #     label_dataset = RawLabelDataset([int(line.strip()) for i, line in enumerate(open(label_path).readlines())])
-        #     dataset.update(target=label_dataset)
-
-        # nested_dataset = NestedDictionaryDataset(
-        #     dataset,
-        #     sizes=[src_tokens.sizes],
-        # )
-        # if self.args.no_shuffle:
-        #     dataset = nested_dataset
-        # else:
-        #     dataset = SortDataset(
-        #         nested_dataset,
-        #         # shuffle
-        #         sort_order=[shuffle],
-        #     )
-
-        # logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
-
-        # self.datasets[split] = dataset
-        # return self.datasets[split]
 
     def build_model(self, args):
         from fairseq import models
