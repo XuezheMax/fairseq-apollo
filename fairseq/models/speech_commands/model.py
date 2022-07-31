@@ -24,7 +24,7 @@ def Linear(in_features, out_features, bias=True):
     return m
 
 
-@register_model('lra')
+@register_model('sc_raw')
 class SCRawModel(FairseqEncoderModel):
     """
     Class for training a transformer for LRA tasks.
