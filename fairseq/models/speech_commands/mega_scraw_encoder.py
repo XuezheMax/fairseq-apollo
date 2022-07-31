@@ -57,7 +57,6 @@ class MegaSCRawEncoder(nn.Module):
         chunk_size: int = -1,
         norm_type: str = 'layernorm',
         normalize_before: bool = False,
-        normalize_embedding: bool = False,
         feature_dropout: bool = False,
         layerdrop: float = 0.0,
         truncation: int = None,
@@ -78,9 +77,6 @@ class MegaSCRawEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
 
         self.embed_tokens = RealNumberEmbedding(embedding_dim)
-
-        assert not normalize_embedding or not normalize_before
-        self.embed_norm = SequenceNorm(norm_type, embedding_dim, export=export) if normalize_embedding else None
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -169,10 +165,6 @@ class MegaSCRawEncoder(nn.Module):
         padding_mask = None
         # B x T -> B x T x D
         x = self.embed_tokens(tokens)
-
-        if self.embed_norm is not None:
-            x = self.embed_norm(x)
-
         x = self.embedding_dropout(x)
 
         # B x T x C -> T x B x C

@@ -154,7 +154,6 @@ class SCRawEncoder(FairseqEncoder):
                 hidden_dropout=args.act_dropout,
                 norm_type=args.norm_type,
                 normalize_before=args.encoder_normalize_before,
-                normalize_embedding=args.normalize_embedding,
                 feature_dropout=args.feature_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 truncation=getattr(args, 'truncation_length', None),
