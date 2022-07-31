@@ -171,10 +171,10 @@ def base_architecture(args):
     args.layer_type = getattr(args, 'layer_type', 'mega')
 
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 60)
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 120)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', args.encoder_hidden_dim)
-    args.z_dim = getattr(args, 'z_dim', 32)
+    args.z_dim = getattr(args, 'z_dim', 30)
     args.n_dim = getattr(args, 'n_dim', 16)
 
     args.dropout = getattr(args, 'dropout', 0.0)
@@ -189,7 +189,7 @@ def base_architecture(args):
 
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 120)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
