@@ -172,7 +172,7 @@ def base_architecture(args):
 
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 128)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 120)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', args.encoder_hidden_dim)
     args.z_dim = getattr(args, 'z_dim', 32)
     args.n_dim = getattr(args, 'n_dim', 16)
