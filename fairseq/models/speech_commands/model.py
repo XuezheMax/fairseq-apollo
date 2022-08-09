@@ -189,7 +189,7 @@ def base_architecture(args):
 
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
-    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 120)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2 * args.encoder_embed_dim)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
@@ -203,4 +203,13 @@ def base_architecture(args):
 
 @register_model_architecture('sc_raw', 'mega_sc_raw')
 def mega_lra_cifar10(args):
+    base_architecture(args)
+
+
+@register_model_architecture('sc_raw', 'mega_sc_raw_big')
+def mega_lra_cifar10(args):
+    args.encoder_layers = getattr(args, 'encoder_layers', 6)
+    args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 72)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 144)
+    args.z_dim = getattr(args, 'z_dim', 36)
     base_architecture(args)
