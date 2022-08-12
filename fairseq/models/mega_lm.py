@@ -116,6 +116,7 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='normalize embedding for Mega.')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
 
@@ -498,6 +499,7 @@ def base_lm_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
     args.feature_dropout = getattr(args, 'feature_dropout', False)
 
+    args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'simple')
     args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
     args.normalize_before = getattr(args, 'normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
