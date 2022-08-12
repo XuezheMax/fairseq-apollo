@@ -40,6 +40,7 @@ class MegaEncoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.encoder_chunk_size,
             truncation=args.truncation_length,
+            rel_pos_bias=args.rel_pos_bias,
             max_positions=args.max_source_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
@@ -109,6 +110,7 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.decoder_chunk_size,
             truncation=args.truncation_length,
+            rel_pos_bias=args.rel_pos_bias,
             max_positions=args.max_target_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
@@ -131,6 +133,7 @@ class MegaDecoderLayer(nn.Module):
             norm_type=args.normalization_type,
             prenorm=args.normalize_before,
             feature_dropout=args.feature_dropout,
+            rel_pos_bias=args.rel_pos_bias,
             max_positions=max(args.max_target_positions, args.max_source_positions),
         )
 

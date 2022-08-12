@@ -26,7 +26,7 @@ from .sequence_norm import SequenceNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
-from .relative_positional_bias import RelativePositionalBias
+from .relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from .lightweight_convolution import LightweightConv, LightweightConv1dTBC
 from .linearized_convolution import LinearizedConvolution
 from .multihead_attention import MultiheadAttention
@@ -80,7 +80,8 @@ __all__ = [
     'LunarCausalAttention',
     'RealNumberEmbedding',
     'PositionalEmbedding',
-    'RelativePositionalBias',
+    'SimpleRelativePositionalBias',
+    'RotaryRelativePositionalBias',
     'SamePad',
     'ScalarBias',
     'ScaleNorm',

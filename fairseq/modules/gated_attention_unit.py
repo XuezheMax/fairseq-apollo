@@ -13,7 +13,7 @@ from torch.nn import Parameter
 
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.relative_positional_bias import RelativePositionalBias
+from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias
 
 
 @with_incremental_state
@@ -47,7 +47,7 @@ class GatedAttentionUnit(nn.Module):
         self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
-        self.rel_pos_bias = RelativePositionalBias(max_positions)
+        self.rel_pos_bias = SimpleRelativePositionalBias(max_positions)
 
         self.reset_parameters()
 

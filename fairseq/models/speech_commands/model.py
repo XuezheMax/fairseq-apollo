@@ -78,6 +78,7 @@ class SCRawModel(FairseqEncoderModel):
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N', help='encoder embedding dimension')
         parser.add_argument('--max-positions', type=int, help='number of positional embeddings to learn')
+        parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
 
         # Arguments related to sentence level prediction
         parser.add_argument('--sentence-class-num', type=int, metavar='N', help='number of classes for sentence task')
@@ -157,6 +158,7 @@ class SCRawEncoder(FairseqEncoder):
                 feature_dropout=args.feature_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 truncation=getattr(args, 'truncation_length', None),
+                rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp')
             )

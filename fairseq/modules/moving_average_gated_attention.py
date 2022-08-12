@@ -14,7 +14,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
-from fairseq.modules.relative_positional_bias import RelativePositionalBias
+from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.sequence_norm import SequenceNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 
@@ -44,6 +44,7 @@ class MovingAverageGatedAttention(nn.Module):
         prenorm=True,
         norm_affine=True,
         feature_dropout=False,
+        rel_pos_bias='simple',
         max_positions=1024,
         export=False,
     ):
@@ -77,7 +78,13 @@ class MovingAverageGatedAttention(nn.Module):
         self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
-        self.rel_pos_bias = RelativePositionalBias(max_positions if chunk_size < 0 else chunk_size)
+        max_positions = max_positions if chunk_size < 0 else chunk_size
+        if rel_pos_bias == 'simple':
+            self.rel_pos_bias = SimpleRelativePositionalBias(max_positions)
+        elif rel_pos_bias == 'rotary':
+            self.rel_pos_bias = RotaryRelativePositionalBias(zdim, max_positions)
+        else:
+            raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
         self.reset_parameters()
 

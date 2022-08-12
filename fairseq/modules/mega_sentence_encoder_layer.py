@@ -29,10 +29,11 @@ class MegaSentenceEncoderLayer(nn.Module):
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
-        truncation=None,
+        truncation: int = None,
+        rel_pos_bias = 'simple',
         max_positions: int = 1024,
         activation='silu',
-        attention_activation='softmax',
+        attention_activation: str = 'softmax',
         norm_type: str = 'layernorm',
         prenorm: bool = True,
         feature_dropout: bool = False,
@@ -45,7 +46,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         self.mega_layer = self.build_mega_layer(embedding_dim, hidden_dim, z_dim, n_dim,
                                            dropout, attention_dropout, hidden_dropout,
                                            activation, attention_activation,
-                                           chunk_size, truncation, max_positions,
+                                           chunk_size, truncation, rel_pos_bias, max_positions,
                                            norm_type, prenorm, feature_dropout, export)
 
         if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
@@ -58,7 +59,7 @@ class MegaSentenceEncoderLayer(nn.Module):
     def build_mega_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
                          dropout, attention_dropout, hidden_dropout,
                          activation, attention_activation,
-                         chunk_size, truncation, max_positions,
+                         chunk_size, truncation, rel_pos_bias, max_positions,
                          norm_type, prenorm, feature_dropout, export):
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
@@ -70,6 +71,7 @@ class MegaSentenceEncoderLayer(nn.Module):
             hidden_dropout=hidden_dropout,
             chunk_size=chunk_size,
             truncation=truncation,
+            rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
