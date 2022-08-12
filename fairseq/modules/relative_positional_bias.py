@@ -47,7 +47,7 @@ class RotaryRelativePositionalBias(nn.Module):
     def __init__(self, embed_dim, max_positions):
         super().__init__()
         assert embed_dim % 2 == 0
-        self.hdim = embed_dim
+        self.embed_dim = embed_dim
         self.max_positions = max_positions
         self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(max_positions, embed_dim)
         self.alpha  = nn.Parameter(torch.Tensor(1, embed_dim))
@@ -78,10 +78,10 @@ class RotaryRelativePositionalBias(nn.Module):
         return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=1)
 
     def forward(self, seq_len):
-        a = self.rotary(self.alpha.expand(seq_len, self.hdim))
-        b = self.rotary(self.beta.expand(seq_len, self.hdim))
+        a = self.rotary(self.alpha.expand(seq_len, self.embed_dim))
+        b = self.rotary(self.beta.expand(seq_len, self.embed_dim))
         t = torch.einsum('mk,nk->mn', a, b)
         return t
 
     def extra_repr(self) -> str:
-        return 'max positions={}'.format(self.max_positions)
+        return 'dim={}, max positions={}'.format(self.embed_dim, self.max_positions)
