@@ -52,6 +52,7 @@ class RotaryRelativePositionalBias(nn.Module):
         self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(max_positions, embed_dim)
         self.alpha  = nn.Parameter(torch.Tensor(1, embed_dim))
         self.beta = nn.Parameter(torch.Tensor(1, embed_dim))
+        self.register_buffer("_float_tensor", torch.FloatTensor(1))
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -73,6 +74,9 @@ class RotaryRelativePositionalBias(nn.Module):
         if self.sine is None or n > self.sine.size(0):
             self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(n, d)
             self.max_positions = n
+        self.sine = self.sine.to(self._float_tensor)
+        self.cosine = self.cosine.to(self._float_tensor)
+        
         sin = self.sine[:n]
         cos = self.cosine[:n]
         return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=1)
