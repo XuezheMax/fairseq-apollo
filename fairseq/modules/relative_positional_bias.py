@@ -76,7 +76,7 @@ class RotaryRelativePositionalBias(nn.Module):
             self.max_positions = n
         self.sine = self.sine.to(self._float_tensor)
         self.cosine = self.cosine.to(self._float_tensor)
-        
+
         sin = self.sine[:n]
         cos = self.cosine[:n]
         return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=1)

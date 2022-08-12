@@ -179,7 +179,7 @@ class MultiHeadEMA(nn.Module):
         if padding_mask is not None:
             x = x * (1.0 - padding_mask.unsqueeze(1).type_as(x))
 
-        assert not self.bidirectional or incremental_state is None, 'Bidirectional EMV does not support incremental state'
+        assert not self.bidirectional or incremental_state is None, 'Bidirectional EMA does not support incremental state'
         if incremental_state is not None:
             saved_state = self._get_input_buffer(incremental_state)
             if 'prev_state' in saved_state:
