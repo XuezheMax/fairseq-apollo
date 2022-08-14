@@ -33,9 +33,11 @@ def infer_init_method(args, force_distributed=False):
 
     # support torch.distributed.launch
     if all(key in os.environ for key in [
-        'MASTER_ADDR', 'MASTER_PORT', 'WORLD_SIZE'
+        'SLURM_PROCID', 'MASTER_PORT', 'WORLD_SIZE'
     ]):
         args.distributed_init_method = 'env://'
+        hostnames = subprocess.check_output(['scontrol', 'show', 'hostnames', os.environ['SLURM_JOB_NODELIST']])
+        os.environ['MASTER_ADDR'] = hostnames.decode('utf-8').split()[0]
         args.distributed_world_size = int(os.environ['WORLD_SIZE'])
         args.distributed_rank = int(os.environ['SLURM_PROCID'])
         args.device_id = int(os.environ.get('SLURM_LOCALID'))
