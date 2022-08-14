@@ -128,13 +128,6 @@ class MegaLRAEncoder(nn.Module):
         else:
             self.final_norm = None
 
-        self.fc = nn.Sequential(
-            nn.Linear(embedding_dim, embedding_dim),
-            nn.SiLU()
-        )
-        nn.init.normal_(self.fc[0].weight, mean=0.0, std=0.02)
-        nn.init.constant_(self.fc[0].bias, 0.0)
-
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
             embed_tokens = Embedding(vocab_size, embedding_dim, padding_idx)
@@ -237,8 +230,6 @@ class MegaLRAEncoder(nn.Module):
 
         if self.final_norm is not None:
             x = self.final_norm(x)
-
-        x = self.fc(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
