@@ -578,6 +578,7 @@ def mega_lm_adaptive_big_enwik8(args):
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.0)
     args.hidden_dropout = getattr(args, 'hidden_dropout', 0.0)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     base_lm_architecture(args)
 
 
