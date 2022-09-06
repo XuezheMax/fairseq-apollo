@@ -572,6 +572,12 @@ def add_eval_lm_args(parser):
     group.add_argument('--softmax-batch', default=sys.maxsize, type=int, metavar='N',
                        help='if BxT is more than this, will batch the softmax over vocab to this amount of tokens'
                             ' in order to fit into GPU memory')
+
+    # arguments for mega lm
+    group.add_argument('--test-chunk-size', type=int, default=1024, metavar='N',
+                       help='attention chunk size at test time')
+    group.add_argument('--chunk-nums', type=int, default=1, metavar='N',
+                       help='process this number of chunks each time')
     # fmt: on
 
 
