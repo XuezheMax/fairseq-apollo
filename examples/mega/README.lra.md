@@ -1,4 +1,4 @@
-# Training Luna on LRA tasks
+# Mega on LRA tasks
 
 ## LRA Data
 
