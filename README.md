@@ -2,6 +2,10 @@
 
 This is the code we used in the following papers. This folder is based on the [fairseq package v0.9.0](https://github.com/pytorch/fairseq/tree/v0.9.0). 
 
+>[Mega: Moving Average Equipped Gated Attention]()
+
+>Xuezhe Ma*, Chunting Zhou*, Xiang Kong, Junxian He, Liangke Gui, Graham Neubig, Jonathan May, Luke Zettlemoyer
+
 >[Apollo: An Adaptive Parameter-wise Diagonal Quasi-Newton Method for Nonconvex Stochastic Optimization](https://arxiv.org/abs/2009.13586)
 
 >Xuezhe Ma
@@ -12,7 +16,9 @@ This is the code we used in the following papers. This folder is based on the [f
 
 > NeurIPS 2021 
 
-## Examples and pre-trained models
+## Examples
+
+* [Mega: Moving Average Equipped Gated Attention](https://github.com/XuezheMax/fairseq-apollo/tree/master/examples/mega)
 
 * [Neural Machine Translation with Apollo Optimizer (Ma, 2020)](https://github.com/XuezheMax/fairseq-apollo/tree/master/examples/apollo)
 

@@ -1,0 +1,28 @@
+# Mega: Moving Average Equipped Gated Attention
+
+## Intrudoction
+Luna is an efficient attention mechanism, which uses two nested attention functions to approximate the regular softmax attention in Transformer.
+See the associated paper for more details.
+
+## Models Checkpoints
+Task | Description | # params | Download
+---|---|---|---
+`LRA` | Mega on LRA tasks | -- | [mega.lra.zip](https://drive.google.com/file/d/16waj3AslaTHuCxokXJFFuRwygi8P9Wd4/view?usp=sharing)
+`WMT'14 (En-De)` | Mega-base on WMT'14 En-De | 67M | [meta.wmt14ende.base.zip]()
+`WMT'14 (De-En)` | Mega-base on WMT'14 De-En | 67M | [meta.wmt14deen.base.zip]()
+`SC-Raw` | Mega-base on raw Speech Commands | 300k | [meta.sc.base.zip]()
+`SC-Raw` | Mega-big on raw Speech Commands | 476k | [meta.sc.base.zip]()
+`WikiText-103` | Language modeling on WikiText-103 | 252M |[meta.wiki103.zip]()
+`Enwiki8` | Language modeling on Enwiki8 | 39M | [meta.enwiki8.zip]()
+
+
+## Experiments
+
+- [Long Range Arena](README.lra.md)
+- [Machine Translation](README.mt.md)
+- [Speech Classification](README.sc.md)
+- [Language Modeling](README.lm.md)
+- [ImageNet](https://github.com/shawnkx/mega_vit)
+
+
+## Citation
