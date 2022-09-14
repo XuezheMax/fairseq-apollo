@@ -4,7 +4,7 @@
 Luna is an efficient attention mechanism, which uses two nested attention functions to approximate the regular softmax attention in Transformer.
 See the associated paper for more details.
 
-## Models Checkpoints
+## [Models Checkpoints](https://drive.google.com/drive/folders/1er9ZyeXHmvHPk_lvLExlx25yuHt_ok3l?usp=sharing)
 Task | Description | # params | Download
 ---|---|---|---
 `LRA` | Mega on LRA tasks | -- | [mega.lra.zip](https://drive.google.com/file/d/16waj3AslaTHuCxokXJFFuRwygi8P9Wd4/view?usp=sharing)
