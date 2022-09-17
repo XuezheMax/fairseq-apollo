@@ -50,7 +50,7 @@ class RotaryRelativePositionalBias(nn.Module):
         self.embed_dim = embed_dim
         self.max_positions = max_positions
         self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(max_positions, embed_dim)
-        self.alpha  = nn.Parameter(torch.Tensor(1, embed_dim))
+        self.alpha = nn.Parameter(torch.Tensor(1, embed_dim))
         self.beta = nn.Parameter(torch.Tensor(1, embed_dim))
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
         self.reset_parameters()

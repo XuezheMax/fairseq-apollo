@@ -70,7 +70,7 @@ def main(parsed_args, **unused_kwargs):
 
     use_cuda = torch.cuda.is_available() and not parsed_args.cpu
 
-    parsed_args.decoder_chunk_size = 1024  # a hack
+    parsed_args.decoder_chunk_size = parsed_args.test_chunk_size # a hack
     task = tasks.setup_task(parsed_args)
 
     # Load ensemble
@@ -217,7 +217,7 @@ def main(parsed_args, **unused_kwargs):
 
     wps_meter = TimeMeter()
 
-    chunk_size = args.decoder_chunk_size
+    chunk_size = args.decoder_chunk_size * args.chunk_nums
     for doc_sample in progress:
         if 'net_input' not in doc_sample:
             continue
