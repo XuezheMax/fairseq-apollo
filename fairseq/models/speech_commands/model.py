@@ -204,12 +204,17 @@ def base_architecture(args):
 
 
 @register_model_architecture('sc_raw', 'mega_sc_raw')
-def mega_lra_cifar10(args):
+def mega_lra_sc(args):
     base_architecture(args)
 
 
+@register_model_architecture('sc_raw', 'mega_sc_raw_base')
+def mega_lra_sc_base(args):
+    mega_lra_sc(args)
+
+
 @register_model_architecture('sc_raw', 'mega_sc_raw_big')
-def mega_lra_cifar10(args):
+def mega_lra_sc_big(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 72)
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 144)

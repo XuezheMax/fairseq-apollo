@@ -9,9 +9,7 @@ Download the [processed data](https://drive.google.com/drive/folders/18N4cG0mGyE
 
 ## Train Mega on a LRA task
 
-**Note:**
-
-The cmd-args and hyperparams are tested on one Nvidia `A100` GPU with `40GB` of memory for each task, except `Path-X` which is tested on `8 x A100` GPUs.
+**Note:** The cmd-args and hyperparams are tested on one Nvidia `A100` GPU with `40GB` of memory for each task, except `Path-X` which is tested on `8 x A100` GPUs.
 
 
 ```bash
