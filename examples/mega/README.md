@@ -1,5 +1,7 @@
 # Mega: Moving Average Equipped Gated Attention
 
+https://arxiv.org/abs/2209.10655
+
 ## Intrudoction
 Luna is an efficient attention mechanism, which uses two nested attention functions to approximate the regular softmax attention in Transformer.
 See the associated paper for more details.

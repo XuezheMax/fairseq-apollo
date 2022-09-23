@@ -2,13 +2,17 @@
 
 This is the code we used in the following papers. This folder is based on the [fairseq package v0.9.0](https://github.com/pytorch/fairseq/tree/v0.9.0). 
 
->[Mega: Moving Average Equipped Gated Attention]()
+>[Mega: Moving Average Equipped Gated Attention](https://arxiv.org/abs/2209.10655)
 
 >Xuezhe Ma*, Chunting Zhou*, Xiang Kong, Junxian He, Liangke Gui, Graham Neubig, Jonathan May, Luke Zettlemoyer
+
+> Preprint 
 
 >[Apollo: An Adaptive Parameter-wise Diagonal Quasi-Newton Method for Nonconvex Stochastic Optimization](https://arxiv.org/abs/2009.13586)
 
 >Xuezhe Ma
+
+> Preprint 
 
 >[Luna: Linear Unified Nested Attention](https://arxiv.org/abs/2106.01540)
 
@@ -28,6 +32,13 @@ This is the code we used in the following papers. This folder is based on the [f
 ## Citation
 
 ```bibtex
+@article{ma2022mega,
+  title={Mega: Moving Average Equipped Gated Attention},
+  author={Ma, Xuezhe and Zhou, Chunting and Kong, Xiang and He, Junxian and Gui, Liangke and Neubig, Graham and May, Jonathan and Zettlemoyer, Luke},
+  journal={arXiv preprint arxiv.2209.10655},
+  year={2022}
+}
+
 @article{ma2020apollo,
   title={Apollo: An adaptive parameter-wise diagonal quasi-newton method for nonconvex stochastic optimization},
   author={Ma, Xuezhe},
