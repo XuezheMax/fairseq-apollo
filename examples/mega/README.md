@@ -2,10 +2,6 @@
 
 https://arxiv.org/abs/2209.10655
 
-## Intrudoction
-Luna is an efficient attention mechanism, which uses two nested attention functions to approximate the regular softmax attention in Transformer.
-See the associated paper for more details.
-
 ## [Models Checkpoints](https://drive.google.com/drive/folders/1er9ZyeXHmvHPk_lvLExlx25yuHt_ok3l?usp=sharing)
 Task | Description | # params | Download
 ---|---|---|---
@@ -28,3 +24,12 @@ Task | Description | # params | Download
 
 
 ## Citation
+
+```bibtex
+@article{ma2022mega,
+  title={Mega: Moving Average Equipped Gated Attention},
+  author={Ma, Xuezhe and Zhou, Chunting and Kong, Xiang and He, Junxian and Gui, Liangke and Neubig, Graham and May, Jonathan and Zettlemoyer, Luke},
+  journal={arXiv preprint arxiv.2209.10655},
+  year={2022}
+}
+```
