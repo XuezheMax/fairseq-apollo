@@ -1,6 +1,8 @@
 # Mega: Moving Average Equipped Gated Attention
 
-https://arxiv.org/abs/2209.10655
+## Official Repository
+The [official repository](https://github.com/facebookresearch/mega) of [Mega](https://arxiv.org/abs/2209.10655) is hosted in the [GitHub of Meta AI Research](https://github.com/facebookresearch/)
+
 
 ## [Models Checkpoints](https://drive.google.com/drive/folders/1er9ZyeXHmvHPk_lvLExlx25yuHt_ok3l?usp=sharing)
 Task | Description | # params | Download
@@ -20,7 +22,7 @@ Task | Description | # params | Download
 - [Machine Translation](README.mt.md)
 - [Speech Classification](README.sc.md)
 - [Language Modeling](README.lm.md)
-- [ImageNet](https://github.com/shawnkx/mega_vit)
+- [ImageNet](https://github.com/xuezhemax/mega-image)
 
 
 ## Citation
