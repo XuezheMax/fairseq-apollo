@@ -31,7 +31,6 @@ class S4D(nn.Module):
         self.dt_max = 0.1
         self.dt_min = 0.001
         self.disc = disc
-        self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.log_dt = nn.Parameter(Tensor(kernel_dim, 1))
@@ -107,7 +106,7 @@ class S4D(nn.Module):
         kernel = torch.exp(vander)
 
         # D x L
-        self._kernel = torch.einsum('dnl,dn->dl', kernel, p * self.scale).real
+        self._kernel = 2.0 * torch.einsum('dnl,dn->dl', kernel, p).real
         return self._kernel
 
     def kernel(self, length: int):
