@@ -106,7 +106,7 @@ class S4D(nn.Module):
         kernel = torch.exp(vander)
 
         # D x L
-        self._kernel = torch.einsum('dnl,dn->dl', kernel, p)
+        self._kernel = 2.0 * torch.einsum('dnl,dn->dl', kernel, p).real
         return self._kernel
 
     def kernel(self, length: int):
