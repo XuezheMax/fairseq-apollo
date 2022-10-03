@@ -53,7 +53,7 @@ class S4D(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        log_dt = torch.rand(self.embed_dim, 1) * (math.log(self.dt_max) - math.log(self.dt_min)) + math.log(self.dt_min)
+        log_dt = torch.randn_like(self.log_dt) * (math.log(self.dt_max) - math.log(self.dt_min)) + math.log(self.dt_min)
         with torch.no_grad():
             self.log_dt.copy_(log_dt)
 
