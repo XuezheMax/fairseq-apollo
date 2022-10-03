@@ -29,6 +29,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
+        moving_layer='ema',
         truncation: int = None,
         rel_pos_bias = 'simple',
         max_positions: int = 1024,
@@ -44,10 +45,11 @@ class MegaSentenceEncoderLayer(nn.Module):
         self.embedding_dim = embedding_dim
         self.chunk_size = chunk_size
         self.mega_layer = self.build_mega_layer(embedding_dim, hidden_dim, z_dim, n_dim,
-                                           dropout, attention_dropout, hidden_dropout,
-                                           activation, attention_activation,
-                                           chunk_size, truncation, rel_pos_bias, max_positions,
-                                           norm_type, prenorm, feature_dropout, export)
+                                                dropout, attention_dropout, hidden_dropout,
+                                                activation, attention_activation,
+                                                chunk_size, moving_layer, truncation,
+                                                rel_pos_bias, max_positions,
+                                                norm_type, prenorm, feature_dropout, export)
 
         if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
             self.nffn = self.build_nffn_layer(embedding_dim, ffn_hidden_dim,
@@ -59,7 +61,8 @@ class MegaSentenceEncoderLayer(nn.Module):
     def build_mega_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
                          dropout, attention_dropout, hidden_dropout,
                          activation, attention_activation,
-                         chunk_size, truncation, rel_pos_bias, max_positions,
+                         chunk_size, moving_layer, truncation,
+                         rel_pos_bias, max_positions,
                          norm_type, prenorm, feature_dropout, export):
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
@@ -70,6 +73,7 @@ class MegaSentenceEncoderLayer(nn.Module):
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             chunk_size=chunk_size,
+            moving_layer=moving_layer,
             truncation=truncation,
             rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,

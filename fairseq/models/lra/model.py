@@ -92,6 +92,7 @@ class LRAModel(FairseqEncoderModel):
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
+        parser.add_argument('--moving-layer', choices=['ema', 's4d', 'cema'])
 
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
@@ -304,6 +305,7 @@ class LRAEncoder(FairseqEncoder):
                 normalize_embedding=args.normalize_embedding,
                 feature_dropout=args.feature_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
+                moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,

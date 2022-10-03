@@ -17,6 +17,7 @@ from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropou
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.sequence_norm import SequenceNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
+from fairseq.modules.s4d import S4D
 
 
 @with_incremental_state
@@ -39,6 +40,7 @@ class MovingAverageGatedAttention(nn.Module):
         attention_activation='softmax',
         bidirectional=False,
         chunk_size=-1,
+        moving_layer='ema',
         truncation=None,
         norm_type='layernorm',
         prenorm=True,
@@ -68,7 +70,12 @@ class MovingAverageGatedAttention(nn.Module):
         self.prenorm = prenorm
         self.norm = SequenceNorm(norm_type, embed_dim, affine=norm_affine, export=export)
 
-        self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
+        if moving_layer == 'ema':
+            self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
+        elif moving_layer == 's4d':
+            self.move = S4D(embed_dim, ndim=ndim, bidirectional=bidirectional)
+        else:
+            raise ValueError("Unknown moving type: {}".format(moving_layer))
 
         self.v_proj = nn.Linear(embed_dim, hdim)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
