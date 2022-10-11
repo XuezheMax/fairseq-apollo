@@ -40,7 +40,6 @@ class S4D(nn.Module):
         self.B = nn.Parameter(Tensor(kernel_dim, ndim, 2))
         self.C = nn.Parameter(Tensor(kernel_dim, ndim, 2))
         self.D = nn.Parameter(Tensor(embed_dim))
-        self._kernel = None
 
         self.reset_parameters()
 
@@ -111,14 +110,7 @@ class S4D(nn.Module):
         return self._kernel
 
     def kernel(self, length: int):
-        if self.training:
-            return self.compute_kernel(length)
-        elif self._kernel is None:
-            return self.compute_kernel(length)
-        elif self._kernel.size(-1) < length:
-            return self.compute_kernel(length)
-        else:
-            return self._kernel[..., :length]
+        return self.compute_kernel(length)
 
     def step(self, x, length, hx=None):
         if length == 1:
