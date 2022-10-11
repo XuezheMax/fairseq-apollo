@@ -86,7 +86,7 @@ class MultiHeadComplexEMA(nn.Module):
         c = torch.cos(theta) + 1j * torch.sin(theta)
         # coeffs
         p = p * c
-        q = q * c
+        q = q * c.conj()
         # D x N
         beta = _r2c(self.beta)
         gamma = _r2c(self.gamma) * self.scale
