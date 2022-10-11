@@ -39,7 +39,7 @@ class MultiHeadComplexEMA(nn.Module):
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
-        self.theta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.theta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
@@ -82,12 +82,13 @@ class MultiHeadComplexEMA(nn.Module):
         p = torch.sigmoid(self.delta)
         alpha = torch.sigmoid(self.alpha)
         q = 1.0 - p * alpha
-        # D x N x 1
+        # D x N x 2
         theta = torch.tanh(self.theta) * (math.pi * 0.5)
-        c = torch.cos(theta) + 1j * torch.sin(theta)
+        # D x N x 1
+        c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
         # coeffs
-        p = p * c
-        q = q * c.conj()
+        p = p * c1
+        q = q * c2
         # D x N
         beta = _r2c(self.beta)
         gamma = _r2c(self.gamma) * self.scale
