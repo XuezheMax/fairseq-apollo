@@ -70,10 +70,8 @@ class MultiHeadComplexEMA(nn.Module):
                 val.index_fill_(0, idx, -1.0)
                 val[:, 1] = 0
             self.beta.normal_(mean=0.0, std=0.02).add_(val)
-            # gamma
+            # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
-            self.gamma[:, :, 1] = 0.
-            # omega
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
