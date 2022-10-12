@@ -40,7 +40,7 @@ class MultiHeadComplexEMA(nn.Module):
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
-        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
+        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
@@ -64,12 +64,11 @@ class MultiHeadComplexEMA(nn.Module):
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
             nn.init.normal_(self.theta, mean=0.0, std=0.2)
             # beta [1, -1, 1, -1, ...] seems more stable.
-            val = torch.ones(self.ndim, 2)
+            val = torch.ones(self.ndim, 1)
             if self.ndim > 1:
                 idx = torch.tensor(list(range(1, self.ndim, 2)))
                 val.index_fill_(0, idx, -1.0)
             self.beta.normal_(mean=0.0, std=0.02).add_(val)
-            self.beta[:, :, 1] = 0.
             # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
@@ -87,21 +86,20 @@ class MultiHeadComplexEMA(nn.Module):
         # D x N x 1
         c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
         # coeffs
-        p = p * c1
+        p = (p * c1) * self.beta
         q = q * c2
         # D x N
-        beta = _r2c(self.beta)
         gamma = _r2c(self.gamma) * self.scale
-        return p, q, beta, gamma
+        return p, q, gamma
 
     def _compute_kernel(self, length: int):
         self._kernel = None
         # D x N x 1
-        p, q, beta, gamma = self._calc_coeffs()
+        p, q, gamma = self._calc_coeffs()
         # D x N x L
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
         # D x N x L
-        kernel = (p * beta.unsqueeze(2)) * torch.exp(vander)
+        kernel = p * torch.exp(vander)
         # D x L
         return torch.einsum('dnl,dn->dl', kernel, gamma).real
 
@@ -127,7 +125,7 @@ class MultiHeadComplexEMA(nn.Module):
             return self.one_step(x, hx=hx)
 
         # D x N x 1
-        p, q, beta, gamma = self.coeffs()
+        p, q, gamma = self.coeffs()
         # D x N x L+1
         vander = torch.arange(length + 1).to(p).view(1, 1, length + 1) * torch.log(q)
         vander = torch.exp(vander)
@@ -143,7 +141,7 @@ class MultiHeadComplexEMA(nn.Module):
 
         # D x N x L
         vander = vander[:, :, :-1]
-        kernel = (p * beta.unsqueeze(2)) * vander
+        kernel = p * vander
         k = torch.einsum('dnl,dn->dl', kernel, gamma).real
 
         k_f = torch.fft.rfft(k.float(), n=2 * length)
@@ -161,9 +159,9 @@ class MultiHeadComplexEMA(nn.Module):
         return out.permute(2, 0, 1), h
 
     def one_step(self, x, hx=None):
-        p, q, beta, gamma = self.coeffs()
+        p, q, gamma = self.coeffs()
         # (D x N) x (B x D x 1) -> B x D x N
-        h = (p * beta.unsqueeze(2)).squeeze(-1) * x
+        h = p.squeeze(-1) * x
         if hx is not None:
             h = h + q.squeeze(-1) * hx
         # B x D
