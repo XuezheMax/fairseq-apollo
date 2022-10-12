@@ -34,7 +34,7 @@ class MultiHeadComplexEMA(nn.Module):
         self.ndim = ndim
         self.bidirectional = bidirectional
         self.truncation = truncation
-        self.scale = math.sqrt(1.0 / self.ndim)
+        self.scale = math.sqrt(0.5 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
@@ -68,10 +68,12 @@ class MultiHeadComplexEMA(nn.Module):
             if self.ndim > 1:
                 idx = torch.tensor(list(range(1, self.ndim, 2)))
                 val.index_fill_(0, idx, -1.0)
-                val[:, 1] = 0
             self.beta.normal_(mean=0.0, std=0.02).add_(val)
-            # gamma & omega
+            self.beta[:, :, 1] = 0.
+            # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
+            self.gamma[:, :, 1] = 0.
+            # omega
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
