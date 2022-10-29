@@ -37,9 +37,9 @@ class MultiHeadComplexEMA(nn.Module):
         self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
-        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
-        self.theta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.theta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
@@ -60,10 +60,10 @@ class MultiHeadComplexEMA(nn.Module):
     def reset_parameters(self):
         with torch.no_grad():
             # delta & alpha
-            nn.init.normal_(self.delta, mean=0.0, std=0.2)
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+            nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # theta
-            nn.init.normal_(self.theta, mean=0.0, std=0.02)
+            nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # beta [1, -1, 1, -1, ...] seems more stable.
             val = torch.ones(self.ndim, 1)
             if self.ndim > 1:
@@ -79,15 +79,16 @@ class MultiHeadComplexEMA(nn.Module):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        p = torch.sigmoid(self.delta)
-        alpha = torch.sigmoid(self.alpha)
-        q = 1.0 - p * alpha
+        p = torch.sigmoid(self.alpha)
+        delta = torch.sigmoid(self.delta)
+        q = 1.0 - p * delta
+        # D x N x 2
+        theta = torch.tanh(self.theta * self.scale) * (math.pi * 0.5)
         # D x N x 1
-        theta = torch.tanh(self.theta) * (math.pi * 0.5)
-        c = torch.cos(theta) + 1j * torch.sin(theta)
+        c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
         # coeffs
-        p = (p * self.beta) * c
-        q = q * c.conj()
+        p = (p * c1) * self.beta
+        q = q * c2
         # D x N
         gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma

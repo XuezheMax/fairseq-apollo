@@ -36,8 +36,8 @@ class MultiHeadEMA(nn.Module):
         self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
-        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
@@ -58,8 +58,8 @@ class MultiHeadEMA(nn.Module):
     def reset_parameters(self):
         with torch.no_grad():
             # delta & alpha
-            nn.init.normal_(self.delta, mean=0.0, std=0.2)
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+            nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # beta [1, -1, 1, -1, ...] seems more stable.
             val = torch.ones(self.ndim, 1)
             if self.ndim > 1:
@@ -73,9 +73,9 @@ class MultiHeadEMA(nn.Module):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        p = torch.sigmoid(self.delta)
-        alpha = torch.sigmoid(self.alpha)
-        q = 1.0 - p * alpha
+        p = torch.sigmoid(self.alpha)
+        delta = torch.sigmoid(self.delta)
+        q = 1.0 - p * delta
         return p, q
 
     def _compute_kernel(self, length: int):
