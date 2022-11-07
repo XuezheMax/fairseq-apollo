@@ -26,13 +26,44 @@ DEFAULT_MAX_TARGET_POSITIONS = 1024
 @register_model('transformer_xl_lm')
 class TransformerXLLanguageModel(FairseqLanguageModel):
 
-    def __init__(self, decoder):
-        super().__init__(decoder)
+    def __init__(self, args, decoder):
+        self.args = args
+        self.supports_align_args = True
 
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""
         # fmt: off
+        parser.add_argument('--dropout', type=float, metavar='D',
+                            help='dropout probability')
+        parser.add_argument('--attention-dropout', type=float, metavar='D',
+                            help='dropout probability for attention weights')
+
+        parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
+                            help='path to pre-trained decoder embedding')
+        parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
+                            help='decoder embedding dimension')
+        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+                            help='decoder embedding dimension for FFN')
+        parser.add_argument('--decoder-layers', type=int, metavar='N',
+                            help='num decoder layers')
+
+        parser.add_argument('--decoder-input-dim', type=int, metavar='N',
+                            help='decoder input dimension')
+        parser.add_argument('--share-decoder-input-output-embed', action='store_true',
+                            help='share decoder input and output embeddings')
+
+        parser.add_argument('--no-scale-embedding', action='store_true',
+                            help='if True, dont scale embeddings')
+        parser.add_argument('--normalize-before', action='store_true',
+                            help='apply normalization layer before each encoder block')
+
+        parser.add_argument('--same_length', action='store_true', 
+                            help='use the same attn length for all tokens')
+        parser.add_argument('--clamp_len', type=int, default=-1,
+                            help='use the same pos embeddings after clamp_len')
+
+        # fmt: on
 
     @classmethod
     def build_model(cls, args, task):
@@ -42,27 +73,50 @@ class TransformerXLLanguageModel(FairseqLanguageModel):
         base_lm_architecture(args)
 
         if getattr(args, 'max_target_positions', None) is None:
-            args.max_target_positions = getattr(args, 'tokens_per_sample', DEFAULT_MAX_TARGET_POSITIONS)
-
+            args.max_target_positions = getattr(args, 'max_target_positions', DEFAULT_MAX_TARGET_POSITIONS)
+        
+        src_dict = task.source_dictionary
         embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_input_dim)
-        decoder = MemTransformerLM(args, task.target_dictionary, embed_tokens)
-        return cls(decoder)
+        decoder = MemTransformerLM(args, src_dict, embed_tokens)
+        return cls(args, decoder)
 
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
         embed_tokens = Embedding(len(dictionary), embed_dim, dictionary.pad())
         return embed_tokens
+    
+    def forward(
+        self,
+        src_tokens,
+        mems,
+    ):
+        """
+        Run the forward pass for an encoder-decoder model.
+
+        Copied from the base class, but without ``**kwargs``,
+        which are not supported by TorchScript.
+        """
+        decoder_out = self.decoder(
+            src_tokens,
+            mems,
+        )
+        return decoder_out
+
 
 
 class MemTransformerLM(FairseqDecoder):
     def __init__(self, args, dictionary, embed_tokens):
-        super(MemTransformerLM, self).__init__(dictionary)
+        self.args = args
+        super().__init__(dictionary)
+        self.register_buffer("version", torch.Tensor([3]))
+        self._future_mask = torch.empty(0)
 
         d_embed = embed_tokens.embedding_dim
         self.d_embed = d_embed
         self.d_model = d_embed
         self.n_head = args.decoder_attention_heads
         self.d_head = self.d_embed // self.n_head
+        self.d_inner = args.decoder_ffn_embed_dim
 
         self.embed_tokens = embed_tokens
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(d_embed)
@@ -72,41 +126,23 @@ class MemTransformerLM(FairseqDecoder):
 
         self.drop = nn.Dropout(args.dropout)
 
-        self.n_layer = n_layer
+        self.n_layer = args.decoder_layers
 
-        self.tgt_len = tgt_len
-        self.mem_len = mem_len
-        self.ext_len = ext_len
-        self.max_klen = tgt_len + ext_len + mem_len
+        self.tgt_len = args.tgt_len
+        self.mem_len = args.mem_len
+        self.ext_len = 0
+        self.max_klen = args.tgt_len + self.ext_len + args.mem_len
 
-        self.attn_type = attn_type
-
-        pre_lnorm = args.decoder_normalize_before
+        pre_lnorm = args.normalize_before
 
         self.layers = nn.ModuleList()
-        if attn_type == 0: # the default attention
-            for i in range(n_layer):
-                self.layers.append(
-                    RelPartialLearnableDecoderLayer(
-                        n_head, d_model, d_head, d_inner, dropout,
-                        tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
-                )
-        elif attn_type == 1: # learnable embeddings
-            for i in range(n_layer):
-                self.layers.append(
-                    RelLearnableDecoderLayer(
-                        n_head, d_model, d_head, d_inner, dropout,
-                        tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
-                )
-        elif attn_type in [2, 3]: # absolute embeddings
-            for i in range(n_layer):
-                self.layers.append(
-                    DecoderLayer(
-                        n_head, d_model, d_head, d_inner, dropout,
-                        dropatt=dropatt, pre_lnorm=pre_lnorm)
-                )
+        for i in range(self.n_layer):
+            self.layers.append(
+                RelPartialLearnableDecoderLayer(
+                    self.n_head, self.d_model, self.d_head, self.d_inner, args.dropout,
+                    tgt_len=self.tgt_len, ext_len=self.ext_len, mem_len=self.mem_len,
+                    dropatt=args.attention_dropout, pre_lnorm=pre_lnorm)
+            )
 
         self.output_projection = None
         if self.share_input_output_embed:
@@ -120,8 +156,8 @@ class MemTransformerLM(FairseqDecoder):
             self.output_projection = nn.Linear(self.output_embed_dim, len(dictionary), bias=False)
             nn.init.normal_(self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5)
 
-        self.same_length = same_length
-        self.clamp_len = clamp_len
+        self.same_length = args.same_length
+        self.clamp_len = args.clamp_len
 
         self._create_params()
 
@@ -129,20 +165,12 @@ class MemTransformerLM(FairseqDecoder):
         self.sample_softmax = -1
 
     def _create_params(self):
-        if self.attn_type == 0: # default attention
-            self.pos_emb = PositionalEmbedding(self.d_model)
-            self.r_w_bias = nn.Parameter(torch.Tensor(self.n_head, self.d_head))
-            self.r_r_bias = nn.Parameter(torch.Tensor(self.n_head, self.d_head))
-        elif self.attn_type == 1: # learnable
-            self.r_emb = nn.Parameter(torch.Tensor(self.n_layer, self.max_klen, self.n_head, self.d_head))
-            self.r_w_bias = nn.Parameter(torch.Tensor(self.n_layer, self.n_head, self.d_head))
-            self.r_bias = nn.Parameter(torch.Tensor(self.n_layer, self.max_klen, self.n_head))
-        elif self.attn_type == 2: # absolute standard
-            self.pos_emb = PositionalEmbedding(self.d_model)
-        elif self.attn_type == 3: # absolute deeper SA
-            self.r_emb = nn.Parameter(torch.Tensor(self.n_layer, self.max_klen, self.n_head, self.d_head))
+        self.pos_emb = PositionalEmbedding(self.d_model)
+        self.r_w_bias = nn.Parameter(torch.Tensor(self.n_head, self.d_head))
+        self.r_r_bias = nn.Parameter(torch.Tensor(self.n_head, self.d_head))
 
     def reset_length(self, tgt_len, ext_len, mem_len):
+        # not used, use the same set of length for both training and eval
         self.tgt_len = tgt_len
         self.mem_len = mem_len
         self.ext_len = ext_len
@@ -200,76 +228,26 @@ class MemTransformerLM(FairseqDecoder):
             dec_attn_mask = torch.triu(word_emb.new_ones(qlen, klen), diagonal=1+mlen).byte()[:,:,None]
 
         hids = []
-        if self.attn_type == 0: # default
-            pos_seq = torch.arange(klen-1, -1, -1.0, device=word_emb.device, dtype=word_emb.dtype)
-            if self.clamp_len > 0:
-                pos_seq.clamp_(max=self.clamp_len)
-            pos_emb = self.pos_emb(pos_seq)
+        pos_seq = torch.arange(klen-1, -1, -1.0, device=word_emb.device, dtype=word_emb.dtype)
+        if self.clamp_len > 0:
+            pos_seq.clamp_(max=self.clamp_len)
+        pos_emb = self.pos_emb(pos_seq)
 
-            core_out = self.drop(word_emb)
-            pos_emb = self.drop(pos_emb)
+        core_out = self.drop(word_emb)
+        pos_emb = self.drop(pos_emb)
 
+        hids.append(core_out)
+        for i, layer in enumerate(self.layers):
+            mems_i = None if mems is None else mems[i]
+            core_out = layer(core_out, pos_emb, self.r_w_bias, self.r_r_bias, dec_attn_mask=dec_attn_mask, mems=mems_i)
             hids.append(core_out)
-            for i, layer in enumerate(self.layers):
-                mems_i = None if mems is None else mems[i]
-                core_out = layer(core_out, pos_emb, self.r_w_bias, self.r_r_bias, dec_attn_mask=dec_attn_mask, mems=mems_i)
-                hids.append(core_out)
-        elif self.attn_type == 1: # learnable
-            core_out = self.drop(word_emb)
-            hids.append(core_out)
-            for i, layer in enumerate(self.layers):
-                if self.clamp_len > 0:
-                    r_emb = self.r_emb[i][-self.clamp_len :]
-                    r_bias = self.r_bias[i][-self.clamp_len :]
-                else:
-                    r_emb, r_bias = self.r_emb[i], self.r_bias[i]
-
-                mems_i = None if mems is None else mems[i]
-                core_out = layer(core_out, r_emb, self.r_w_bias[i], r_bias, dec_attn_mask=dec_attn_mask, mems=mems_i)
-                hids.append(core_out)
-        elif self.attn_type == 2: # absolute
-            pos_seq = torch.arange(klen - 1, -1, -1.0, device=word_emb.device, dtype=word_emb.dtype)
-            if self.clamp_len > 0:
-                pos_seq.clamp_(max=self.clamp_len)
-            pos_emb = self.pos_emb(pos_seq)
-
-            core_out = self.drop(word_emb + pos_emb[-qlen:])
-
-            hids.append(core_out)
-            for i, layer in enumerate(self.layers):
-                mems_i = None if mems is None else mems[i]
-                if mems_i is not None and i == 0:
-                    mems_i += pos_emb[:mlen]
-                core_out = layer(core_out, dec_attn_mask=dec_attn_mask, mems=mems_i)
-                hids.append(core_out)
-        elif self.attn_type == 3:
-            core_out = self.drop(word_emb)
-
-            hids.append(core_out)
-            for i, layer in enumerate(self.layers):
-                mems_i = None if mems is None else mems[i]
-                if mems_i is not None and mlen > 0:
-                    cur_emb = self.r_emb[i][:-qlen]
-                    cur_size = cur_emb.size(0)
-                    if cur_size < mlen:
-                        cur_emb_pad = cur_emb[0:1].expand(mlen-cur_size, -1, -1)
-                        cur_emb = torch.cat([cur_emb_pad, cur_emb], 0)
-                    else:
-                        cur_emb = cur_emb[-mlen:]
-                    mems_i += cur_emb.view(mlen, 1, -1)
-                core_out += self.r_emb[i][-qlen:].view(qlen, 1, -1)
-
-                core_out = layer(core_out, dec_attn_mask=dec_attn_mask, mems=mems_i)
-                hids.append(core_out)
-
         core_out = self.drop(core_out)
-
         new_mems = self._update_mems(hids, mems, mlen, qlen)
 
         return core_out, new_mems
 
-    def forward(self, x, mems, **kwargs):
-        x, new_mems = self.extract_features(x, mems)
+    def forward(self, prev_output_tokens, mems):
+        x, new_mems = self.extract_features(prev_output_tokens, mems)
         x = self.output_layer(x)
         return x, new_mems
 
@@ -277,7 +255,9 @@ class MemTransformerLM(FairseqDecoder):
         if not mems:
             mems = self.init_mems()
 
+        tgt_len = x.size(1)
         hidden, new_mems = self._forward(x.transpose(0, 1), mems=mems)
+        hidden = hidden[-tgt_len:]
         # B x T x D
         x = hidden.transpose(0, 1)
         return x, new_mems
@@ -681,3 +661,20 @@ class RelPartialLearnableDecoderLayer(nn.Module):
         output = self.dec_attn(dec_inp, r, r_w_bias, r_r_bias, attn_mask=dec_attn_mask, mems=mems)
         output = self.pos_ff(output)
         return output
+
+
+@register_model_architecture("transformer_xl_lm", "transformer_xl_lm_base")
+def base_lm_architecture(args):
+    args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 4096)
+    args.decoder_layers = getattr(args, "decoder_layers", 12)
+    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
+
+    args.attention_dropout = getattr(args, "attention_dropout", 0.0)
+    args.dropout = getattr(args, "dropout", 0.0)
+
+    args.normalize_before = getattr(args, 'normalize_before', True)
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
+
+    args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", True)

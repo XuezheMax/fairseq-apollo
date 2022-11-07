@@ -49,18 +49,8 @@ class TokenBlockDataset(FairseqDataset):
         document_sep_len=1,
         variant_block_size_multiples=None,
         seed=0,
+        pad_to_target_length=False,
     ):
-        # try:
-        #     from fairseq.data.token_block_utils_fast import (
-        #         _get_slice_indices_fast,
-        #         _get_block_to_dataset_index_fast,
-        #     )
-        # except ImportError:
-        #     raise ImportError(
-        #         'Please build Cython components with: `pip install --editable .` '
-        #         'or `python setup.py build_ext --inplace`'
-        #     )
-
         super().__init__()
         self.dataset = dataset
         self.pad = pad
@@ -95,6 +85,8 @@ class TokenBlockDataset(FairseqDataset):
         self.document_sep_len = document_sep_len
         self._cur_epoch = 1
         self.seed = seed
+
+        self.pad_to_target_length = pad_to_target_length
 
         if self.variant_block_multiple_max > 1:
             block_sizes = [i * block_size for i in range(variant_block_size_multiples[0], variant_block_size_multiples[1] + 1)]
@@ -176,6 +168,15 @@ class TokenBlockDataset(FairseqDataset):
         start_ds_idx, _, _ = self.block_to_dataset_index[index]
         return self.dataset.attr(attr, start_ds_idx)
 
+    def _maybe_pad(self, source, target, past_target):
+        if self.pad_to_target_length:
+            source = torch.cat([source, source.new([self.pad] * (self.max_example_size - len(source)))])
+            if target is not None:
+                target = torch.cat([target, target.new([self.pad] * (self.max_example_size - len(target)))])
+            if past_target is not None:
+                past_target = torch.cat([past_target, past_target.new([self.pad] * (self.max_example_size - len(past_target)))])
+        return source, target, past_target
+
     def __getitem__(self, index):
         start_ds_idx, start_offset, end_ds_idx = self.block_to_dataset_index[index]
 
@@ -204,6 +205,7 @@ class TokenBlockDataset(FairseqDataset):
                 else:
                     past_target = buffer[s - 2 : e - 2]
 
+            source, item, past_target = self._maybe_pad(source, item, past_target)
             return source, item, past_target
 
         return item

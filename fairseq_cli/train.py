@@ -126,11 +126,21 @@ def main(args):
     # corresponding train iterator
     extra_state, epoch_itr = checkpoint_utils.load_checkpoint(args, trainer)
 
+
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
     lr = trainer.get_lr()
     train_meter = meters.StopwatchMeter()
     train_meter.start()
+
+    if args.eval_only:
+        if hasattr(args, 'is_book') and args.is_book:
+            # evaluate with best checkpoint
+            _ = trainer.load_checkpoint(os.path.join(args.save_dir, "checkpoint_best.pt"))
+            valid_losses = validate(args, trainer, task, epoch_itr, ['valid'], num_tokens=3007061)
+            task.load_dataset('test', combine=False, epoch=1)
+            test_losses = validate(args, trainer, task, epoch_itr, ['valid'], num_tokens=6966499)
+            exit(0)
 
     while lr > args.stop_min_lr and epoch_itr.next_epoch_idx <= max_epoch:
         # train for one epoch
@@ -184,7 +194,7 @@ def train(args, trainer, task, epoch_itr):
     # Initialize data iterator
     itr = epoch_itr.next_epoch_itr(
         fix_batches_to_gpus=args.fix_batches_to_gpus,
-        shuffle=(epoch_itr.next_epoch_idx > args.curriculum),
+        shuffle=(epoch_itr.next_epoch_idx > args.curriculum) if not args.is_xfm_xl else False,
     )
     update_freq = (
         args.update_freq[epoch_itr.epoch - 1]
@@ -218,11 +228,12 @@ def train(args, trainer, task, epoch_itr):
     valid_subsets = args.valid_subset.split(",")
     should_stop = False
     num_updates = trainer.get_num_updates()
+    mems = None
     for i, samples in enumerate(progress):
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):
-            log_output = trainer.train_step(samples)
+            log_output, mems = trainer.train_step(samples, mems=mems)
 
         if log_output is not None:  # not OOM, overflow, ...
             # log mid-epoch stats
@@ -271,9 +282,10 @@ def validate_and_save(args, trainer, task, epoch_itr, valid_subsets, end_of_epoc
     valid_losses = [None]
     if do_validate:
         if hasattr(task, 'is_mega_lm') and task.is_mega_lm:
-            valid_losses = validate_mega_lm(args, trainer, task, epoch_itr, valid_subsets)
+            # is book refers to PG-19 only for now
+            valid_losses = validate_mega_lm(args, trainer, task, epoch_itr, valid_subsets, num_tokens=3007061 if hasattr(args, 'is_book') and args.is_book else 0)
         else:
-            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
+            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets, num_tokens=3007061 if hasattr(args, 'is_book') and args.is_book else 0)
 
     # Stopping conditions
     max_update = args.max_update or math.inf
@@ -299,7 +311,7 @@ def get_training_stats(stats):
     return stats
 
 
-def validate(args, trainer, task, epoch_itr, subsets):
+def validate(args, trainer, task, epoch_itr, subsets, num_tokens=0):
     """Evaluate the model on the validation set(s) and return the losses."""
 
     if args.fixed_validation_seed is not None:
@@ -334,21 +346,26 @@ def validate(args, trainer, task, epoch_itr, subsets):
             ),
         )
 
+        mems = None
         # create a new root metrics aggregator so validation metrics
         # don't pollute other aggregators (e.g., train meters)
         with metrics.aggregate(new_root=True) as agg:
             for sample in progress:
-                trainer.valid_step(sample)
+                _, mems = trainer.valid_step(sample, mems=mems)
 
         # log validation stats
         stats = get_valid_stats(args, trainer, agg.get_smoothed_values())
+        if num_tokens > 0:
+            # this is specifically used for PG-19 as it's measured as a word-level perplexity
+            stats['word ppl'] = utils.get_perplexity(agg['nll_loss'].sum / num_tokens)
+            # stats['num_bpes'] = agg['nll_loss'].count
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])
     return valid_losses
 
 
-def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
+def validate_mega_lm(args, trainer, task, epoch_itr, subsets, num_tokens=0):
     """Evaluate the model on the validation set(s) and return the losses.
        Validate for language modeling task, specifically mega LM. """
 
@@ -385,14 +402,14 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
         )
 
         chunk_size = args.decoder_chunk_size
-
+        total_size = int(args.valid_block.split(":")[-1]) if hasattr(args, 'is_book') and args.is_book else chunk_size
         # create a new root metrics aggregator so validation metrics
         # don't pollute other aggregators (e.g., train meters)
         with metrics.aggregate(new_root=True) as agg:
             for sample in progress:
-                # todo: recalculate a larger tokens_per_batch at validation time
                 if not sample:
-                    for _ in range(0, chunk_size, chunk_size):
+                    # it should be the last few null batches, use the previous total_size to do the dummy iteration
+                    for _ in range(0, total_size, chunk_size):
                         incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
                         trainer.mega_lm_valid_step(sample, incremental_states=incremental_states)
                     continue
@@ -401,7 +418,6 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
                 total_size = sample['net_input']['src_tokens'].size(1)
                 batch_size = len(sample['net_input']['src_lengths'])
                 incremental_states = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
-
                 for i in range(0, total_size, chunk_size):
                     new_sample = {
                         'id': sample['id'],
@@ -417,6 +433,10 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
 
         # log validation stats
         stats = get_valid_stats(args, trainer, agg.get_smoothed_values())
+        if num_tokens > 0:
+            # this is specifically used for PG-19 as it's measured as a word-level perplexity
+            stats['word ppl'] = utils.get_perplexity(agg['nll_loss'].sum / num_tokens)
+            # stats['num_bpes'] = agg['nll_loss'].count
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])

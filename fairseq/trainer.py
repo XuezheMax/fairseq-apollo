@@ -407,7 +407,7 @@ class Trainer(object):
             xm.mark_step()
 
     @metrics.aggregate("train")
-    def train_step(self, samples, raise_oom=False):
+    def train_step(self, samples, raise_oom=False, mems=None):
         """Do forward, backward and parameter update."""
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = samples[0]
@@ -449,13 +449,14 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
-                    loss, sample_size_i, logging_output = self.task.train_step(
+                    loss, sample_size_i, logging_output, new_mems = self.task.train_step(
                         sample=sample,
                         model=self.model,
                         criterion=self.criterion,
                         optimizer=self.optimizer,
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
+                        mems=mems,
                     )
                     del loss
 
@@ -615,10 +616,10 @@ class Trainer(object):
 
         metrics.log_stop_time("train_wall")
 
-        return logging_output
+        return logging_output, new_mems
 
     @metrics.aggregate("valid")
-    def valid_step(self, sample, raise_oom=False):
+    def valid_step(self, sample, raise_oom=False, mems=None):
         """Do forward pass in evaluation mode."""
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample
@@ -639,8 +640,8 @@ class Trainer(object):
                 is_dummy_batch = False
 
             try:
-                _loss, sample_size, logging_output = self.task.valid_step(
-                    sample, self.model, self.criterion
+                _loss, sample_size, logging_output, new_mems = self.task.valid_step(
+                    sample, self.model, self.criterion, mems=mems,
                 )
             except RuntimeError as e:
                 if "out of memory" in str(e):
@@ -673,7 +674,7 @@ class Trainer(object):
         # log validation stats
         logging_output = self._reduce_and_log_stats(logging_outputs, sample_size)
 
-        return logging_output
+        return logging_output, new_mems
 
     @metrics.aggregate("valid")
     def mega_lm_valid_step(self, sample, raise_oom=False, incremental_states=None):

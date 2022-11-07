@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from email.policy import default
 import logging
 import math
 import os
@@ -26,6 +27,8 @@ from fairseq.data import (
     TokenBlockDataset,
     TransformEosDataset,
     TruncatedDictionary,
+    OrderedDataset,
+    iterators, 
 )
 from fairseq.data.shorten_dataset import maybe_shorten_dataset
 from fairseq.tasks import FairseqTask, register_task
@@ -103,6 +106,11 @@ class LanguageModelingTask(FairseqTask):
         parser.add_argument('--valid-block', default="size:100000000", help="either size:value or splits:value, "
                                                                             "the former is the block size, "
                                                                             "the latter is the number of blocks")
+
+        parser.add_argument('--is-book', default=False, action='store_true', help="LM on super long documents, e.g. PG-19")
+        parser.add_argument('--is-xfm-xl', default=False, action='store_true')
+        parser.add_argument('--tgt_len', default=1024, type=int)
+        parser.add_argument('--mem_len', default=1024, type=int)
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -199,7 +207,14 @@ class LanguageModelingTask(FairseqTask):
             self.args.seed,
         )
 
-        if split == 'train':
+        if self.args.is_xfm_xl:
+            # notes: with transformer-xl, we first split the dataset into world_size chunks and then read these chunks sequentially
+            total_size = dataset.sizes.sum()
+            per_device_data_size = math.ceil(total_size / self.args.distributed_world_size)
+            chunk_size = per_device_data_size
+            self.args.variant_block_multiple_min, self.args.variant_block_multiple_max = 1, 1
+
+        elif split == 'train':
             chunk_size = self.args.decoder_chunk_size if self.is_mega_lm else self.args.tokens_per_sample
         else:
             if self.is_mega_lm:
@@ -207,9 +222,9 @@ class LanguageModelingTask(FairseqTask):
                 k, v = self.args.valid_block.split(":")
                 chunk_size = int(v) if k == "size" else math.ceil(sum(dataset.sizes) / float(v))
                 # to prevent the samples being filtered
-                # if k == "splits":
-                #     # when k is splits, one sample can be extremely long as chunk_size,
-                #     self.args.max_tokens_valid = chunk_size * 15
+                if k == "splits":
+                    # when k is splits, one sample can be extremely long as chunk_size,
+                    self.args.max_tokens_valid = chunk_size * 10
             else:
                 chunk_size = self.args.tokens_per_sample
             self.chunk_size = chunk_size
@@ -225,20 +240,28 @@ class LanguageModelingTask(FairseqTask):
             variant_block_size_multiples=(self.args.variant_block_multiple_min,
                                           self.args.variant_block_multiple_max) if split == 'train' else (1, 1),
             seed=self.args.seed,
+            pad_to_target_length=True if self.args.is_xfm_xl else False,
         )
 
+        if self.args.is_xfm_xl:
+            dataset = OrderedDataset(dataset, self.dictionary.pad(), self.args.distributed_world_size, self.args.batch_size, self.args.distributed_rank)
         if split != 'train' and self.is_mega_lm:
             k, v = self.args.valid_block.split(":")
             # to prevent the samples being filtered
             if k == 'size':
                 logger.info("Max document length of {} set = {}, number of documents = {}.".format(split, max(dataset.sizes), len(dataset.sizes)))
-                self.args.max_tokens_valid = max(dataset.sizes) * 5
+                # self.args.max_tokens_valid = max(dataset.sizes) * 50
 
         add_eos_for_other_targets = (
             self.args.sample_break_mode is not None
             and self.args.sample_break_mode != "none"
         )
 
+        if not self.args.is_xfm_xl and self.args.is_book and split != 'train':
+            pad_to_a_length = dataset.max_example_size
+        else:
+            pad_to_a_length = -1
+        # to ensure the same number of forward passes at inference time, we pad all valid docs to the same length
         self.datasets[split] = self._initialize_dataset(
             dataset=dataset,
             sizes=dataset.sizes,
@@ -248,6 +271,7 @@ class LanguageModelingTask(FairseqTask):
             shuffle=True,
             targets=self.targets,
             add_bos_token=self.args.add_bos_token,
+            pad_to_a_length=pad_to_a_length,
         )
 
     def _initialize_dataset(self, **kwargs):
@@ -338,6 +362,89 @@ class LanguageModelingTask(FairseqTask):
                 loss, sample_size, logging_output = criterion(model, sample, incremental_states=incremental_states)
             return loss, sample_size, logging_output
 
+    def get_xfm_xl_batch_iterator(
+        self,
+        dataset,
+        max_tokens=None,
+        max_sentences=None,
+        max_positions=None,
+        ignore_invalid_inputs=False,
+        required_batch_size_multiple=1,
+        seed=1,
+        num_shards=1,
+        shard_id=0,
+        num_workers=0,
+        epoch=1,
+    ):
+        """
+        Get an iterator that yields batches of data from the given dataset.
+
+        Args:
+            dataset (~fairseq.data.FairseqDataset): dataset to batch
+            max_tokens (int, optional): max number of tokens in each batch
+                (default: None).
+            max_sentences (int, optional): max number of sentences in each
+                batch (default: None).
+            max_positions (optional): max sentence length supported by the
+                model (default: None).
+            ignore_invalid_inputs (bool, optional): don't raise Exception for
+                sentences that are too long (default: False).
+            required_batch_size_multiple (int, optional): require batch size to
+                be a multiple of N (default: 1).
+            seed (int, optional): seed for random number generator for
+                reproducibility (default: 1).
+            num_shards (int, optional): shard the data iterator into N
+                shards (default: 1).
+            shard_id (int, optional): which shard of the data iterator to
+                return (default: 0).
+            num_workers (int, optional): how many subprocesses to use for data
+                loading. 0 means the data will be loaded in the main process
+                (default: 0).
+            epoch (int, optional): the epoch to start the iterator from
+                (default: 1).
+        Returns:
+            ~fairseq.iterators.EpochBatchIterator: a batched iterator over the
+                given dataset split
+        """
+        # For default fairseq task, return same iterator across epochs
+        # as datasets are not dynamic, can be overridden in task specific
+        # setting.
+        if dataset in self.dataset_to_epoch_iter:
+            return self.dataset_to_epoch_iter[dataset]
+
+        assert isinstance(dataset, FairseqDataset)
+
+        # initialize the dataset with the correct starting epoch
+        dataset.set_epoch(epoch)
+
+        # get indices ordered by example size
+        with data_utils.numpy_seed(seed):
+            indices = dataset.ordered_indices()
+
+        # filter examples that are too large
+        if max_positions is not None:
+            indices = self.filter_indices_by_size(
+                indices, dataset, max_positions, ignore_invalid_inputs
+            )
+
+        # create mini-batches with given size constraints
+        batch_sampler = indices.reshape(-1, self.args.batch_size)
+
+        # return a reusable, sharded iterator
+        epoch_iter = iterators.EpochBatchIterator(
+            dataset=dataset,
+            collate_fn=dataset.collater,
+            batch_sampler=batch_sampler,
+            seed=seed,
+            num_shards=1,
+            shard_id=0,
+            num_workers=num_workers,
+            epoch=epoch,
+            buffer_size=0,
+        )
+        self.dataset_to_epoch_iter[dataset] = epoch_iter
+        return epoch_iter
+
     # we need to override get_batch_iterator because we want to reset the epoch iterator each time
     def get_batch_iterator(
             self, dataset, max_tokens=None, max_sentences=None, max_positions=None,
@@ -378,12 +485,22 @@ class LanguageModelingTask(FairseqTask):
         assert isinstance(dataset, FairseqDataset)
         if dataset in self.dataset_to_epoch_iter:
             return self.dataset_to_epoch_iter[dataset]
+
+        if self.args.is_xfm_xl:
+            self.dataset_to_epoch_iter = {}
+            epoch_iter = self.get_xfm_xl_batch_iterator(
+                dataset, max_tokens, max_sentences, max_positions,
+                ignore_invalid_inputs, required_batch_size_multiple,
+                seed, num_shards, shard_id, num_workers, epoch,
+            )
+            self.dataset_to_epoch_iter = {}
+            return epoch_iter
         # dataset.dataset is token_block_dataset
         if (
             not hasattr(dataset.dataset, 'variant_block_multiple_max') or
                 (hasattr(dataset.dataset, 'variant_block_multiple_max') and dataset.dataset.variant_block_multiple_max == 1)
-        ):
-            # valid / test of mega LM or normal LM
+        ):  
+            # a hack: in the book case, we still do sharding for Mega LM
             if sharding:
                 # normal LM
                 batch_iter = super().get_batch_iterator(
@@ -392,13 +509,21 @@ class LanguageModelingTask(FairseqTask):
                     seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
                 )
             else:
-                # Mega LM
-                batch_iter = super().get_batch_iterator(
-                    dataset, max_tokens=self.args.max_tokens_valid, max_sentences=max_sentences, max_positions=10000000,
-                    ignore_invalid_inputs=ignore_invalid_inputs,
-                    required_batch_size_multiple=required_batch_size_multiple,
-                    seed=seed, num_shards=1, shard_id=0, num_workers=num_workers, epoch=epoch,
-                )
+                # valid / test of Mega LM
+                if self.args.is_book:
+                    batch_iter = super().get_batch_iterator(
+                        dataset, max_tokens=self.args.max_tokens_valid, max_sentences=max_sentences, max_positions=1000000000,
+                        ignore_invalid_inputs=ignore_invalid_inputs,
+                        required_batch_size_multiple=required_batch_size_multiple,
+                        seed=seed, num_shards=num_shards, shard_id=shard_id, num_workers=num_workers, epoch=epoch,
+                    )
+                else:
+                    batch_iter = super().get_batch_iterator(
+                        dataset, max_tokens=self.args.max_tokens_valid, max_sentences=max_sentences, max_positions=10000000,
+                        ignore_invalid_inputs=ignore_invalid_inputs,
+                        required_batch_size_multiple=required_batch_size_multiple,
+                        seed=seed, num_shards=1, shard_id=0, num_workers=num_workers, epoch=epoch,
+                    )
             # already done in super().get_batch_iterator
             # self.dataset_to_epoch_iter[dataset] = batch_iter
             return batch_iter

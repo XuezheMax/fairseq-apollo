@@ -276,6 +276,7 @@ def get_parser(desc, default_task="translation"):
     parser.add_argument('--wandb-entity', default=None, help='wandb sending object, team name')
     parser.add_argument('--wandb-id', default=None, help='wandb run id')
 
+    parser.add_argument('--eval-only', action='store_true', help='only evaluate the model')
     from fairseq.registry import REGISTRIES
     for registry_name, REGISTRY in REGISTRIES.items():
         parser.add_argument(

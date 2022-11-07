@@ -33,6 +33,7 @@ from .noising import NoisingDataset
 from .numel_dataset import NumelDataset
 from .num_samples_dataset import NumSamplesDataset
 from .offset_tokens_dataset import OffsetTokensDataset
+from .ordered_dataset import OrderedDataset
 from .pad_dataset import LeftPadDataset, PadDataset, RightPadDataset
 from .pixel_sequence_dataset import PixelSequenceDataset
 from .prepend_dataset import PrependDataset
@@ -93,6 +94,7 @@ __all__ = [
     'NumelDataset',
     'NumSamplesDataset',
     'OffsetTokensDataset',
+    'OrderedDataset',
     'PadDataset',
     'PixelSequenceDataset',
     'PrependDataset',

@@ -218,7 +218,7 @@ class EpochBatchIterator(EpochBatchIterating):
 
     def __init__(
         self, dataset, collate_fn, batch_sampler, seed=1, num_shards=1, shard_id=0,
-        num_workers=0, epoch=1, buffer_size=0, timeout=0,
+        num_workers=0, epoch=1, buffer_size=0, timeout=0, shuffle=True,
     ):
         assert isinstance(dataset, torch.utils.data.Dataset)
         self.dataset = dataset
@@ -235,7 +235,7 @@ class EpochBatchIterator(EpochBatchIterating):
         self.timeout = timeout
 
         self.epoch = max(epoch, 1)  # we use 1-based indexing for epochs
-        self.shuffle = True
+        self.shuffle = shuffle
         self._cur_epoch_itr = None
         self._next_epoch_itr = None
         self._supports_prefetch = getattr(dataset, 'supports_prefetch', False)

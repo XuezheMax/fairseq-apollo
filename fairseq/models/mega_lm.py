@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
 import math
 import os
 import numpy as np
@@ -172,25 +178,7 @@ class MegaLanguageModel(FairseqLanguageModel):
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
     # Current workaround is to add union of all arguments in child classes.
-    def forward(
-        self,
-        src_tokens,
-        src_lengths,
-        return_all_hiddens: bool = True,
-        features_only: bool = False,
-    ):
-        """
-        Run the forward pass for an encoder-decoder model.
-
-        Copied from the base class, but without ``**kwargs``,
-        which are not supported by TorchScript.
-        """
-        decoder_out = self.decoder(
-            src_tokens,
-            features_only=features_only,
-            return_all_hiddens=return_all_hiddens,
-        )
-        return decoder_out
+c
 
     def analyze_ema(self, report=False, output=False):
         # todo: fixme
@@ -568,7 +556,7 @@ def mega_lm_adaptive_base(args):
 
 
 @register_model_architecture('mega_lm', 'mega_lm_enwik8_base')
-def mega_lm_adaptive_big_enwik8(args):
+def mega_lm_base_enwik8(args):
     args.decoder_layers = getattr(args, 'decoder_layers', 12)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
     args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1024)
@@ -582,15 +570,16 @@ def mega_lm_adaptive_big_enwik8(args):
     base_lm_architecture(args)
 
 
-@register_model_architecture('mega_lm', 'mega_lm_enwik8_large')
-def mega_lm_adaptive_large_enwik8(args):
-    args.decoder_layers = getattr(args, 'decoder_layers', 24)
+@register_model_architecture('mega_lm', 'mega_lm_pg19_base')
+def mega_lm_base_pg19(args):
+    args.decoder_layers = getattr(args, 'decoder_layers', 12)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
-    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 1536)
-    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 1536)
-    args.decoder_z_dim = getattr(args, 'decoder_z_dim', 128)
+    args.decoder_hidden_dim = getattr(args, "decoder_hidden_dim", 2048)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
+    args.decoder_z_dim = getattr(args, 'decoder_z_dim', 256)
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', 16)
-    args.dropout = getattr(args, 'dropout', 0.2)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.hidden_dropout = getattr(args, 'hidden_dropout', 0.1)
+    args.dropout = getattr(args, 'dropout', 0.0)
+    args.attention_dropout = getattr(args, 'attention_dropout', 0.0)
+    args.hidden_dropout = getattr(args, 'hidden_dropout', 0.0)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.0)
     base_lm_architecture(args)

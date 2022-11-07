@@ -26,9 +26,10 @@ class CrossEntropyCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+        # in the case of transformer XL, the second output of net_ouput is mems
         if incremental_states is not None:
-            # is mega LM
-            net_output = model.decoder.forward(sample['net_input']['src_tokens'], incremental_states)
+            # is mega LM / transformer XL
+            net_output = model(sample['net_input']['src_tokens'], incremental_states)
         else:
             net_output = model(**sample['net_input'])
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
@@ -39,7 +40,7 @@ class CrossEntropyCriterion(FairseqCriterion):
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
         }
-        return loss, sample_size, logging_output
+        return loss, sample_size, logging_output, net_output[1]
 
     def compute_loss(self, model, net_output, sample, reduce=True):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
@@ -60,13 +61,15 @@ class CrossEntropyCriterion(FairseqCriterion):
         ntokens = sum(log.get('ntokens', 0) for log in logging_outputs)
         sample_size = sum(log.get('sample_size', 0) for log in logging_outputs)
 
-        if sample_size == 0: sample_size = 1
-        if ntokens == 0: ntokens = 1
-        metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
+        divide_sample_size = sample_size if sample_size > 0 else 1
+        divide_ntokens = ntokens if ntokens > 0 else 1
+        metrics.log_scalar('loss', loss_sum / divide_sample_size / math.log(2), sample_size, round=3)
+        # metrics.log_scalar('ntokens', ntokens, 1)
         if sample_size != ntokens:
-            metrics.log_scalar('nll_loss', loss_sum / ntokens / math.log(2), ntokens, round=3)
+            metrics.log_scalar('nll_loss', loss_sum / divide_ntokens / math.log(2), ntokens, round=3)
             metrics.log_derived('ppl', lambda meters: utils.get_perplexity(meters['nll_loss'].avg))
         else:
+            metrics.log_scalar('nll_loss', loss_sum / divide_ntokens / math.log(2), ntokens, round=3)
             metrics.log_derived('ppl', lambda meters: utils.get_perplexity(meters['loss'].avg))
 
     @staticmethod
