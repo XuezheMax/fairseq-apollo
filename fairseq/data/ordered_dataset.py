@@ -10,18 +10,20 @@ logger = logging.getLogger(__name__)
 from . import data_utils, FairseqDataset
 
     
-class OrderedlDataset(FairseqDataset):
+class OrderedDataset(FairseqDataset):
     def __init__(self, dataset, pad, world_size, bsz, rank, tgt_len):
         self.dataset = dataset
         
         assert len(self.dataset) == world_size
 
         source, item, past_target = dataset[rank]
+        logger.warning("{} {} {}".format(world_size, rank, len(item)))
         assert len(source) == len(item)
         reminder = len(item) % bsz
-        item = torch.cat([item, item.new([pad] * reminder)])
+        add  = bsz - reminder if reminder > 0 else 0
+        item = torch.cat([item, item.new([pad] * add)])
         assert len(item) % bsz == 0
-        source = torch.cat([source, source.new([pad] * reminder)])
+        source = torch.cat([source, source.new([pad] * add)])
         
         source = source.view(bsz, -1)
         data = item.view(bsz, -1)
@@ -31,8 +33,9 @@ class OrderedlDataset(FairseqDataset):
 
         reminder = data.size(1) % tgt_len
         if reminder != 0:
-            data = torch.cat([data, data.new_full((bsz, reminder), pad)], dim=1)
-            source = torch.cat([source, source.new_full((bsz, reminder), pad)], dim=1)
+            add = tgt_len - reminder
+            data = torch.cat([data, data.new_full((bsz, add), pad)], dim=1)
+            source = torch.cat([source, source.new_full((bsz, add), pad)], dim=1)
         assert data.size(1) % tgt_len == 0
 
         n_tokens_per_seg = data.size(1)

@@ -641,7 +641,7 @@ class Trainer(object):
 
             try:
                 _loss, sample_size, logging_output, new_mems = self.task.valid_step(
-                    sample, self.model, self.criterion, mems=mems,
+                    sample, self.model, self.criterion, mems,
                 )
             except RuntimeError as e:
                 if "out of memory" in str(e):

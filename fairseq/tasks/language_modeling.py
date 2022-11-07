@@ -109,8 +109,8 @@ class LanguageModelingTask(FairseqTask):
 
         parser.add_argument('--is-book', default=False, action='store_true', help="LM on super long documents, e.g. PG-19")
         parser.add_argument('--is-xfm-xl', default=False, action='store_true')
-        parser.add_argument('--tgt_len', default=1024, type=int)
-        parser.add_argument('--mem_len', default=1024, type=int)
+        parser.add_argument('--tgt-len', default=1024, type=int)
+        parser.add_argument('--mem-len', default=1024, type=int)
         # fmt: on
 
     def __init__(self, args, dictionary, output_dictionary=None, targets=None):
@@ -244,7 +244,7 @@ class LanguageModelingTask(FairseqTask):
         )
 
         if self.args.is_xfm_xl:
-            dataset = OrderedDataset(dataset, self.dictionary.pad(), self.args.distributed_world_size, self.args.batch_size, self.args.distributed_rank)
+            dataset = OrderedDataset(dataset, self.dictionary.pad(), self.args.distributed_world_size, self.args.max_sentences, self.args.distributed_rank, self.args.tgt_len)
         if split != 'train' and self.is_mega_lm:
             k, v = self.args.valid_block.split(":")
             # to prevent the samples being filtered
@@ -276,6 +276,46 @@ class LanguageModelingTask(FairseqTask):
 
     def _initialize_dataset(self, **kwargs):
         return MonolingualDataset(**kwargs)
+
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False, mems=None,
+    ):
+        """
+        Do forward and backward, and return the loss as computed by *criterion*
+        for the given *model* and *sample*.
+
+        Args:
+            sample (dict): the mini-batch. The format is defined by the
+                :class:`~fairseq.data.FairseqDataset`.
+            model (~fairseq.models.BaseFairseqModel): the model
+            criterion (~fairseq.criterions.FairseqCriterion): the criterion
+            optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
+            update_num (int): the current update
+            ignore_grad (bool): multiply loss by 0 if this is set to True
+
+        Returns:
+            tuple:
+                - the loss
+                - the sample size, which is used as the denominator for the
+                  gradient
+                - logging outputs to display while training
+        """
+        model.train()
+        model.set_num_updates(update_num)
+        with torch.autograd.profiler.record_function("forward"):
+            loss, sample_size, logging_output, mems = criterion(model, sample, incremental_states=mems)
+        if ignore_grad:
+            loss *= 0
+        with torch.autograd.profiler.record_function("backward"):
+            optimizer.backward(loss)
+        return loss, sample_size, logging_output, mems
+
+    def valid_step(self, sample, model, criterion, mems=None):
+        model.eval()
+        with torch.no_grad():
+            loss, sample_size, logging_output, mems = criterion(model, sample, incremental_states=mems)
+        return loss, sample_size, logging_output, mems
+
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, **kwargs):
         """
@@ -350,18 +390,6 @@ class LanguageModelingTask(FairseqTask):
         model."""
         return self.output_dictionary
 
-    def valid_step(self, sample, model, criterion, incremental_states=None):
-        if not self.is_mega_lm:
-            loss, sample_size, logging_output = super().valid_step(sample, model, criterion)
-            return loss, sample_size, logging_output
-        else:
-            # todo: criterion currently limited to adaptive_loss
-            assert incremental_states is not None
-            model.eval()
-            with torch.no_grad():
-                loss, sample_size, logging_output = criterion(model, sample, incremental_states=incremental_states)
-            return loss, sample_size, logging_output
-
     def get_xfm_xl_batch_iterator(
         self,
         dataset,
@@ -428,7 +456,7 @@ class LanguageModelingTask(FairseqTask):
             )
 
         # create mini-batches with given size constraints
-        batch_sampler = indices.reshape(-1, self.args.batch_size)
+        batch_sampler = indices.reshape(-1, self.args.max_sentences)
 
         # return a reusable, sharded iterator
         epoch_iter = iterators.EpochBatchIterator(
@@ -493,7 +521,6 @@ class LanguageModelingTask(FairseqTask):
                 ignore_invalid_inputs, required_batch_size_multiple,
                 seed, num_shards, shard_id, num_workers, epoch,
             )
-            self.dataset_to_epoch_iter = {}
             return epoch_iter
         # dataset.dataset is token_block_dataset
         if (

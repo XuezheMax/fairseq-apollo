@@ -27,6 +27,7 @@ DEFAULT_MAX_TARGET_POSITIONS = 1024
 class TransformerXLLanguageModel(FairseqLanguageModel):
 
     def __init__(self, args, decoder):
+        super().__init__(decoder)
         self.args = args
         self.supports_align_args = True
 
@@ -47,6 +48,8 @@ class TransformerXLLanguageModel(FairseqLanguageModel):
                             help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
+        parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
+                            help='num decoder attention heads')
 
         parser.add_argument('--decoder-input-dim', type=int, metavar='N',
                             help='decoder input dimension')
@@ -58,9 +61,9 @@ class TransformerXLLanguageModel(FairseqLanguageModel):
         parser.add_argument('--normalize-before', action='store_true',
                             help='apply normalization layer before each encoder block')
 
-        parser.add_argument('--same_length', action='store_true', 
+        parser.add_argument('--same-length', action='store_true', 
                             help='use the same attn length for all tokens')
-        parser.add_argument('--clamp_len', type=int, default=-1,
+        parser.add_argument('--clamp-len', type=int, default=-1,
                             help='use the same pos embeddings after clamp_len')
 
         # fmt: on
@@ -88,6 +91,7 @@ class TransformerXLLanguageModel(FairseqLanguageModel):
     def forward(
         self,
         src_tokens,
+        src_lengths,
         mems,
     ):
         """
@@ -369,6 +373,7 @@ class MultiHeadAttn(nn.Module):
         attn_score = torch.einsum('ibnd,jbnd->ijbn', (head_q, head_k))
         attn_score.mul_(self.scale)
         if attn_mask is not None and attn_mask.any().item():
+            attn_mask = attn_mask.bool()
             if attn_mask.dim() == 2:
                 attn_score.masked_fill_(attn_mask[None,:,:,None], -float('inf'))
             elif attn_mask.dim() == 3:
@@ -511,6 +516,7 @@ class RelPartialLearnableMultiHeadAttn(RelMultiHeadAttn):
 
         #### compute attention probability
         if attn_mask is not None and attn_mask.any().item():
+            attn_mask = attn_mask.bool()
             if attn_mask.dim() == 2:
                 attn_score = attn_score.float().masked_fill(attn_mask[None,:,:,None], -float('inf')).type_as(attn_score)
             elif attn_mask.dim() == 3:
@@ -668,6 +674,7 @@ def base_lm_architecture(args):
     args.decoder_embed_path = getattr(args, "decoder_embed_path", None)
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 4096)
+    args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.decoder_layers = getattr(args, "decoder_layers", 12)
     args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
@@ -678,3 +685,5 @@ def base_lm_architecture(args):
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", True)
+    args.same_length = getattr(args, "same_length", False)
+    args.clamp_len = getattr(args, "clamp_len", -1)

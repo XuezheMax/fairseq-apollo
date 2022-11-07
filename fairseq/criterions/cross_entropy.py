@@ -27,11 +27,11 @@ class CrossEntropyCriterion(FairseqCriterion):
         3) logging outputs to display while training
         """
         # in the case of transformer XL, the second output of net_ouput is mems
-        if incremental_states is not None:
-            # is mega LM / transformer XL
-            net_output = model(sample['net_input']['src_tokens'], incremental_states)
-        else:
-            net_output = model(**sample['net_input'])
+        # if incremental_states is not None:
+        #     # is mega LM / transformer XL
+        #     net_output = model(sample['net_input']['src_tokens'], incremental_states)
+        # else:
+        net_output = model(**sample['net_input'], mems=incremental_states)
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {

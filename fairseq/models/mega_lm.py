@@ -178,7 +178,6 @@ class MegaLanguageModel(FairseqLanguageModel):
 
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
     # Current workaround is to add union of all arguments in child classes.
-c
 
     def analyze_ema(self, report=False, output=False):
         # todo: fixme
