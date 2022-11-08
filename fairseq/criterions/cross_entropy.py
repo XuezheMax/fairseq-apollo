@@ -6,7 +6,8 @@
 import math
 
 import torch.nn.functional as F
-
+import logging
+logger = logging.getLogger(__name__)
 from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 
@@ -16,6 +17,7 @@ class CrossEntropyCriterion(FairseqCriterion):
 
     def __init__(self, task, sentence_avg):
         super().__init__(task)
+        self.args = task.args
         self.sentence_avg = sentence_avg
 
     def forward(self, model, sample, reduce=True, incremental_states=None):
@@ -33,6 +35,7 @@ class CrossEntropyCriterion(FairseqCriterion):
         # else:
         net_output = model(**sample['net_input'], mems=incremental_states)
         loss, _ = self.compute_loss(model, net_output, sample, reduce=reduce)
+        # logger.warning("{} {}".format(loss, self.args.distributed_rank))
         sample_size = sample['target'].size(0) if self.sentence_avg else sample['ntokens']
         logging_output = {
             'loss': loss.data,
