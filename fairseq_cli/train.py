@@ -358,7 +358,7 @@ def validate(args, trainer, task, epoch_itr, subsets, num_tokens=0):
         if num_tokens > 0:
             # this is specifically used for PG-19 as it's measured as a word-level perplexity
             stats['word ppl'] = utils.get_perplexity(agg['nll_loss'].sum / num_tokens)
-            # stats['num_bpes'] = agg['nll_loss'].count
+            stats['num_bpes'] = agg['nll_loss'].count
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])
@@ -436,7 +436,7 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets, num_tokens=0):
         if num_tokens > 0:
             # this is specifically used for PG-19 as it's measured as a word-level perplexity
             stats['word ppl'] = utils.get_perplexity(agg['nll_loss'].sum / num_tokens)
-            # stats['num_bpes'] = agg['nll_loss'].count
+            stats['num_bpes'] = agg['nll_loss'].count
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])
