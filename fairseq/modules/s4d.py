@@ -160,21 +160,17 @@ class S4D(nn.Module):
         else:
             # D x L
             k = self.kernel(seq_len)
-            fft_len = seq_len
-            s = 0
             kernel_size = k.size(1)
+            fft_len = seq_len + kernel_size
             if self.bidirectional:
                 k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
                 # D x 2*L-1
-                k = F.pad(k1, (kernel_size - 1, 0)) + F.pad(k2.flip(-1), (0, kernel_size - 1))
-                x = F.pad(x, (kernel_size - 1, 0))
-                fft_len = fft_len + kernel_size - 1
-                s = 2 * kernel_size - 2
+                k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
 
-            k_f = torch.fft.rfft(k.float(), n=2 * fft_len)
-            x_f = torch.fft.rfft(x.float(), n=2 * fft_len)
+            k_f = torch.fft.rfft(k.float(), n=fft_len)
+            x_f = torch.fft.rfft(x.float(), n=fft_len)
             # B x D x L
-            out = torch.fft.irfft(x_f * k_f, n=2 * fft_len)[..., s:s + seq_len]
+            out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
             out = out.type_as(x)
             # B x D x L -> L x B x D
             out = F.silu(out.permute(2, 0, 1) + residual)

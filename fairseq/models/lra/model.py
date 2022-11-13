@@ -153,6 +153,8 @@ class LRAModel(FairseqEncoderModel):
                             help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
+        parser.add_argument('--shift', default=False, action='store_true',
+                            help='use p for prediction')
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
                             help='projected length of encoder as key')
         parser.add_argument('--encoder-projected-attention-heads', type=int, metavar='N',
@@ -307,6 +309,7 @@ class LRAEncoder(FairseqEncoder):
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
+                shift=args.shift,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp')
@@ -411,7 +414,7 @@ def mega_lra_listop(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 160)
     args.chunk_size = getattr(args, 'chunk_size', -1)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 2002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
@@ -466,7 +469,7 @@ def mega_lra_imdb(args):
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.chunk_size = getattr(args, 'chunk_size', -1)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 4002)
     args.norm_type = getattr(args, 'norm_type', 'scalenorm')
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
@@ -509,7 +512,7 @@ def mega_lra_aan(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 2)
     args.chunk_size = getattr(args, 'chunk_size', -1)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 4002)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
@@ -567,7 +570,7 @@ def mega_lra_cifar10(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 320)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.chunk_size = getattr(args, 'chunk_size', 1024)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
@@ -627,7 +630,7 @@ def mega_lra_pf32(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 1024)
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
@@ -655,7 +658,7 @@ def mega_lra_pf128(args):
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 128 * 128)
-    args.truncation_length = getattr(args, 'truncation_length', 4096)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 128 * 128)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
