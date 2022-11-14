@@ -43,7 +43,6 @@ class MovingAverageGatedAttention(nn.Module):
         chunk_size=-1,
         moving_layer='ema',
         truncation=None,
-        shift=False,
         norm_type='layernorm',
         prenorm=True,
         norm_affine=True,
@@ -73,7 +72,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.norm = SequenceNorm(norm_type, embed_dim, affine=norm_affine, export=export)
 
         if moving_layer == 'ema':
-            self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation, shift=shift)
+            self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
         elif moving_layer == 'cema':
             self.move = MultiHeadComplexEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
         elif moving_layer == 's4d':

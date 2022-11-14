@@ -25,7 +25,6 @@ class MultiHeadEMA(nn.Module):
         embed_dim,
         ndim=2,
         bidirectional=False,
-        shift=False,
         truncation=None,
     ):
         super().__init__()
@@ -34,7 +33,6 @@ class MultiHeadEMA(nn.Module):
         self.ndim = ndim
         self.bidirectional = bidirectional
         self.truncation = truncation
-        self.shift = shift
         self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
@@ -199,12 +197,8 @@ class MultiHeadEMA(nn.Module):
             fft_len = seq_len + kernel_size
             if self.bidirectional:
                 k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
-                if self.shift:
-                    k2 = k2[:, 1:]
-                    k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len + 1, 0))
-                else:
-                    # D x 2*L-1
-                    k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
+                # D x 2*L-1
+                k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
 
             k_f = torch.fft.rfft(k.float(), n=fft_len)
             x_f = torch.fft.rfft(x.float(), n=fft_len)
@@ -242,4 +236,4 @@ class MultiHeadEMA(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'edim={}, ndim={}, bidirectional={}, trunction={}, shift={}'.format(self.embed_dim, self.ndim, self.bidirectional, self.truncation, self.shift)
+        return 'edim={}, ndim={}, bidirectional={}, trunction={}'.format(self.embed_dim, self.ndim, self.bidirectional, self.truncation)

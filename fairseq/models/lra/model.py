@@ -153,8 +153,6 @@ class LRAModel(FairseqEncoderModel):
                             help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N',
                             help='truncation length of moving average layer.')
-        parser.add_argument('--shift', default=False, action='store_true',
-                            help='use p for prediction')
         parser.add_argument('--encoder-projection-length', type=int, metavar='N',
                             help='projected length of encoder as key')
         parser.add_argument('--encoder-projected-attention-heads', type=int, metavar='N',
@@ -309,7 +307,6 @@ class LRAEncoder(FairseqEncoder):
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
-                shift=args.shift,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp')

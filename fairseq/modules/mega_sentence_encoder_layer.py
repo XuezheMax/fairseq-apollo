@@ -31,7 +31,6 @@ class MegaSentenceEncoderLayer(nn.Module):
         chunk_size: int = -1,
         moving_layer='ema',
         truncation: int = None,
-        shift=False,
         rel_pos_bias = 'simple',
         max_positions: int = 1024,
         activation='silu',
@@ -48,7 +47,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         self.mega_layer = self.build_mega_layer(embedding_dim, hidden_dim, z_dim, n_dim,
                                                 dropout, attention_dropout, hidden_dropout,
                                                 activation, attention_activation,
-                                                chunk_size, moving_layer, truncation, shift,
+                                                chunk_size, moving_layer, truncation,
                                                 rel_pos_bias, max_positions,
                                                 norm_type, prenorm, feature_dropout, export)
 
@@ -62,7 +61,7 @@ class MegaSentenceEncoderLayer(nn.Module):
     def build_mega_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
                          dropout, attention_dropout, hidden_dropout,
                          activation, attention_activation,
-                         chunk_size, moving_layer, truncation, shift,
+                         chunk_size, moving_layer, truncation,
                          rel_pos_bias, max_positions,
                          norm_type, prenorm, feature_dropout, export):
         return MovingAverageGatedAttention(
@@ -76,7 +75,6 @@ class MegaSentenceEncoderLayer(nn.Module):
             chunk_size=chunk_size,
             moving_layer=moving_layer,
             truncation=truncation,
-            shift=shift,
             rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,
             activation=activation,
