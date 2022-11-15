@@ -18,7 +18,6 @@ from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBia
 from fairseq.modules.sequence_norm import SequenceNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
-from fairseq.modules.s4d import S4D
 
 
 @with_incremental_state
@@ -75,8 +74,6 @@ class MovingAverageGatedAttention(nn.Module):
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
         elif moving_layer == 'cema':
             self.move = MultiHeadComplexEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
-        elif moving_layer == 's4d':
-            self.move = S4D(embed_dim, ndim=ndim, bidirectional=bidirectional)
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 

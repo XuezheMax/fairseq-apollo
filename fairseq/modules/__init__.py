@@ -34,7 +34,6 @@ from .luna_attention import LunarMultiheadAttention, LunarCausalAttention
 from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
 from .exponential_moving_average import MultiHeadEMA
 from .complex_exponential_moving_average import MultiHeadComplexEMA
-from .s4d import S4D
 from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
 from .gated_cross_attention import GatedCrossAttention
@@ -102,7 +101,6 @@ __all__ = [
     'GatedCrossAttention',
     'MultiHeadEMA',
     'MultiHeadComplexEMA',
-    'S4D',
     'MovingAverageGatedAttention',
     'MegaEncoderLayer',
     'MegaDecoderLayer',
