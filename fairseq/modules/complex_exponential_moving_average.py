@@ -82,14 +82,18 @@ class MultiHeadComplexEMA(nn.Module):
         p = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
         q = 1.0 - p * delta
-        # D x 1 x 2
-        theta = F.softplus(self.theta, beta=-1.0)
+        # D x 1 x 1
+        theta1, theta2 = torch.split(self.theta, [1, 1], dim=-1)
+
+        # D x 1 x 1
+        theta1 = torch.tanh(theta1) * math.pi
+        c1 = torch.cos(theta1) + 1j * torch.sin(theta1)
+
+        theta2 = F.softplus(theta2, beta=-1.0)
         # 1 x N
         wavelets = torch.arange(1, self.ndim + 1).to(p).view(1, self.ndim)
-        # D x N x 2
-        theta = torch.exp(wavelets.unsqueeze(2) * theta)
         # D x N x 1
-        c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
+        c2 = torch.exp(wavelets.unsqueeze(2) * theta2)
         # coeffs
         p = (p * c1) * self.beta
         q = q * c2
