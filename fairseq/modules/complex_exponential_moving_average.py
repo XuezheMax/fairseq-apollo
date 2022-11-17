@@ -63,7 +63,7 @@ class MultiHeadComplexEMA(nn.Module):
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # theta
-            nn.init.normal_(self.theta, mean=0.0, std=1.0)
+            nn.init.normal_(self.theta, mean=0.0, std=0.1)
             # beta [1, -1, 1, -1, ...] seems more stable.
             val = torch.ones(self.ndim, 1)
             if self.ndim > 1:
