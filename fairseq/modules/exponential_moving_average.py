@@ -73,9 +73,10 @@ class MultiHeadEMA(nn.Module):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        p = torch.sigmoid(self.alpha) * self.beta
+        p = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
         q = 1.0 - p * delta
+        p = p * self.beta
         return p, q
 
     def _compute_kernel(self, length: int):
@@ -83,7 +84,7 @@ class MultiHeadEMA(nn.Module):
         # D x N x 1
         p, q = self._calc_coeffs()
         # D x N x L
-        vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
+        vander = torch.arange(length).to(q).view(1, 1, length) * torch.log(q)
         kernel = p * torch.exp(vander)
         # D x L
         return torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
