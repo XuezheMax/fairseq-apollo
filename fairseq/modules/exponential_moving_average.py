@@ -198,7 +198,7 @@ class MultiHeadEMA(nn.Module):
             if self.bidirectional:
                 k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
                 # D x 2*L-1
-                k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
+                k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
             k_f = torch.fft.rfft(k.float(), n=fft_len)
             x_f = torch.fft.rfft(x.float(), n=fft_len)
