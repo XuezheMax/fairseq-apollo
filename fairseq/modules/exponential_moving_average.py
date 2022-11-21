@@ -73,7 +73,7 @@ class MultiHeadEMA(nn.Module):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        p = torch.sigmoid(self.alpha)
+        p = torch.sigmoid(self.alpha) * self.beta
         delta = torch.sigmoid(self.delta)
         q = 1.0 - p * delta
         return p, q
@@ -84,7 +84,7 @@ class MultiHeadEMA(nn.Module):
         p, q = self._calc_coeffs()
         # D x N x L
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
-        kernel = (p * self.beta) * torch.exp(vander)
+        kernel = p * torch.exp(vander)
         # D x L
         return torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
 
@@ -126,7 +126,7 @@ class MultiHeadEMA(nn.Module):
 
         # D x N x L
         vander = vander[:, :, :-1]
-        kernel = (p * self.beta) * vander
+        kernel = p * vander
         k = torch.einsum('dnl,dn->dl', kernel, self.gamma * self.scale)
 
         k_f = torch.fft.rfft(k.float(), n=2 * length)
@@ -146,7 +146,7 @@ class MultiHeadEMA(nn.Module):
     def one_step(self, x, hx=None):
         p, q = self.coeffs()
         # (D x N) x (B x D x 1) -> B x D x N
-        h = (p * self.beta).squeeze(-1) * x
+        h = p.squeeze(-1) * x
         if hx is not None:
             h = h + q.squeeze(-1) * hx
         # B x D
