@@ -14,9 +14,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 
 @with_incremental_state
 class BaseMovingLayer(nn.Module):
-    """Legendre Moving Average Layer.
-
-    See "" for more details.
+    """Base Class for Moving Layers
     """
 
     def __init__(self,):
