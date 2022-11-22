@@ -38,6 +38,7 @@ class MultiHeadEMA(BaseMovingLayer):
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
@@ -59,6 +60,12 @@ class MultiHeadEMA(BaseMovingLayer):
             # delta & alpha
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
+            # beta [1, -1, 1, -1, ...] seems more stable.
+            val = torch.ones(self.ndim, 1)
+            if self.ndim > 1:
+                idx = torch.tensor(list(range(1, self.ndim, 2)))
+                val.index_fill_(0, idx, -1.0)
+            self.beta.normal_(mean=0.0, std=0.02).add_(val)
             # gamma & omega
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
@@ -69,6 +76,7 @@ class MultiHeadEMA(BaseMovingLayer):
         p = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
         q = 1.0 - p * delta
+        p = p * self.beta
         # D x N
         gamma = self.gamma * self.scale
         return p, q, gamma
