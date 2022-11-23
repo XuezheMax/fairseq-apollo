@@ -2,17 +2,14 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Dict, Optional
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .base_moving_average import BaseMovingLayer
-from fairseq.incremental_decoding_utils import with_incremental_state
 
-_c2r = torch.view_as_real
-_r2c = torch.view_as_complex
+# _c2r = torch.view_as_real
+# _r2c = torch.view_as_complex
 
 
 class MultiHeadComplexEMA(BaseMovingLayer):
@@ -40,7 +37,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 2))
-        self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
+        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
         self._coeffs = None
@@ -63,31 +61,37 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
+            # beta [1, -1, 1, -1, ...] seems more stable.
+            val = torch.ones(self.ndim, 1)
+            if self.ndim > 1:
+                idx = torch.tensor(list(range(1, self.ndim, 2)))
+                val.index_fill_(0, idx, -1.0)
+            self.beta.normal_(mean=0.0, std=0.02).add_(val)
             # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
-            self.gamma[:, :, 1] = 0.
             # omega
             nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
         self._coeffs = None
-        # D x N x 1
-        p = torch.sigmoid(self.alpha)
-        delta = torch.sigmoid(self.delta)
-        q = 1.0 - p * delta
+
         # D x 1 x 2
         theta = F.softplus(self.theta, beta=-1.0)
         # 1 x N
-        wavelets = torch.arange(1, self.ndim + 1).to(p).view(1, self.ndim)
+        wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
         # D x N x 2
         theta = torch.exp(wavelets.unsqueeze(2) * theta)
         # D x N x 1
         c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
+
+        # D x N x 1
+        alpha = torch.sigmoid(self.alpha)
+        delta = torch.sigmoid(self.delta)
         # coeffs
-        p = p * c1
-        q = q * c2
+        p = alpha * self.beta * c1
+        q = (1.0 - alpha * delta) * c2
         # D x N
-        gamma = _r2c(self.gamma) * self.scale
+        gamma = self.gamma * self.scale
         return p, q, gamma
 
     def _compute_kernel(self, length: int):

@@ -4,14 +4,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Dict, Optional, Tuple
-
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .base_moving_average import BaseMovingLayer
-from fairseq.incremental_decoding_utils import with_incremental_state
 
 
 class MultiHeadEMA(BaseMovingLayer):
@@ -73,10 +69,10 @@ class MultiHeadEMA(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        p = torch.sigmoid(self.alpha)
+        alpha = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
-        q = 1.0 - p * delta
-        p = p * self.beta
+        q = 1.0 - alpha * delta
+        p = alpha * self.beta
         # D x N
         gamma = self.gamma * self.scale
         return p, q, gamma
