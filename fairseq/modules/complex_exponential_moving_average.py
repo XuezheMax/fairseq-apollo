@@ -91,6 +91,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         p = alpha * self.beta * c1
         q = (1.0 - alpha * delta) * c2
         # D x N
+        # gamma = _r2c(self.gamma) * self.scale
         gamma = self.gamma * self.scale + 1j * 0.0
         return p, q, gamma
 
