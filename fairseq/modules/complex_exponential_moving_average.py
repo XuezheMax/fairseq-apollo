@@ -37,7 +37,6 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 2))
-        self.beta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
@@ -61,12 +60,6 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
-            # beta [1, -1, 1, -1, ...] seems more stable.
-            val = torch.ones(self.ndim, 1)
-            if self.ndim > 1:
-                idx = torch.tensor(list(range(1, self.ndim, 2)))
-                val.index_fill_(0, idx, -1.0)
-            self.beta.normal_(mean=0.0, std=0.02).add_(val)
             # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
@@ -89,7 +82,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         alpha = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
         # coeffs
-        p = alpha * self.beta * c1
+        p = alpha * c1
         q = (1.0 - alpha * delta) * c2
         # D x N
         gamma = _r2c(self.gamma) * self.scale
