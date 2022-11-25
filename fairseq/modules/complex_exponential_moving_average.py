@@ -36,7 +36,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
-        self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 2))
+        self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
@@ -69,21 +69,21 @@ class MultiHeadComplexEMA(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
 
-        # D x 1 x 2
+        # D x 1 x 1
         theta = F.softplus(self.theta, beta=-1.0)
         # 1 x N
         wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
-        # D x N x 2
+        # D x N x 1
         theta = torch.exp(wavelets.unsqueeze(2) * theta)
         # D x N x 1
-        c1, c2 = torch.split(torch.cos(theta) + 1j * torch.sin(theta), [1, 1], dim=-1)
+        c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
         alpha = torch.sigmoid(self.alpha)
         delta = torch.sigmoid(self.delta)
         # coeffs
-        p = alpha * c1
-        q = (1.0 - alpha * delta) * c2
+        p = alpha
+        q = (1.0 - alpha * delta) * c
         # D x N
         gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma
