@@ -123,7 +123,7 @@ class BaseMovingLayer(nn.Module):
         assert embed_dim == self.embed_dim
 
         # L x B x D
-        residual = x * self.omega
+        # residual = x * self.omega
 
         # L x B x D -> B x D x L
         x = x.permute(1, 2, 0)
@@ -141,7 +141,7 @@ class BaseMovingLayer(nn.Module):
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
             # B x D -> 1 x B x D
-            out = F.silu(out + residual)
+            out = F.silu(out)
         else:
             # D x L
             k = self.kernel(seq_len)
@@ -158,7 +158,7 @@ class BaseMovingLayer(nn.Module):
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
             out = out.type_as(x)
             # B x D x L -> L x B x D
-            out = F.silu(out.permute(2, 0, 1) + residual)
+            out = F.silu(out.permute(2, 0, 1))
 
         return out
 

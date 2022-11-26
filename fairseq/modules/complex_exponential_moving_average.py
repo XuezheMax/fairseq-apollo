@@ -38,7 +38,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
-        self.omega = nn.Parameter(torch.Tensor(embed_dim))
+        # self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
         self._coeffs = None
 
@@ -64,7 +64,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
             # omega
-            nn.init.normal_(self.omega, mean=0.0, std=1.0)
+            # nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
         self._coeffs = None
