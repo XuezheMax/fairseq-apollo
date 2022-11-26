@@ -24,6 +24,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         ndim=2,
         bidirectional=False,
         truncation=None,
+        shift=True,
     ):
         super().__init__()
         self.complex = True
@@ -31,6 +32,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.ndim = ndim
         self.bidirectional = bidirectional
         self.truncation = truncation
+        self.shift = shift
         self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
@@ -38,7 +40,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
-        # self.omega = nn.Parameter(torch.Tensor(embed_dim))
+        self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
         self._coeffs = None
 
@@ -64,7 +66,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
             # omega
-            # nn.init.normal_(self.omega, mean=0.0, std=1.0)
+            nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
         self._coeffs = None
@@ -100,4 +102,5 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         return torch.einsum('dnl,dn->dl', kernel, gamma).real
 
     def extra_repr(self) -> str:
-        return 'edim={}, ndim={}, bidirectional={}, trunction={}'.format(self.embed_dim, self.ndim, self.bidirectional, self.truncation)
+        return 'edim={}, ndim={}, bidirectional={}, trunction={}, shift={}'.format(self.embed_dim, self.ndim, self.bidirectional,
+                                                                                   self.truncation, self.shift)

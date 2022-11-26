@@ -20,6 +20,8 @@ class BaseMovingLayer(nn.Module):
     def __init__(self,):
         super().__init__()
         self.complex = False
+        self.bidirectional = False
+        self.shift = True
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -123,7 +125,7 @@ class BaseMovingLayer(nn.Module):
         assert embed_dim == self.embed_dim
 
         # L x B x D
-        # residual = x * self.omega
+        residual = x * self.omega
 
         # L x B x D -> B x D x L
         x = x.permute(1, 2, 0)
@@ -141,7 +143,7 @@ class BaseMovingLayer(nn.Module):
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
             # B x D -> 1 x B x D
-            out = F.silu(out)
+            out = F.silu(out + residual)
         else:
             # D x L
             k = self.kernel(seq_len)
@@ -150,7 +152,10 @@ class BaseMovingLayer(nn.Module):
             if self.bidirectional:
                 k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
                 # D x K+L
-                k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
+                if self.shift:
+                    k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
+                else:
+                    k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
             k_f = torch.fft.rfft(k.float(), n=fft_len)
             x_f = torch.fft.rfft(x.float(), n=fft_len)
@@ -158,7 +163,7 @@ class BaseMovingLayer(nn.Module):
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
             out = out.type_as(x)
             # B x D x L -> L x B x D
-            out = F.silu(out.permute(2, 0, 1))
+            out = F.silu(out.permute(2, 0, 1) + residual)
 
         return out
 
