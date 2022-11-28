@@ -11,7 +11,7 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
-from fairseq.modules.sequence_norm import SequenceNorm
+from fairseq.modules.norm_layer.sequence_norm import SequenceNorm
 
 
 @with_incremental_state

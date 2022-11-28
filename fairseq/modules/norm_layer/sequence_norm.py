@@ -5,9 +5,9 @@
 
 import torch.nn as nn
 
-from fairseq.modules.layer_norm import LayerNorm
-from fairseq.modules.scale_norm import ScaleNorm
-from fairseq.modules.root_mean_square_norm import RMSNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm
+from fairseq.modules.norm_layer.scale_norm import ScaleNorm
+from fairseq.modules.norm_layer.root_mean_square_norm import RMSNorm
 
 
 class SequenceNorm(nn.Module):

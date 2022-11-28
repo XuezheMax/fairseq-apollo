@@ -4,7 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Optional, Tuple, List, Union
-import math
 
 import torch
 import torch.nn as nn
@@ -15,8 +14,8 @@ from fairseq.modules import (
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.scale_norm import ScaleNorm
-from fairseq.modules.layer_norm import LayerNorm
+from fairseq.modules.norm_layer.scale_norm import ScaleNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm
 
 
 class FlashLRAEncoder(nn.Module):

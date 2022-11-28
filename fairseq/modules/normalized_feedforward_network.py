@@ -1,13 +1,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
-import torch.nn.functional as F
 from torch import nn
 
 from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
-from fairseq.modules.sequence_norm import SequenceNorm
+from fairseq.modules.norm_layer.sequence_norm import SequenceNorm
 
 
 class NormalizedFeedForwardNetwork(nn.Module):

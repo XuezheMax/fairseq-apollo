@@ -19,10 +19,10 @@ from .grad_multiply import GradMultiply
 from .gumbel_vector_quantizer import GumbelVectorQuantizer
 from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
-from .layer_norm import Fp32LayerNorm, LayerNorm
-from .scale_norm import ScaleNorm
-from .root_mean_square_norm import RMSNorm
-from .sequence_norm import SequenceNorm
+from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm
+from .norm_layer.scale_norm import ScaleNorm
+from .norm_layer.root_mean_square_norm import RMSNorm
+from .norm_layer.sequence_norm import SequenceNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
