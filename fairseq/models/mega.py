@@ -290,15 +290,15 @@ class MegaEncoder(FairseqEncoder):
             num_paddings = 0
 
         x = encoder_embedding = self.embed_scale * self.embed_tokens(src_tokens)
-        if self.embed_norm is not None:
-            x = self.embed_norm(x)
-
-        x = self.embedding_dropout(x)
-
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
             encoder_padding_mask = None
+
+        if self.embed_norm is not None:
+            x = self.embed_norm(x, encoder_padding_mask)
+
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if encoder_padding_mask is not None:
@@ -320,7 +320,7 @@ class MegaEncoder(FairseqEncoder):
                 encoder_states.append(x)
 
         if self.final_norm is not None:
-            x = self.final_norm(x)
+            x = self.final_norm(x, encoder_padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -579,14 +579,14 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if self.project_in_dim is not None:
             x = self.project_in_dim(x)
 
-        if self.embed_norm is not None:
-            x = self.embed_norm(x)
-
-        x = self.embedding_dropout(x)
-
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
+
+        if self.embed_norm is not None:
+            x = self.embed_norm(x, decoder_padding_mask)
+
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if decoder_padding_mask is not None:
@@ -616,7 +616,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
                 attn = layer_attn.float().to(x)
 
         if self.final_norm is not None:
-            x = self.final_norm(x)
+            x = self.final_norm(x, decoder_padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)

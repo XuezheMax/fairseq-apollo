@@ -208,7 +208,7 @@ class MegaLRAEncoder(nn.Module):
             x = self.embed_tokens(tokens)
 
         if self.embed_norm is not None:
-            x = self.embed_norm(x)
+            x = self.embed_norm(x, padding_mask)
 
         x = self.embedding_dropout(x)
 
@@ -233,7 +233,7 @@ class MegaLRAEncoder(nn.Module):
                 inner_states.append(x)
 
         if self.final_norm is not None:
-            x = self.final_norm(x)
+            x = self.final_norm(x, padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)

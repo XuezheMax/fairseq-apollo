@@ -224,7 +224,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         residual = x
         if self.prenorm:
-            x = self.norm(x)
+            x = self.norm(x, padding_mask=padding_mask)
 
         # L x B x E
         v = self.activation(self.v_proj(x))
@@ -347,7 +347,7 @@ class MovingAverageGatedAttention(nn.Module):
         out = torch.addcmul(residual, u, h - residual)
 
         if not self.prenorm:
-            out = self.norm(out)
+            out = self.norm(out, padding_mask=padding_mask)
 
         if need_weights:
             return out, attn_weights

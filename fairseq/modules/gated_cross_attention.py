@@ -208,7 +208,7 @@ class GatedCrossAttention(nn.Module):
 
         q = query
         if self.prenorm:
-            q = self.norm(q)
+            q = self.norm(q, padding_mask=padding_mask)
 
         # L2 x B x (2*D+S)
         base = self.q_proj(q)
@@ -286,7 +286,7 @@ class GatedCrossAttention(nn.Module):
         out = torch.addcmul(query, u, h - query)
 
         if not self.prenorm:
-            out = self.norm(out)
+            out = self.norm(out, padding_mask=padding_mask)
 
         if need_weights:
             return out, attn_weights

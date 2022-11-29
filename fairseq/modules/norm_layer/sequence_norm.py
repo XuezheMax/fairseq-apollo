@@ -8,12 +8,15 @@ import torch.nn as nn
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.norm_layer.scale_norm import ScaleNorm
 from fairseq.modules.norm_layer.root_mean_square_norm import RMSNorm
+from fairseq.modules.norm_layer.dual_norm import DualNorm
 
 
 class SequenceNorm(nn.Module):
     def __init__(self, norm_type, embedding_dim, eps=1e-5, affine=True, export=False):
         super().__init__()
-        if norm_type == 'layernorm':
+        if norm_type == 'dualnorm':
+            self.norm = DualNorm(embedding_dim, eps=eps, affine=affine)
+        elif norm_type == 'layernorm':
             self.norm = LayerNorm(embedding_dim, eps=eps, elementwise_affine=affine, export=export)
         elif norm_type == 'scalenorm':
             self.norm = ScaleNorm(dim=-1, eps=eps, affine=affine)
@@ -26,14 +29,16 @@ class SequenceNorm(nn.Module):
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
-    def normalize(self, x):
+    def normalize(self, x, padding_mask=None):
         if isinstance(self.norm, nn.modules.batchnorm._BatchNorm):
             assert x.dim() == 3
             x = x.permute(1, 2, 0)
             x = self.norm(x)
             return x.permute(2, 0, 1)
+        elif isinstance(self.norm, DualNorm):
+            return self.norm(x, padding_mask)
         else:
             return self.norm(x)
 
-    def forward(self, x):
-        return self.normalize(x)
+    def forward(self, x, padding_mask=None):
+        return self.normalize(x, padding_mask)

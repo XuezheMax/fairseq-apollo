@@ -49,11 +49,11 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
         nn.init.constant_(self.fc2.bias, 0.0)
 
-    def forward(self, x):
+    def forward(self, x, padding_mask=None):
         residual = x
 
         if self.prenorm:
-            x = self.norm(x)
+            x = self.norm(x, padding_mask=padding_mask)
 
         x = self.activation(self.fc1(x))
         x = self.hidden_dropout(x)
@@ -62,7 +62,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = x + residual
 
         if not self.prenorm:
-            x = self.norm(x)
+            x = self.norm(x, padding_mask=padding_mask)
 
         return x
 

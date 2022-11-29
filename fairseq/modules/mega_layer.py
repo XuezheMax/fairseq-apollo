@@ -74,7 +74,7 @@ class MegaEncoderLayer(nn.Module):
         """
         x, _ = self.mega_layer(x, encoder_padding_mask)
         if self.nffn is not None:
-            x = self.nffn(x)
+            x = self.nffn(x, encoder_padding_mask)
 
         return x
 
@@ -187,7 +187,7 @@ class MegaDecoderLayer(nn.Module):
                                       static_kv=True, need_weights=need_attn)
 
         if self.nffn is not None:
-            x = self.nffn(x)
+            x = self.nffn(x, decoder_padding_mask)
 
         return x, attn, None
 

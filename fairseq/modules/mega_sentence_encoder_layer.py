@@ -113,6 +113,6 @@ class MegaSentenceEncoderLayer(nn.Module):
         x, attn = self.mega_layer(x, x_padding_mask)
 
         if self.nffn is not None:
-            x = self.nffn(x)
+            x = self.nffn(x, x_padding_mask)
 
         return x, attn
