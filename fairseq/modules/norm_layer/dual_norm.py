@@ -50,7 +50,7 @@ class DualNorm(nn.Module):
             inverse_mask = 1.0 - padding_mask.transpose(0, 1).type_as(x)
             nums = inverse_mask.sum()
             # L x B x D
-            out = out * (1.0 - inverse_mask.unsqueeze(2))
+            out = out * inverse_mask.unsqueeze(2)
             self._update_mean_square(out, nums)
 
         bias_correction = 1 - (1 - self.momentum) ** self.steps
