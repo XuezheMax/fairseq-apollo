@@ -45,12 +45,15 @@ class DualNorm(nn.Module):
         # L x B x D
         out = self.feature_norm(x)
         if self.training:
-            # zero out paddings
-            # L x B
-            inverse_mask = 1.0 - padding_mask.transpose(0, 1).type_as(x)
-            nums = inverse_mask.sum()
-            # L x B x D
-            out = out * inverse_mask.unsqueeze(2)
+            if padding_mask is not None:
+                # zero out paddings
+                # L x B
+                inverse_mask = 1.0 - padding_mask.transpose(0, 1).type_as(x)
+                nums = inverse_mask.sum()
+                # L x B x D
+                out = out * inverse_mask.unsqueeze(2)
+            else:
+                nums = x.size(0) * x.size(1)
             self._update_mean_square(out, nums)
 
         bias_correction = 1 - (1 - self.momentum) ** self.steps
