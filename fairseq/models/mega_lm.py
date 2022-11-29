@@ -106,7 +106,7 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--tie-adaptive-proj', action='store_true',
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
 
-        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm'],
+        parser.add_argument('--normalization-type', choices=['dualnorm', 'layernorm', 'scalenorm'],
                             help='normalization type')
         parser.add_argument('--normalize-before', action='store_true',
                             help='apply normalization layer before each encoder block')

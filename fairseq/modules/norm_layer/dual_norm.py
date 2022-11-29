@@ -19,7 +19,7 @@ class DualNorm(nn.Module):
         self.feature_norm = LayerNorm(num_features, eps=eps, elementwise_affine=False, export=export)
         if affine:
             self.weight = nn.Parameter(torch.Tensor(num_features))
-            self.bias = nn.Parameter(torch.Tensor(*num_features))
+            self.bias = nn.Parameter(torch.Tensor(num_features))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)

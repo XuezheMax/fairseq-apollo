@@ -114,7 +114,7 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='comma separated list of adaptive softmax cutoff points. Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--normalization-type', choices=['layernorm', 'scalenorm', 'rmsnorm'],
+        parser.add_argument('--normalization-type', choices=['dualnorm', 'layernorm', 'scalenorm', 'rmsnorm'],
                             help='normalization type')
         parser.add_argument('--normalize-before', action='store_true',
                             help='apply normalization layer before each encoder block')
