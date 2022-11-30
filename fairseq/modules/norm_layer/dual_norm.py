@@ -16,7 +16,6 @@ class DualNorm(nn.Module):
         self.affine = affine
         self.momentum = momentum
 
-        self.feature_norm = LayerNorm(num_features, eps=eps, elementwise_affine=False, export=export)
         if affine:
             self.weight = nn.Parameter(torch.Tensor(num_features))
             self.bias = nn.Parameter(torch.Tensor(num_features))
@@ -24,8 +23,9 @@ class DualNorm(nn.Module):
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
 
-        self.register_buffer('running_square', torch.zeros(num_features))
-        self.register_buffer('steps', torch.zeros(1))
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+        self.register_buffer('num_batches_tracked', torch.zeros(1))
 
         self.reset_parameters()
 
@@ -34,16 +34,25 @@ class DualNorm(nn.Module):
             nn.init.ones_(self.weight)
             nn.init.zeros_(self.bias)
 
-    def _update_mean_square(self, x, nums):
+    def _compute_mean_var(self, x, nums):
+        sum_x = torch.sum(x, dim=(0, 1))
+        ssum_x = torch.sum(torch.square(x), dim=(0, 1))
+
+        mean = sum_x / nums
+        var = ssum_x / nums - torch.square(mean)
+
         with torch.no_grad():
-            # D
-            mean_square = torch.sum(torch.square(x) / nums, dim=(0, 1))
-            self.steps.copy_(self.steps + 1.0)
-            self.running_square.mul_(1.0 - self.momentum).add_(mean_square, alpha=self.momentum)
+            self.num_batches_tracked = self.num_batches_tracked + 1
+            self.running_mean.mul_(1.0 - self.momentum).add_(mean, alpha=self.momentum)
+            self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum)
+
+        return mean, var
 
     def forward(self, x, padding_mask=None):
         # L x B x D
-        out = self.feature_norm(x)
+        mean_square = torch.mean(torch.square(x), dim=-1, keepdim=True)
+        x = x * torch.rsqrt(mean_square + self.eps)
+
         if self.training:
             if padding_mask is not None:
                 # zero out paddings
@@ -51,18 +60,21 @@ class DualNorm(nn.Module):
                 inverse_mask = 1.0 - padding_mask.transpose(0, 1).type_as(x)
                 nums = inverse_mask.sum()
                 # L x B x D
-                out = out * inverse_mask.unsqueeze(2)
+                x = x * inverse_mask.unsqueeze(2)
             else:
                 nums = x.size(0) * x.size(1)
-            self._update_mean_square(out, nums)
 
-        bias_correction = 1 - (1 - self.momentum) ** self.steps
-        inv_square = torch.rsqrt(self.running_square / bias_correction + self.eps)
+            mean, var = self._compute_mean_var(x, nums)
+        else:
+            mean, var = self.running_mean, self.running_var
+
+        # bias_correction = 1 - (1 - self.momentum) ** self.num_batches_tracked
+        inv_std = torch.rsqrt(var + self.eps)
 
         if self.affine:
-            out = out * (self.weight * inv_square) + self.bias
+            out = (x - mean) * (self.weight * inv_std) + self.bias
         else:
-            out = out * inv_square
+            out = (x - mean) * inv_std
         return out
 
     def extra_repr(self) -> str:
