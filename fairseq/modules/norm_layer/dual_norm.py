@@ -43,7 +43,7 @@ class DualNorm(nn.Module):
         with torch.no_grad():
             self.num_batches_tracked = self.num_batches_tracked + 1
             self.running_mean.mul_(1.0 - self.momentum).add_(mean, alpha=self.momentum)
-            self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum)
+            self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum * nums / (nums - 1)) # unbias var estimator for running var
 
         return mean, var
 
@@ -59,7 +59,6 @@ class DualNorm(nn.Module):
         else:
             mean, var = self.running_mean, self.running_var
 
-        # bias_correction = 1 - (1 - self.momentum) ** self.num_batches_tracked
         inv_std = torch.rsqrt(var + self.eps)
 
         if self.affine:
@@ -70,8 +69,7 @@ class DualNorm(nn.Module):
 
     def forward(self, x, padding_mask=None):
         # L x B x D
-        mean_square = torch.mean(torch.square(x), dim=-1, keepdim=True)
-        x = x * torch.rsqrt(mean_square + self.eps)
+        x = F.normalize(x, dim=-1, eps=self.eps)
 
         if padding_mask is None:
             out = F.batch_norm(x.permute(1, 2, 0), self.running_mean, self.running_var,
@@ -100,7 +98,7 @@ class DualNorm2(nn.Module):
             self.register_parameter('bias', None)
 
         self.register_buffer('running_mean', torch.zeros(num_features))
-        self.register_buffer('running_var', torch.ones(num_features))
+        self.register_buffer('running_var', torch.zeros(num_features))
         self.register_buffer('num_batches_tracked', torch.zeros(1))
 
         self.reset_parameters()
@@ -117,17 +115,19 @@ class DualNorm2(nn.Module):
         mean = sum_x / nums
         var = ssum_x / nums - torch.square(mean)
 
+        running_mean = self.running_mean.mul(1.0 - self.momentum).add(mean, alpha=self.momentum)
+        running_var = self.running_var.mul(1.0 - self.momentum).add(var, alpha=self.momentum)
+
         with torch.no_grad():
             self.num_batches_tracked = self.num_batches_tracked + 1
-            self.running_mean.mul_(1.0 - self.momentum).add_(mean, alpha=self.momentum)
-            self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum)
+            self.running_mean.copy_(running_mean.data)
+            self.running_var.copy_(running_var.data)
 
-        return mean, var
+        return running_mean, running_var
 
     def forward(self, x, padding_mask=None):
         # L x B x D
-        mean_square = torch.mean(torch.square(x), dim=-1, keepdim=True)
-        x = x * torch.rsqrt(mean_square + self.eps)
+        x = F.normalize(x, dim=-1, eps=self.eps)
 
         if self.training:
             if padding_mask is not None:
@@ -144,8 +144,9 @@ class DualNorm2(nn.Module):
         else:
             mean, var = self.running_mean, self.running_var
 
-        # bias_correction = 1 - (1 - self.momentum) ** self.num_batches_tracked
-        inv_std = torch.rsqrt(var + self.eps)
+        bias_correction = 1 - (1 - self.momentum) ** self.num_batches_tracked
+        mean = mean / bias_correction
+        inv_std = torch.rsqrt(var / bias_correction + self.eps)
 
         if self.affine:
             out = (x - mean) * (self.weight * inv_std) + self.bias
