@@ -69,7 +69,7 @@ class DualNorm(nn.Module):
 
     def forward(self, x, padding_mask=None):
         # L x B x D
-        x = F.normalize(x, dim=-1, eps=self.eps)
+        # x = F.normalize(x, dim=-1, eps=self.eps)
 
         if padding_mask is None:
             out = F.batch_norm(x.permute(1, 2, 0), self.running_mean, self.running_var,
@@ -127,7 +127,7 @@ class DualNorm2(nn.Module):
 
     def forward(self, x, padding_mask=None):
         # L x B x D
-        x = F.normalize(x, dim=-1, eps=self.eps)
+        # x = F.normalize(x, dim=-1, eps=self.eps)
 
         if self.training:
             if padding_mask is not None:

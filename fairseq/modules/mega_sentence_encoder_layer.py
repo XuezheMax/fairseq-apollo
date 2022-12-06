@@ -64,6 +64,7 @@ class MegaSentenceEncoderLayer(nn.Module):
                          chunk_size, moving_layer, truncation,
                          rel_pos_bias, max_positions,
                          norm_type, prenorm, feature_dropout, export):
+        norm_type = 'dualnorm' if prenorm else 'layernorm'
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
@@ -89,6 +90,7 @@ class MegaSentenceEncoderLayer(nn.Module):
     def build_nffn_layer(self, embedding_dim, ffn_hidden_dim,
                          dropout, hidden_dropout, activation,
                          norm_type, prenorm, feature_dropout, export):
+        norm_type = 'layernorm' if prenorm else 'dualnorm'
         return NormalizedFeedForwardNetwork(
             embed_dim=embedding_dim,
             ffn_hidden_dim=ffn_hidden_dim,
