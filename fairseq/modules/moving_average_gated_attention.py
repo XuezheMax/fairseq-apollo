@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Dict, Optional, Tuple
-
+import math
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -57,7 +57,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
-        self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
+        # self.scaling = self.zdim ** -0.5 if attention_activation == 'softmax' else None
 
         dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
         self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
@@ -104,17 +104,11 @@ class MovingAverageGatedAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        std = 0.02
-        nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.v_proj.bias, 0.0)
-
-        nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.mx_proj.bias, 0.0)
-
-        nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
-        nn.init.constant_(self.h_proj.bias, 0.0)
-
-        nn.init.normal_(self.gamma, mean=0.0, std=std)
+        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.mx_proj.weight)
+        nn.init.xavier_uniform_(self.h_proj.weight)
+        # gamma & beta
+        nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -125,14 +119,14 @@ class MovingAverageGatedAttention(nn.Module):
             # B x K x 1
             lengths = inverse_mask.sum(dim=-1, keepdim=True)
             # B x K x 1 x 1
-            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
+            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
         else:
-            lengths = slen
+            len_scale = 1.0 / math.sqrt(slen)
             inverse_mask = None
 
         if attn_mask is not None:
             # C x 1
-            lengths = attn_mask.sum(dim=-1, keepdim=True)
+            len_scale = torch.rsqrt(attn_mask.sum(dim=-1, keepdim=True))
 
         # C x C
         bias = self.rel_pos_bias(slen)
@@ -142,7 +136,7 @@ class MovingAverageGatedAttention(nn.Module):
             bias = bias[-1:]
 
         # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3)) / lengths + bias
+        qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
 
         if before_attn_fn:
             return qk
@@ -172,7 +166,7 @@ class MovingAverageGatedAttention(nn.Module):
             bias = bias[-1:]
 
         # scaled attention
-        q = q * self.scaling
+        # q = q * self.scaling
         # B x K x C x C
         qk = torch.matmul(q, k.transpose(2, 3)) + bias
 
@@ -236,15 +230,18 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> L x B x (2*D+S+E)
         base = self.mx_proj(mx)
-        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
+        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x (E+S)
-        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
+        # L x B x E
+        r = F.silu(r)
+        # L x B x S
+        # z = z / (torch.norm(z, p=2, dim=-1, keepdim=True) + 1e-5)
+        z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(z, dim=2)
+        q, k = torch.unbind(F.silu(z), dim=2)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
