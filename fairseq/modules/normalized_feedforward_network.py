@@ -42,8 +42,12 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc2.weight)
+        std = 0.02
+        nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
+        nn.init.constant_(self.fc1.bias, 0.0)
+
+        nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
+        nn.init.constant_(self.fc2.bias, 0.0)
 
     def forward(self, x, padding_mask=None):
         residual = x
