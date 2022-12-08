@@ -78,7 +78,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 
-        self.val_norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
+        self.val_norm = MaskedBatchNorm(hdim, affine=norm_affine)
         self.attn_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
 
         self.max_positions = max_positions
