@@ -87,7 +87,8 @@ class MegaLRAEncoder(nn.Module):
 
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
-                                                 self.vocab_size, self.padding_idx)
+                                                 self.vocab_size, self.padding_idx,
+                                                 not normalize_embedding)
 
         self.embed_norm = MaskedBatchNorm(embedding_dim) if normalize_embedding else None
 
@@ -122,12 +123,12 @@ class MegaLRAEncoder(nn.Module):
 
         self.final_norm = MaskedBatchNorm(embedding_dim)
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, bias):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             return embed_tokens
         else:
-            embed_tokens = RealNumberEmbedding(embedding_dim)
+            embed_tokens = RealNumberEmbedding(embedding_dim, bias=bias)
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
