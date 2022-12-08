@@ -124,7 +124,7 @@ class MegaLRAEncoder(nn.Module):
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
-            embed_tokens = Embedding(vocab_size, embedding_dim, padding_idx)
+            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             return embed_tokens
         else:
             embed_tokens = RealNumberEmbedding(embedding_dim)
@@ -234,18 +234,3 @@ class MegaLRAEncoder(nn.Module):
             return torch.stack(inner_states), sentence_rep
         else:
             return inner_states, sentence_rep
-
-
-class Embedding(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, padding_idx):
-        super().__init__()
-        self.embed = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        self.reset_parameters(embedding_dim)
-
-    def reset_parameters(self, embedding_dim):
-        std = embedding_dim ** -0.5
-        nn.init.normal_(self.embed.weight, mean=0, std=std)
-
-    def forward(self, tokens):
-        x = self.embed(tokens)
-        return x
