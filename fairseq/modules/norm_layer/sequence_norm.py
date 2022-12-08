@@ -8,14 +8,14 @@ import torch.nn as nn
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.norm_layer.scale_norm import ScaleNorm
 from fairseq.modules.norm_layer.root_mean_square_norm import RMSNorm
-from fairseq.modules.norm_layer.dual_norm import DualNorm, DualNorm2
+from fairseq.modules.norm_layer.dual_norm import MaskedBatchNorm, DualNorm2
 
 
 class SequenceNorm(nn.Module):
     def __init__(self, norm_type, embedding_dim, eps=1e-5, affine=True, export=False):
         super().__init__()
-        if norm_type == 'dualnorm':
-            self.norm = DualNorm(embedding_dim, eps=eps, affine=affine)
+        if norm_type == 'maskedbatchnorm':
+            self.norm = MaskedBatchNorm(embedding_dim, eps=eps, affine=affine)
         elif norm_type == 'dualnorm2':
             self.norm = DualNorm2(embedding_dim, eps=eps, affine=affine)
         elif norm_type == 'layernorm':
@@ -37,7 +37,7 @@ class SequenceNorm(nn.Module):
             x = x.permute(1, 2, 0)
             x = self.norm(x)
             return x.permute(2, 0, 1)
-        elif isinstance(self.norm, DualNorm) or isinstance(self.norm, DualNorm2):
+        elif isinstance(self.norm, MaskedBatchNorm) or isinstance(self.norm, DualNorm2):
             return self.norm(x, padding_mask)
         else:
             return self.norm(x)

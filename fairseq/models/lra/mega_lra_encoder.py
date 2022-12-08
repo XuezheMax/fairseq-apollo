@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fairseq.modules import (
-    SequenceNorm,
+    MaskedBatchNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -61,8 +61,6 @@ class MegaLRAEncoder(nn.Module):
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
         moving_layer: str = 'ema',
-        norm_type: str = 'layernorm',
-        normalize_before: bool = False,
         normalize_embedding: bool = False,
         feature_dropout: bool = False,
         layerdrop: float = 0.0,
@@ -91,8 +89,7 @@ class MegaLRAEncoder(nn.Module):
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
                                                  self.vocab_size, self.padding_idx)
 
-        assert not normalize_embedding or not normalize_before
-        self.embed_norm = SequenceNorm(norm_type, embedding_dim, export=export) if normalize_embedding else None
+        self.embed_norm = MaskedBatchNorm(embedding_dim) if normalize_embedding else None
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -117,18 +114,13 @@ class MegaLRAEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
-                norm_type=norm_type,
-                prenorm=normalize_before,
                 feature_dropout=feature_dropout,
                 export=export
             )
             for _ in range(self.num_layers)
         ])
 
-        if normalize_before:
-            self.final_norm = SequenceNorm(norm_type, embedding_dim, export=export)
-        else:
-            self.final_norm = None
+        self.final_norm = MaskedBatchNorm(embedding_dim)
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
@@ -155,8 +147,6 @@ class MegaLRAEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
-        norm_type,
-        prenorm,
         feature_dropout,
         export,
     ):
@@ -176,8 +166,6 @@ class MegaLRAEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
-            norm_type=norm_type,
-            prenorm=prenorm,
             feature_dropout=feature_dropout,
             export=export
         )
@@ -232,8 +220,7 @@ class MegaLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        if self.final_norm is not None:
-            x = self.final_norm(x, padding_mask)
+        x = self.final_norm(x, padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)

@@ -4,7 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Optional
-import math
 
 import torch
 import torch.nn as nn
@@ -35,8 +34,6 @@ class MegaSentenceEncoderLayer(nn.Module):
         max_positions: int = 1024,
         activation='silu',
         attention_activation: str = 'softmax',
-        norm_type: str = 'layernorm',
-        prenorm: bool = True,
         feature_dropout: bool = False,
         export: bool = False,
     ) -> None:
@@ -49,12 +46,12 @@ class MegaSentenceEncoderLayer(nn.Module):
                                                 activation, attention_activation,
                                                 chunk_size, moving_layer, truncation,
                                                 rel_pos_bias, max_positions,
-                                                norm_type, prenorm, feature_dropout, export)
+                                                feature_dropout, export)
 
         if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
             self.nffn = self.build_nffn_layer(embedding_dim, ffn_hidden_dim,
                                               dropout, hidden_dropout, activation,
-                                              norm_type, prenorm, feature_dropout, export)
+                                              feature_dropout, export)
         else:
             self.nffn = None
 
@@ -63,8 +60,7 @@ class MegaSentenceEncoderLayer(nn.Module):
                          activation, attention_activation,
                          chunk_size, moving_layer, truncation,
                          rel_pos_bias, max_positions,
-                         norm_type, prenorm, feature_dropout, export):
-        norm_type = 'dualnorm' if prenorm else 'layernorm'
+                         feature_dropout, export):
         return MovingAverageGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
@@ -81,24 +77,19 @@ class MegaSentenceEncoderLayer(nn.Module):
             activation=activation,
             attention_activation=attention_activation,
             bidirectional=True,
-            norm_type=norm_type,
-            prenorm=prenorm,
             feature_dropout=feature_dropout,
             export=export
         )
 
     def build_nffn_layer(self, embedding_dim, ffn_hidden_dim,
                          dropout, hidden_dropout, activation,
-                         norm_type, prenorm, feature_dropout, export):
-        norm_type = 'layernorm' if prenorm else 'dualnorm'
+                         feature_dropout, export):
         return NormalizedFeedForwardNetwork(
             embed_dim=embedding_dim,
             ffn_hidden_dim=ffn_hidden_dim,
             dropout=dropout,
             hidden_dropout=hidden_dropout,
             activation=activation,
-            norm_type=norm_type,
-            prenorm=prenorm,
             feature_dropout=feature_dropout,
             export=export
         )

@@ -22,7 +22,7 @@ from .layer_drop import LayerDropModuleList
 from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm
 from .norm_layer.scale_norm import ScaleNorm
 from .norm_layer.root_mean_square_norm import RMSNorm
-from .norm_layer.dual_norm import DualNorm
+from .norm_layer.dual_norm import MaskedBatchNorm
 from .norm_layer.sequence_norm import SequenceNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
