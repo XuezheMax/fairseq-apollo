@@ -21,6 +21,7 @@ class BaseMovingLayer(nn.Module):
         super().__init__()
         self.complex = False
         self.bidirectional = False
+        self.truncation = None
         self.shift = True
 
     def prepare_for_onnx_export_(self):

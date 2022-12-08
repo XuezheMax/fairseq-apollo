@@ -195,21 +195,18 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
         if self.embed_norm is not None:
             x = self.embed_norm(x, padding_mask)
-
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
             # B x N
             inverse_mask = 1.0 - padding_mask.type_as(x)
-            x = x * inverse_mask.unsqueeze(-1)
         else:
             inverse_mask = None
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
 
         inner_states = []
         if not last_state_only:
