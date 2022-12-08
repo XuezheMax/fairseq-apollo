@@ -71,13 +71,15 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
+        self.m_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.v_proj = nn.Linear(embed_dim, hdim, bias=False)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + embed_dim)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 
+        self.move_norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
         self.val_norm = MaskedBatchNorm(hdim, affine=norm_affine)
         self.attn_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
 
@@ -110,6 +112,7 @@ class MovingAverageGatedAttention(nn.Module):
         #
         # nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         # nn.init.constant_(self.h_proj.bias, 0.0)
+        nn.init.xavier_uniform_(self.m_proj.weight)
         nn.init.xavier_uniform_(self.v_proj.weight)
         nn.init.xavier_uniform_(self.mx_proj.weight)
         nn.init.constant_(self.mx_proj.bias, 0.0)
@@ -229,14 +232,15 @@ class MovingAverageGatedAttention(nn.Module):
         v = self.activation(v)
 
         # L x B x D
-        mx = self.move(x, padding_mask, incremental_state)
+        m = self.m_proj(x)
+        m = self.move_norm(m, padding_mask=padding_mask)
+        m = self.activation(m)
+        mx = self.move(m, padding_mask, incremental_state)
         mx = self.dropout(mx)
 
-        # L x B x D -> L x B x (2*D+S+E)
+        # L x B x D -> L x B x (D+S+E)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
-        # L x B x D
-        u = torch.sigmoid(u)
+        z, r, hx = torch.split(base, [self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x E
         r = F.silu(r)
         # L x B x S
@@ -343,10 +347,10 @@ class MovingAverageGatedAttention(nn.Module):
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.activation(self.attn_norm(hx + self.h_proj(h * r)))
+        h = self.attn_norm(hx + self.h_proj(h * r))
         h = self.dropout(h)
         # L x B x D
-        out = torch.addcmul(residual, u, h - residual)
+        out = self.activation(h + residual)
 
         if need_weights:
             return out, attn_weights
