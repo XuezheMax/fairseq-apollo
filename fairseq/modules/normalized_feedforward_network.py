@@ -17,7 +17,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         norm_affine=True,
-        feature_dropout=False,
         export=False,
     ):
         super().__init__()
@@ -27,9 +26,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.act_fn = activation
         self.activation = utils.get_activation_fn(activation)
 
-        dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
-        self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
-        self.hidden_dropout = dropout_module(hidden_dropout, module_name=self.__class__.__name__)
+        self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
         self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
 
@@ -54,10 +52,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.hidden_dropout(x)
         # fc2
         x = self.fc2(x)
-        x = self.norm(x, padding_mask=padding_mask)
+        x = self.activation(self.norm(x, padding_mask=padding_mask))
         x = self.dropout(x)
         # residual
-        x = self.activation(x + residual)
+        x = x + residual
 
         return x
 

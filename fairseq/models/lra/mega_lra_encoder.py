@@ -62,7 +62,6 @@ class MegaLRAEncoder(nn.Module):
         chunk_size: int = -1,
         moving_layer: str = 'ema',
         normalize_embedding: bool = False,
-        feature_dropout: bool = False,
         layerdrop: float = 0.0,
         truncation: int = None,
         rel_pos_bias: str = 'simple',
@@ -115,7 +114,6 @@ class MegaLRAEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
-                feature_dropout=feature_dropout,
                 export=export
             )
             for _ in range(self.num_layers)
@@ -150,7 +148,6 @@ class MegaLRAEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
-        feature_dropout,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -169,7 +166,6 @@ class MegaLRAEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
-            feature_dropout=feature_dropout,
             export=export
         )
 

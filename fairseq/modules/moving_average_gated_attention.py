@@ -43,7 +43,6 @@ class MovingAverageGatedAttention(nn.Module):
         moving_layer='ema',
         truncation=None,
         norm_affine=True,
-        feature_dropout=False,
         rel_pos_bias='simple',
         max_positions=1024,
         export=False,
@@ -57,9 +56,8 @@ class MovingAverageGatedAttention(nn.Module):
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
 
-        dropout_module = FairseqFeatureDropout if feature_dropout else FairseqDropout
-        self.dropout = dropout_module(dropout, module_name=self.__class__.__name__)
-        self.hidden_dropout = dropout_module(hidden_dropout, module_name=self.__class__.__name__)
+        self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
@@ -71,16 +69,14 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.m_proj = nn.Linear(embed_dim, embed_dim, bias=False)
-        self.v_proj = nn.Linear(embed_dim, hdim, bias=False)
+        self.mv_proj = nn.Linear(embed_dim, embed_dim + hdim, bias=False)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + embed_dim)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 
-        self.move_norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
-        self.val_norm = MaskedBatchNorm(hdim, affine=norm_affine)
+        self.mv_norm = MaskedBatchNorm(embed_dim + hdim, affine=norm_affine)
         self.attn_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
 
         self.max_positions = max_positions
@@ -112,8 +108,7 @@ class MovingAverageGatedAttention(nn.Module):
         #
         # nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         # nn.init.constant_(self.h_proj.bias, 0.0)
-        nn.init.xavier_uniform_(self.m_proj.weight)
-        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.mv_proj.weight)
         nn.init.xavier_uniform_(self.mx_proj.weight)
         nn.init.constant_(self.mx_proj.bias, 0.0)
         nn.init.xavier_uniform_(self.h_proj.weight)
@@ -226,17 +221,16 @@ class MovingAverageGatedAttention(nn.Module):
             saved_state = None
 
         residual = x
-        # L x B x E
-        v = self.v_proj(x)
-        v = self.val_norm(v, padding_mask=padding_mask)
-        v = self.activation(v)
+        # L x B x (D+E)
+        mv = self.mv_proj(x)
+        mv = self.mv_norm(mv, padding_mask=padding_mask)
 
         # L x B x D
-        m = self.m_proj(x)
-        m = self.move_norm(m, padding_mask=padding_mask)
-        m = self.activation(m)
+        m, v = torch.split(mv, [self.embed_dim, self.hdim], dim=-1)
         mx = self.move(m, padding_mask, incremental_state)
         mx = self.dropout(mx)
+        # L x B x E
+        v = self.activation(v)
 
         # L x B x D -> L x B x (D+S+E)
         base = self.mx_proj(mx)
@@ -342,15 +336,15 @@ class MovingAverageGatedAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
-        v = self.hidden_dropout(v, batch_first=True)
+        v = self.hidden_dropout(v)
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.attn_norm(hx + self.h_proj(h * r))
+        h = self.activation(self.attn_norm(hx + self.h_proj(h * r)))
         h = self.dropout(h)
         # L x B x D
-        out = self.activation(h + residual)
+        out = h + residual
 
         if need_weights:
             return out, attn_weights

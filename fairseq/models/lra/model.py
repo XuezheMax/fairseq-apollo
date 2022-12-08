@@ -76,8 +76,6 @@ class LRAModel(FairseqEncoderModel):
                             metavar='D', help='dropout probability for attention weights')
         parser.add_argument('--act-dropout', type=float,
                             metavar='D', help='dropout probability after activation in FFN')
-        parser.add_argument('--feature-dropout', action='store_true',
-                            help='apply feature dropout')
 
         # Arguments related to hidden states and self-attention
         parser.add_argument('--encoder-hidden-dim', type=int, metavar='N',
@@ -299,7 +297,6 @@ class LRAEncoder(FairseqEncoder):
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
                 normalize_embedding=args.normalize_embedding,
-                feature_dropout=args.feature_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
@@ -344,7 +341,6 @@ def base_architecture(args):
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
-    args.feature_dropout = getattr(args, 'feature_dropout', False)
 
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 2048)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', args.encoder_hidden_dim)
