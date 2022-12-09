@@ -1,6 +1,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 from torch import nn
 
 from fairseq import utils
@@ -31,6 +32,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
         self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
+        self.gate = nn.Linear(embed_dim, 1)
 
         self.reset_parameters()
 
@@ -39,9 +41,13 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
         nn.init.constant_(self.fc1.bias, 0.0)
         nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
+        nn.init.normal_(self.gate.weight, mean=0.0, std=std)
+        nn.init.constant_(self.gate.bias, 0.0)
 
     def forward(self, x, padding_mask=None):
         residual = x
+        # L x B x 1
+        u = torch.sigmoid(self.gate(x))
         # fc1
         x = self.fc1(x)
         x = self.hidden_dropout(self.activation(x))
@@ -49,7 +55,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.norm(self.fc2(x), padding_mask=padding_mask)
         x = self.dropout(self.activation(x))
         # residual
-        out = x + residual
+        out = torch.addcmul(residual, u, x - residual)
 
         return out
 
