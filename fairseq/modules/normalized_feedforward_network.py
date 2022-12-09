@@ -4,7 +4,7 @@
 from torch import nn
 
 from fairseq import utils
-from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
+from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
 
 
@@ -17,7 +17,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         norm_affine=True,
-        export=False,
     ):
         super().__init__()
 

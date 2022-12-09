@@ -47,8 +47,7 @@ class MegaSentenceEncoderLayer(nn.Module):
                                                 rel_pos_bias, max_positions, export)
 
         if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
-            self.nffn = self.build_nffn_layer(embedding_dim, ffn_hidden_dim,
-                                              dropout, hidden_dropout, activation, export)
+            self.nffn = self.build_nffn_layer(embedding_dim, ffn_hidden_dim, dropout, hidden_dropout, activation)
         else:
             self.nffn = None
 
@@ -76,15 +75,13 @@ class MegaSentenceEncoderLayer(nn.Module):
             export=export
         )
 
-    def build_nffn_layer(self, embedding_dim, ffn_hidden_dim,
-                         dropout, hidden_dropout, activation, export):
+    def build_nffn_layer(self, embedding_dim, ffn_hidden_dim, dropout, hidden_dropout, activation):
         return NormalizedFeedForwardNetwork(
             embed_dim=embedding_dim,
             ffn_hidden_dim=ffn_hidden_dim,
             dropout=dropout,
             hidden_dropout=hidden_dropout,
             activation=activation,
-            export=export
         )
 
     def forward(

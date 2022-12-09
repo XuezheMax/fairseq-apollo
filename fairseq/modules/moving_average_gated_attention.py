@@ -12,7 +12,7 @@ from torch.nn import Parameter
 
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
-from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
+from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
