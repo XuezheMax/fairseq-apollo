@@ -215,29 +215,29 @@ class MovingAverageGatedAttention(nn.Module):
 
         residual = x
 
+        # TODO: dropout position
         # L x B x E
-        v = self.v_proj(x)
+        v = self.activation(self.v_proj(x))
+        v = self.hidden_dropout(v)
         v = self.val_norm(v, padding_mask=padding_mask)
-        v = self.activation(v)
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.dropout(mx)
+        # mx = self.dropout(mx)
 
         # L x B x D -> L x B x (D+S+E)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x E
-        r = F.silu(r)
+        # L x B x (E+S)
+        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
         # L x B x S
-        # z = z / (torch.norm(z, p=2, dim=-1, keepdim=True) + 1e-5)
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(F.silu(z), dim=2)
+        q, k = torch.unbind(z, dim=2)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
@@ -330,13 +330,13 @@ class MovingAverageGatedAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
-        v = self.hidden_dropout(v)
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.attn_norm(hx + self.h_proj(h * r))
-        h = self.dropout(self.activation(h))
+        h = self.activation(hx + self.h_proj(h * r))
+        h = self.dropout(h)
+        h = self.attn_norm(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)
 
