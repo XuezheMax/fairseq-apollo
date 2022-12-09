@@ -29,10 +29,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=False)
-        self.norm1 = MaskedBatchNorm(ffn_hidden_dim, affine=norm_affine)
+        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
-        self.norm2 = MaskedBatchNorm(embed_dim, affine=norm_affine)
+        self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
 
         self.reset_parameters()
 
@@ -48,14 +47,13 @@ class NormalizedFeedForwardNetwork(nn.Module):
     def forward(self, x, padding_mask=None):
         residual = x
         # fc1
-        x = self.norm1(self.fc1(x), padding_mask=padding_mask)
+        x = self.fc1(x)
         x = self.hidden_dropout(self.activation(x))
         # fc2
-        x = self.norm2(self.fc2(x), padding_mask=padding_mask)
+        x = self.norm(self.fc2(x), padding_mask=padding_mask)
         x = self.dropout(self.activation(x))
         # residual
-        out_scale = 0.5 ** 0.5
-        out = (x + residual) * out_scale
+        out = x + residual
 
         return out
 
