@@ -5,7 +5,7 @@ from torch import nn
 
 from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
-from fairseq.modules.norm_layer.dual_norm import MaskedBatchNorm
+from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
 
 
 class NormalizedFeedForwardNetwork(nn.Module):
@@ -36,13 +36,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        # std = 0.02
-        # nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
-        # nn.init.constant_(self.fc1.bias, 0.0)
-        # nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
-
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.xavier_uniform_(self.fc2.weight)
+        std = 0.02
+        nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
+        nn.init.constant_(self.fc1.bias, 0.0)
+        nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
 
     def forward(self, x, padding_mask=None):
         residual = x

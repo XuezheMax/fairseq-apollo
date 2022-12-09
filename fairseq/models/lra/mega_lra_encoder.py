@@ -120,7 +120,7 @@ class MegaLRAEncoder(nn.Module):
         ])
 
         self.final_proj = nn.Linear(embedding_dim, embedding_dim, bias=False)
-        nn.init.xavier_uniform_(self.final_proj.weight)
+        nn.init.normal_(self.final_proj.weight, mean=0.0, std=0.02)
         self.final_norm = MaskedBatchNorm(embedding_dim)
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, bias):

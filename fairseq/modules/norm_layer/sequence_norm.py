@@ -8,7 +8,7 @@ import torch.nn as nn
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.norm_layer.scale_norm import ScaleNorm
 from fairseq.modules.norm_layer.root_mean_square_norm import RMSNorm
-from fairseq.modules.norm_layer.dual_norm import MaskedBatchNorm, DualNorm2
+from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm, DualNorm2
 
 
 class SequenceNorm(nn.Module):

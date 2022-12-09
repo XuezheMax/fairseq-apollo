@@ -22,7 +22,7 @@ class MultiHeadEMA(BaseMovingLayer):
         ndim=2,
         bidirectional=False,
         truncation=None,
-        shift = True
+        shift=True,
     ):
         super().__init__()
         self.complex = False

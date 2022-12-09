@@ -15,7 +15,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout, FairseqFeatureDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
-from fairseq.modules.norm_layer.dual_norm import MaskedBatchNorm
+from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 
@@ -100,20 +100,12 @@ class MovingAverageGatedAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
-        # std = 0.02
-        # nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
-        #
-        # nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
-        # nn.init.constant_(self.mx_proj.bias, 0.0)
-        #
-        # nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
-        # nn.init.constant_(self.h_proj.bias, 0.0)
-        nn.init.xavier_uniform_(self.v_proj.weight)
-        nn.init.xavier_uniform_(self.mx_proj.weight)
-        nn.init.normal_(self.mx_proj.weight[:self.embed_dim], mean=0.0, std=0.02)
+        # linear proj
+        std = 0.02
+        nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
+        nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.mx_proj.bias, 0.0)
-        nn.init.xavier_uniform_(self.h_proj.weight)
-
+        nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         # gamma & beta
         nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
