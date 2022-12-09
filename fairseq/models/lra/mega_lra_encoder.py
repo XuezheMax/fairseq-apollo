@@ -119,10 +119,6 @@ class MegaLRAEncoder(nn.Module):
             for _ in range(self.num_layers)
         ])
 
-        self.final_proj = nn.Linear(embedding_dim, embedding_dim, bias=False)
-        nn.init.xavier_uniform_(self.final_proj.weight)
-        self.final_norm = MaskedBatchNorm(embedding_dim)
-
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, bias):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
@@ -215,9 +211,6 @@ class MegaLRAEncoder(nn.Module):
             x, _ = self.layers[i](x, x_padding_mask=padding_mask)
             if not last_state_only:
                 inner_states.append(x)
-
-        x = self.final_proj(x)
-        x = self.final_norm(x, padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
