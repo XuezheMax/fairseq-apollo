@@ -43,7 +43,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.xavier_uniform_(self.fc2.weight)
 
     def forward(self, x, padding_mask=None):
-        # TODO: dropout position
         residual = x
         # fc1
         x = self.activation(self.fc1(x))

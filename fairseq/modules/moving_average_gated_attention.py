@@ -217,7 +217,6 @@ class MovingAverageGatedAttention(nn.Module):
 
         residual = x
 
-        # TODO: dropout position
         # L x B x E
         v = self.val_norm(self.v_proj(x), padding_mask=padding_mask)
         v = self.hidden_dropout(self.activation(v))
@@ -225,13 +224,13 @@ class MovingAverageGatedAttention(nn.Module):
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
 
-        # L x B x D -> L x B x (2*D+S+E)
+        # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
+        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x (E+S)
-        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
+        # L x B x E
+        r = F.silu(r)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
