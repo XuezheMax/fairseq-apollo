@@ -36,10 +36,11 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        std = 0.02
-        nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
+        # fc1
+        nn.init.xavier_uniform_(self.fc1.weight)
         nn.init.constant_(self.fc1.bias, 0.0)
-        nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
+        # fc2
+        nn.init.xavier_uniform_(self.fc2.weight)
 
     def forward(self, x, padding_mask=None):
         # TODO: dropout position
