@@ -49,7 +49,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.activation(self.fc1(x))
         x = self.hidden_dropout(x)
         # fc2
-        x = self.norm(self.fc2(x), padding_mask=padding_mask)
+        x = self.fc2(x)
+        x = self.norm(x, padding_mask=padding_mask)
         x = self.dropout(x)
         # residual
         out = x + residual

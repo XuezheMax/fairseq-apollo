@@ -335,7 +335,7 @@ class MovingAverageGatedAttention(nn.Module):
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
         h = self.attn_norm(hx + self.h_proj(h * r))
-        h = self.dropout(h)
+        h = self.dropout(self.activation(h))
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)
 
