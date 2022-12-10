@@ -217,20 +217,22 @@ class MovingAverageGatedAttention(nn.Module):
 
         residual = x
 
+        # TODO: dropout after move
         # L x B x E
-        v = self.val_norm(self.v_proj(x), padding_mask=padding_mask)
-        v = self.hidden_dropout(self.activation(v))
+        v = self.activation(self.v_proj(x))
+        v = self.val_norm(v, padding_mask=padding_mask)
+        v = self.hidden_dropout(v)
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x E
-        r = F.silu(r)
+        # L x B x (E+S)
+        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
@@ -333,8 +335,9 @@ class MovingAverageGatedAttention(nn.Module):
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.attn_norm(hx + self.h_proj(h * r))
-        h = self.dropout(self.activation(h))
+        h = self.activation(hx + self.h_proj(h * r))
+        h = self.attn_norm(h)
+        h = self.dropout(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)
 
