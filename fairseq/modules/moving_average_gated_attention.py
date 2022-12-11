@@ -216,7 +216,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         residual = x
         # batchnorm
-        x = self.norm(x)
+        x = self.norm(x, padding_mask)
 
         # L x B x E
         v = self.activation(self.v_proj(x))

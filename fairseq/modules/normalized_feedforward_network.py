@@ -31,7 +31,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
 
         self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine)
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
-        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
+        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
 
         self.reset_parameters()
 
@@ -41,7 +41,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.constant_(self.fc1.bias, 0.0)
         # fc2
         nn.init.xavier_uniform_(self.fc2.weight)
-        nn.init.constant_(self.fc2.bias, 0.0)
 
     def forward(self, x, padding_mask=None):
         residual = x
