@@ -231,14 +231,14 @@ class MovingAverageGatedAttention(nn.Module):
         u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x E
-        r = F.silu(r)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(z, dim=2)
+        q, k = torch.unbind(F.silu(z), dim=2)
+        # L x B x E
+        r = F.silu(r)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
