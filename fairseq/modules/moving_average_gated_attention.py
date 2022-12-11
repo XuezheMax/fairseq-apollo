@@ -44,7 +44,6 @@ class MovingAverageGatedAttention(nn.Module):
         norm_affine=True,
         rel_pos_bias='simple',
         max_positions=1024,
-        export=False,
     ):
         super().__init__()
 
@@ -98,17 +97,18 @@ class MovingAverageGatedAttention(nn.Module):
         self.tpu = True
 
     def reset_parameters(self):
+        gain = 1.0 / math.sqrt(2)
         # v proj
-        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.v_proj.weight, gain=gain)
         nn.init.constant_(self.v_proj.bias, 0.0)
         # mx proj
-        nn.init.xavier_uniform_(self.mx_proj.weight)
+        nn.init.xavier_uniform_(self.mx_proj.weight, gain=gain)
         nn.init.constant_(self.mx_proj.weight[:self.embed_dim], 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
         # h proj
-        nn.init.xavier_uniform_(self.h_proj.weight)
+        nn.init.xavier_uniform_(self.h_proj.weight, gain=gain)
         # gamma & beta
-        nn.init.constant_(self.gamma, 1.0)
+        nn.init.normal_(self.gamma, mean=1.0, std=0.01)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
