@@ -61,7 +61,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
 
-        self.norm = MaskedBatchNorm(hdim, affine=norm_affine)
+        self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
 
         if moving_layer == 'ema':
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
