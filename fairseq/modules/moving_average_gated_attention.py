@@ -14,7 +14,6 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
-from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
@@ -62,6 +61,8 @@ class MovingAverageGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
 
+        self.norm = MaskedBatchNorm(hdim, affine=norm_affine)
+
         if moving_layer == 'ema':
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
         elif moving_layer == 'cema':
@@ -69,15 +70,12 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.v_proj = nn.Linear(embed_dim, hdim, bias=False)
+        self.v_proj = nn.Linear(embed_dim, hdim)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
-
-        self.val_norm = MaskedBatchNorm(hdim, affine=norm_affine)
-        self.attn_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -102,6 +100,7 @@ class MovingAverageGatedAttention(nn.Module):
     def reset_parameters(self):
         # v proj
         nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.constant_(self.v_proj.bias, 0.0)
         # mx proj
         nn.init.xavier_uniform_(self.mx_proj.weight)
         nn.init.constant_(self.mx_proj.weight[:self.embed_dim], 0.0)
@@ -216,15 +215,16 @@ class MovingAverageGatedAttention(nn.Module):
             saved_state = None
 
         residual = x
+        # batchnorm
+        x = self.norm(x)
 
-        # TODO: dropout after move
         # L x B x E
         v = self.activation(self.v_proj(x))
-        v = self.val_norm(v, padding_mask=padding_mask)
         v = self.hidden_dropout(v)
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
+        mx = self.dropout(mx)
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
@@ -336,7 +336,6 @@ class MovingAverageGatedAttention(nn.Module):
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
         h = self.activation(hx + self.h_proj(h * r))
-        h = self.attn_norm(h)
         h = self.dropout(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)

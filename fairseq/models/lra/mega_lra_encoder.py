@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Optional, Tuple, List, Union
+from typing import Tuple, List, Union
 import math
 
 import torch
@@ -61,7 +61,6 @@ class MegaLRAEncoder(nn.Module):
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
         moving_layer: str = 'ema',
-        normalize_embedding: bool = False,
         layerdrop: float = 0.0,
         truncation: int = None,
         rel_pos_bias: str = 'simple',
@@ -85,11 +84,7 @@ class MegaLRAEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
-        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
-                                                 self.vocab_size, self.padding_idx,
-                                                 not normalize_embedding)
-
-        self.embed_norm = MaskedBatchNorm(embedding_dim) if normalize_embedding else None
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -119,16 +114,14 @@ class MegaLRAEncoder(nn.Module):
             for _ in range(self.num_layers)
         ])
 
-        self.final_proj = nn.Linear(embedding_dim, embedding_dim, bias=False)
-        nn.init.xavier_uniform_(self.final_proj.weight)
         self.final_norm = MaskedBatchNorm(embedding_dim)
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, bias):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':
-            embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+            embed_tokens = Embedding(vocab_size, embedding_dim, padding_idx)
             return embed_tokens
         else:
-            embed_tokens = RealNumberEmbedding(embedding_dim, bias=bias)
+            embed_tokens = RealNumberEmbedding(embedding_dim)
             return embed_tokens
 
     def build_mega_sentence_encoder_layer(
@@ -170,10 +163,10 @@ class MegaLRAEncoder(nn.Module):
         )
 
     def forward(
-            self,
-            tokens: torch.Tensor,
-            src_lengths: torch.Tensor,
-            last_state_only: bool = False,
+        self,
+        tokens: torch.Tensor,
+        src_lengths: torch.Tensor,
+        last_state_only: bool = False,
     ) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], torch.Tensor]:
 
         bsz, seq_len = tokens.size()
@@ -194,18 +187,18 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
-        if self.embed_norm is not None:
-            x = self.embed_norm(x, padding_mask)
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
             # B x N
             inverse_mask = 1.0 - padding_mask.type_as(x)
+            x = x * inverse_mask.unsqueeze(-1)
         else:
             inverse_mask = None
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
 
         inner_states = []
         if not last_state_only:
@@ -216,7 +209,6 @@ class MegaLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        x = self.final_proj(x)
         x = self.final_norm(x, padding_mask)
 
         if inverse_mask is not None:
@@ -234,3 +226,10 @@ class MegaLRAEncoder(nn.Module):
             return torch.stack(inner_states), sentence_rep
         else:
             return inner_states, sentence_rep
+
+
+def Embedding(num_embeddings, embedding_dim, padding_idx):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
+    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
+    nn.init.constant_(m.weight[padding_idx], 0)
+    return m

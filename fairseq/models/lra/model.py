@@ -296,7 +296,6 @@ class LRAEncoder(FairseqEncoder):
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
-                normalize_embedding=args.normalize_embedding,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
