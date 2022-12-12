@@ -108,7 +108,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.constant_(self.gamma, 1.0)
+        nn.init.normal_(self.gamma, mean=1.0, std=std)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
