@@ -145,7 +145,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
-        parser.add_argument('--init_mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
 
         parser.add_argument('--chunk-size', type=int, metavar='N',
                             help='chunk size of Mega.')
