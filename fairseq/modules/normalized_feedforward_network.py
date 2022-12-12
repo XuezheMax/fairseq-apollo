@@ -19,6 +19,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         activation='silu',
         norm_affine=True,
         export=False,
+        init_mode='gaussian'
     ):
         super().__init__()
 
@@ -26,6 +27,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.hidden_dim = ffn_hidden_dim
         self.act_fn = activation
         self.activation = utils.get_activation_fn(activation)
+        self.init_mode = init_mode
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -34,15 +36,22 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
 
-        self.reset_parameters()
+        assert init_mode in ['gaussian', 'xavier']
+        self.reset_parameters(init_mode)
 
-    def reset_parameters(self):
-        std = 0.02
-        # fc1
-        nn.init.xavier_uniform_(self.fc1.weight)
+    def reset_parameters(self, mode):
+        # weights
+        if mode == 'gaussian':
+            std = 0.02
+            nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
+            nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
+        elif mode == 'xavier':
+            nn.init.xavier_normal_(self.fc1.weight)
+            nn.init.xavier_normal_(self.fc2.weight)
+        else:
+            raise ValueError('Unknown init mode: {}'.format(mode))
+        # bias
         nn.init.constant_(self.fc1.bias, 0.0)
-        # fc2
-        nn.init.xavier_uniform_(self.fc2.weight)
         nn.init.constant_(self.fc2.bias, 0.0)
 
     def forward(self, x):
@@ -61,4 +70,4 @@ class NormalizedFeedForwardNetwork(nn.Module):
         return out
 
     def extra_repr(self) -> str:
-        return 'edim={}, hdim={}, act={}'.format(self.embedding_dim, self.hidden_dim, self.act_fn)
+        return 'edim={}, hdim={}, act={}, init={}'.format(self.embedding_dim, self.hidden_dim, self.act_fn, self.init_mode)

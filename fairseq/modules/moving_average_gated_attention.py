@@ -44,6 +44,7 @@ class MovingAverageGatedAttention(nn.Module):
         norm_affine=True,
         rel_pos_bias='simple',
         max_positions=1024,
+        init_mode='gaussian'
     ):
         super().__init__()
 
@@ -53,6 +54,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
+        self.init_mode = init_mode
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -85,7 +87,8 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
-        self.reset_parameters()
+        assert init_mode in ['gaussian', 'xavier']
+        self.reset_parameters(init_mode)
 
         self.onnx_trace = False
         self.tpu = False
@@ -96,18 +99,25 @@ class MovingAverageGatedAttention(nn.Module):
     def prepare_for_tpu_(self, **kwargs):
         self.tpu = True
 
-    def reset_parameters(self):
-        # v_proj
-        nn.init.xavier_uniform_(self.v_proj.weight)
+    def reset_parameters(self, mode):
+        # weights
+        if mode == 'gaussian':
+            std = 0.02
+            nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
+        elif mode == 'xavier':
+            nn.init.xavier_normal_(self.v_proj.weight)
+            nn.init.xavier_normal_(self.mx_proj.weight)
+            nn.init.xavier_normal_(self.h_proj.weight)
+        else:
+            raise ValueError('Unknown init mode: {}'.format(mode))
+        # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
-        # mx_proj
-        nn.init.xavier_uniform_(self.mx_proj.weight)
         nn.init.constant_(self.mx_proj.bias, 0.0)
-        # h_proj
-        nn.init.xavier_uniform_(self.h_proj.weight)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.normal_(self.gamma, mean=1.0, std=0.02)
+        nn.init.normal_(self.gamma, mean=1.0, std=0.01)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -393,5 +403,5 @@ class MovingAverageGatedAttention(nn.Module):
         return new_padding_mask
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim,
-                                                                                  self.chunk_size, self.attention_activation)
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, init={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim,
+                                                                                           self.chunk_size, self.attention_activation, self.init_mode)

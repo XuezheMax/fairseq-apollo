@@ -145,6 +145,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
+        parser.add_argument('--init_mode', choices=['gaussian', 'xavier'], default='gaussian')
 
         parser.add_argument('--chunk-size', type=int, metavar='N',
                             help='chunk size of Mega.')
@@ -301,7 +302,8 @@ class LRAEncoder(FairseqEncoder):
                 truncation=getattr(args, 'truncation_length', None),
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
-                sen_rep_type=getattr(args, 'sen_rep_type', 'mp')
+                sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
+                init_mode=args.init_mode
             )
         else:
             self.encoder = LunaLRAEncoder(

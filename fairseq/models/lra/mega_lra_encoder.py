@@ -68,6 +68,7 @@ class MegaLRAEncoder(nn.Module):
         export: bool = False,
         traceable: bool = False,
         sen_rep_type: str = 'cls',
+        init_mode='gaussian'
     ) -> None:
 
         super().__init__()
@@ -109,6 +110,7 @@ class MegaLRAEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
+                init_mode=init_mode,
                 export=export
             )
             for _ in range(self.num_layers)
@@ -141,6 +143,7 @@ class MegaLRAEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
+        init_mode,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -159,6 +162,7 @@ class MegaLRAEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
+            init_mode=init_mode,
             export=export
         )
 
