@@ -43,7 +43,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.constant_(self.fc1.bias, 0.0)
         # fc2
         nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
-        nn.init.constant_(self.fc1.bias, 0.0)
+        nn.init.constant_(self.fc2.bias, 0.0)
 
     def forward(self, x):
         residual = x

@@ -108,7 +108,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.normal_(self.gamma)
+        nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -228,18 +228,17 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
+        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x (E+S)
-        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(z, dim=2)
+        q, k = torch.unbind(F.silu(z), dim=2)
         # L x B x E
+        r = F.silu(r)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
