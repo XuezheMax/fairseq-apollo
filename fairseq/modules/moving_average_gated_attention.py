@@ -15,6 +15,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 
@@ -44,7 +45,8 @@ class MovingAverageGatedAttention(nn.Module):
         norm_affine=True,
         rel_pos_bias='simple',
         max_positions=1024,
-        init_mode='gaussian'
+        init_mode='gaussian',
+        export=False,
     ):
         super().__init__()
 
@@ -77,6 +79,8 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
+
+        self.attn_norm = LayerNorm(hdim, elementwise_affine=norm_affine, export=export)
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -116,7 +120,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
         # gamma & beta
-        nn.init.uniform_(self.gamma, a=0.99, b=1.01)
+        nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -342,6 +346,7 @@ class MovingAverageGatedAttention(nn.Module):
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
+        h = self.attn_norm(h)
         # L x B x E -> L x B x D
         h = self.activation(hx + self.h_proj(h * r))
         h = self.dropout(h)
