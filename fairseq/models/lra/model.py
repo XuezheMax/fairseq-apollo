@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from fairseq import utils
 from fairseq.models import (
@@ -22,7 +21,7 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_normal_(m.weight)
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -52,7 +51,7 @@ class LRAModel(FairseqEncoderModel):
             ])
             self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim)
+        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
         nn.init.zeros_(self.sentence_projection_layer.weight)
         nn.init.zeros_(self.sentence_projection_layer.bias)
 
