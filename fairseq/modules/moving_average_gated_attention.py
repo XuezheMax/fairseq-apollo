@@ -127,14 +127,14 @@ class MovingAverageGatedAttention(nn.Module):
             # B x K x 1
             lengths = inverse_mask.sum(dim=-1, keepdim=True)
             # B x K x 1 x 1
-            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
+            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
         else:
-            len_scale = 1.0 / math.sqrt(slen)
+            lengths = slen
             inverse_mask = None
 
         if attn_mask is not None:
             # C x 1
-            len_scale = torch.rsqrt(attn_mask.sum(dim=-1, keepdim=True))
+            lengths = attn_mask.sum(dim=-1, keepdim=True)
 
         # C x C
         bias = self.rel_pos_bias(slen)
@@ -144,7 +144,7 @@ class MovingAverageGatedAttention(nn.Module):
             bias = bias[-1:]
 
         # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
+        qk = torch.matmul(q, k.transpose(2, 3)) / lengths + bias
 
         if before_attn_fn:
             return qk
