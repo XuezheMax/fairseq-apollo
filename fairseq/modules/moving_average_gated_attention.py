@@ -116,7 +116,8 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
         # gamma & beta
-        nn.init.normal_(self.gamma, mean=1.0, std=0.01)
+        std = 1.0 / math.sqrt(self.zdim)
+        nn.init.normal_(self.gamma, mean=0.0, std=std)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -124,17 +125,8 @@ class MovingAverageGatedAttention(nn.Module):
         if padding_mask is not None:
             # B x K x C
             inverse_mask = 1.0 - padding_mask.type_as(q)
-            # B x K x 1
-            lengths = inverse_mask.sum(dim=-1, keepdim=True)
-            # B x K x 1 x 1
-            lengths = lengths.clamp(min=1.0).unsqueeze(-1)
         else:
-            lengths = slen
             inverse_mask = None
-
-        if attn_mask is not None:
-            # C x 1
-            lengths = attn_mask.sum(dim=-1, keepdim=True)
 
         # C x C
         bias = self.rel_pos_bias(slen)
@@ -144,7 +136,7 @@ class MovingAverageGatedAttention(nn.Module):
             bias = bias[-1:]
 
         # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3)) / lengths + bias
+        qk = torch.matmul(q, k.transpose(2, 3)) + bias
 
         if before_attn_fn:
             return qk
