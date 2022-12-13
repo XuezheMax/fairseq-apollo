@@ -52,8 +52,6 @@ class LRAModel(FairseqEncoderModel):
             self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
         self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
-        nn.init.zeros_(self.sentence_projection_layer.weight)
-        nn.init.zeros_(self.sentence_projection_layer.bias)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
         self.layer_type = args.layer_type
