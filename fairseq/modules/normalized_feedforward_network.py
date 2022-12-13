@@ -55,7 +55,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
 
     def forward(self, x, padding_mask):
         residual = x
-        # layernorm
+        # batchnorm
         x = self.norm(x, padding_mask)
         # fc1
         x = self.activation(self.fc1(x))
