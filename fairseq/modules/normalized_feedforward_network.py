@@ -1,12 +1,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import math
 from torch import nn
 
 from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm
 
 
 class NormalizedFeedForwardNetwork(nn.Module):
@@ -18,6 +17,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         norm_affine=True,
+        export=False,
         init_mode='gaussian'
     ):
         super().__init__()
@@ -31,7 +31,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
+        self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
 
@@ -53,10 +53,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.constant_(self.fc1.bias, 0.0)
         nn.init.constant_(self.fc2.bias, 0.0)
 
-    def forward(self, x, padding_mask):
+    def forward(self, x):
         residual = x
-        # batchnorm
-        x = self.norm(x, padding_mask)
+        # layernorm
+        x = self.norm(x)
         # fc1
         x = self.activation(self.fc1(x))
         x = self.hidden_dropout(x)
