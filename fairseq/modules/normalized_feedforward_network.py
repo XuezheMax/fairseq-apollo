@@ -45,8 +45,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
             nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
             nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
         elif mode == 'xavier':
-            nn.init.xavier_normal_(self.fc1.weight)
-            nn.init.xavier_normal_(self.fc2.weight)
+            nn.init.xavier_uniform_(self.fc1.weight)
+            nn.init.xavier_uniform_(self.fc2.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
         # bias
