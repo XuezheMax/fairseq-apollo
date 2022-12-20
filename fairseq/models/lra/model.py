@@ -86,7 +86,7 @@ class LRAModel(FairseqEncoderModel):
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
-        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='ema')
+        parser.add_argument('--moving-layer', choices=['ema', 'cema', 'dlr'], default='ema')
 
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',

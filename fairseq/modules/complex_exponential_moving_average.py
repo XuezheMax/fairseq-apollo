@@ -26,13 +26,10 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         truncation=None,
         shift=True,
     ):
-        super().__init__()
+        super().__init__(bidirectional, truncation, shift)
         self.complex = True
         self.embed_dim = embed_dim
         self.ndim = ndim
-        self.bidirectional = bidirectional
-        self.truncation = truncation
-        self.shift = shift
         self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
@@ -58,8 +55,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
     def reset_parameters(self):
         with torch.no_grad():
             # delta & alpha
-            nn.init.normal_(self.alpha, mean=0.0, std=0.1)
-            nn.init.normal_(self.delta, mean=0.0, std=0.1)
+            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+            nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # gamma

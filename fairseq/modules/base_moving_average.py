@@ -17,12 +17,12 @@ class BaseMovingLayer(nn.Module):
     """Base Class for Moving Layers
     """
 
-    def __init__(self,):
+    def __init__(self, bidirectional=False, truncation=None, shift=True):
         super().__init__()
         self.complex = False
-        self.bidirectional = False
-        self.truncation = None
-        self.shift = True
+        self.bidirectional = bidirectional
+        self.truncation = truncation
+        self.shift = shift
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -60,7 +60,7 @@ class BaseMovingLayer(nn.Module):
         # D x N x 1
         p, q, gamma = self.coeffs()
         # D x N x L+1
-        vander = torch.arange(length + 1).to(p).view(1, 1, length + 1) * torch.log(q)
+        vander = torch.arange(length + 1).to(q).view(1, 1, length + 1) * torch.log(q)
         vander = torch.exp(vander)
         if hx is not None:
             # D x N x L * D x N x 1 -> D x N x L
@@ -76,7 +76,7 @@ class BaseMovingLayer(nn.Module):
 
         # D x N x L
         vander = vander[:, :, :-1]
-        kernel = p * vander
+        kernel = p * vander if p is not None else vander
         k = torch.einsum('dnl,dn->dl', kernel, gamma)
         if self.complex:
             k = k.real
@@ -98,7 +98,7 @@ class BaseMovingLayer(nn.Module):
     def one_step(self, x, hx=None):
         p, q, gamma = self.coeffs()
         # (D x N) x (B x D x 1) -> B x D x N
-        h = p.squeeze(-1) * x
+        h = p.squeeze(-1) * x if p is not None else x
         if hx is not None:
             h = h + q.squeeze(-1) * hx
         # B x D
