@@ -80,8 +80,11 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        p = torch.sigmoid(self.alpha)
-        q = torch.exp(-torch.square(self.delta)) * c
+        alpha = torch.sigmoid(self.alpha)
+        delta = torch.sigmoid(self.delta)
+        # coeffs
+        p = alpha
+        q = (1.0 - alpha * delta) * c
         # D x N
         gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma
