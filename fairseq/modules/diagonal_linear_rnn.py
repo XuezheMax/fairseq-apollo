@@ -74,7 +74,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        alpha = torch.exp(-torch.square(self.alpha))
+        alpha = torch.exp(F.softplus(self.alpha, beta=-10.0))
         # coeffs
         q = alpha * c
         # D x N
