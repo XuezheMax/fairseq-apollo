@@ -58,8 +58,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
     def reset_parameters(self):
         with torch.no_grad():
             # delta & alpha
-            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            nn.init.normal_(self.delta, mean=0.0, std=0.2)
+            nn.init.normal_(self.alpha, mean=0.0, std=0.1)
+            nn.init.normal_(self.delta, mean=0.0, std=0.1)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # gamma
@@ -80,11 +80,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        alpha = torch.sigmoid(self.alpha)
-        delta = torch.sigmoid(self.delta)
-        # coeffs
-        p = alpha
-        q = (1.0 - alpha * delta) * c
+        p = torch.sigmoid(self.alpha)
+        q = torch.exp(F.gelu(self.delta)) * c
         # D x N
         gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma
