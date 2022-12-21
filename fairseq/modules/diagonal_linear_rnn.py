@@ -55,7 +55,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
             # alpha
             nn.init.normal_(self.alpha, mean=0.0, std=0.1)
             # theta
-            nn.init.normal_(self.theta, mean=0.0, std=0.1)
+            nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
@@ -65,9 +65,9 @@ class DiagonalLinearRNN(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x 1 x 1
-        theta = torch.sigmoid(self.theta) * (4 * math.pi / self.ndim)
+        theta = torch.sigmoid(self.theta) * (2 * math.pi / self.ndim)
         # 1 x N
-        wavelets = torch.arange(0, self.ndim).to(theta).view(1, self.ndim)
+        wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
         # D x N x 1
         theta = wavelets.unsqueeze(2) * theta
         # D x N x 1
