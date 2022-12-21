@@ -3,8 +3,7 @@
 
 import math
 import torch
-from fairseq import utils
-from torch import Tensor, nn
+from torch import nn
 
 from .base_moving_average import BaseMovingLayer
 
