@@ -3,7 +3,7 @@
 
 import math
 import torch
-import torch.nn.functional as F
+from fairseq import utils
 from torch import Tensor, nn
 
 from .base_moving_average import BaseMovingLayer
@@ -55,8 +55,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
     def reset_parameters(self):
         with torch.no_grad():
             # delta & alpha
-            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            nn.init.normal_(self.delta, mean=0.0, std=0.2)
+            nn.init.normal_(self.alpha, mean=0.0, std=0.05)
+            nn.init.normal_(self.delta, mean=0.0, std=0.05)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # gamma
@@ -78,7 +78,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
 
         # D x N x 1
         alpha = torch.sigmoid(self.alpha)
-        delta = torch.sigmoid(self.delta)
+        delta = utils.laplace(self.delta)
         # coeffs
         p = alpha
         q = (1.0 - alpha * delta) * c
