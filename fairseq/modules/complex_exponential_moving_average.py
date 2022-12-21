@@ -30,7 +30,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.complex = True
         self.embed_dim = embed_dim
         self.ndim = ndim
-        self.scale = math.sqrt(1.0 / self.ndim)
+        self.scale = 1.0 / self.ndim
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
