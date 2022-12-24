@@ -82,7 +82,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         p = alpha
         q = (1.0 - alpha * delta) * c
         # D x N
-        gamma = _r2c(self.gamma) * self.scale
+        gamma = _r2c(self.gamma) * (self.scale ** 0.5)
         return p, q, gamma
 
     def _compute_kernel(self, length: int):
