@@ -82,7 +82,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         p = alpha
         q = (1.0 - alpha * delta) * c
         # D x N
-        gamma = _r2c(self.gamma) * (self.scale ** 0.5)
+        gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma
 
     def _compute_kernel(self, length: int):
@@ -94,8 +94,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         # D x N x L
         kernel = p * torch.exp(vander)
         # D x L
-        kernel = torch.einsum('dnl,dn->dl', kernel, gamma)
-        return kernel.real * kernel.imag
+        return torch.einsum('dnl,dn->dl', kernel, gamma).real
 
     def extra_repr(self) -> str:
         return 'edim={}, ndim={}, bidirectional={}, trunction={}, shift={}'.format(self.embed_dim, self.ndim, self.bidirectional,
