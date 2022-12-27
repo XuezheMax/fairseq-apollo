@@ -29,7 +29,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         self.complex = True
         self.embed_dim = embed_dim
         self.ndim = ndim
-        self.scale = math.sqrt(1.0 / self.ndim) * 0.5
+        self.scale = 1.0 / self.ndim
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
@@ -74,7 +74,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        alpha = 0.5 * (1.0 - torch.erf(-self.alpha - math.sqrt(2.0)))
+        alpha = 0.5 * (1.0 - torch.erf(self.alpha - math.sqrt(2.0)))
         # coeffs
         q = alpha * c
         # D x N
