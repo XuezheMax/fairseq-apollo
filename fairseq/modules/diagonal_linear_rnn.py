@@ -78,7 +78,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         # coeffs
         q = alpha * c
         # D x N
-        gamma = _r2c(self.gamma) * self.scale
+        gamma = _r2c(self.gamma)  # no scale
         return None, q, gamma
 
     def _compute_kernel(self, length: int):
