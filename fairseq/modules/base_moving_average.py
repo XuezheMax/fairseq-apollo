@@ -165,9 +165,6 @@ class BaseMovingLayer(nn.Module):
             # B x D x L
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
             out = out.type_as(x)
-            # TODO: normalize by length
-            assert self.bidirectional and padding_mask is None
-            out = out / kernel_size
             # B x D x L -> L x B x D
             out = F.silu(out.permute(2, 0, 1) + residual)
 
