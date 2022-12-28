@@ -15,7 +15,6 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.masked_batch_norm import MaskedBatchNorm
-from fairseq.modules.norm_layer.scale_norm import ScaleNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 from fairseq.modules.diagonal_linear_rnn import DiagonalLinearRNN
@@ -65,7 +64,6 @@ class MovingAverageGatedAttention(nn.Module):
         self.chunk_size = chunk_size
 
         self.norm = MaskedBatchNorm(embed_dim, affine=norm_affine)
-        self.mv_norm = ScaleNorm(-1, eps=1e-5, affine=False)
 
         if moving_layer == 'ema':
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
@@ -238,7 +236,6 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.mv_norm(mx)
         mx = self.dropout(mx)
 
         # L x B x D -> L x B x (D+S+E+D)

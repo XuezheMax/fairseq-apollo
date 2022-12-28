@@ -3,7 +3,6 @@
 
 import math
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .base_moving_average import BaseMovingLayer
@@ -78,7 +77,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         # coeffs
         q = alpha * c
         # D x N
-        gamma = _r2c(self.gamma)  # no scale
+        gamma = _r2c(self.gamma) * self.scale
         return None, q, gamma
 
     def _compute_kernel(self, length: int):
