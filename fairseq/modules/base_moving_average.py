@@ -23,6 +23,8 @@ class BaseMovingLayer(nn.Module):
         self.bidirectional = bidirectional
         self.truncation = truncation
         self.shift = shift
+        assert self.bidirectional or (self.truncation is None or self.truncation < 1), \
+            'one directional moving average should not have positive trunction: {}'.format(truncation)
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -163,6 +165,9 @@ class BaseMovingLayer(nn.Module):
             # B x D x L
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
             out = out.type_as(x)
+            # TODO: normalize by length
+            assert self.bidirectional and padding_mask is None
+            out = out / kernel_size
             # B x D x L -> L x B x D
             out = F.silu(out.permute(2, 0, 1) + residual)
 
