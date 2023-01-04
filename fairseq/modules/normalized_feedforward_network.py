@@ -1,6 +1,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 from torch import nn
 
 from fairseq import utils
@@ -34,6 +35,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
+        self.gamma = nn.Parameter(torch.Tensor(embed_dim))  # layer scale
 
         assert init_mode in ['gaussian', 'xavier']
         self.reset_parameters(init_mode)
@@ -52,6 +54,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         # bias
         nn.init.constant_(self.fc1.bias, 0.0)
         nn.init.constant_(self.fc2.bias, 0.0)
+        # gamma
+        nn.init.constant_(self.gamma, 1e-4)
 
     def forward(self, x):
         residual = x
@@ -64,7 +68,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.fc2(x)
         x = self.dropout(x)
         # residual
-        out = x + residual
+        out = x * self.gamma + residual
 
         return out
 
