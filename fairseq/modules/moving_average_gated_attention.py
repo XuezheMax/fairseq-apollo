@@ -80,6 +80,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
+        self.eta = Parameter(torch.Tensor(embed_dim))
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -122,6 +123,8 @@ class MovingAverageGatedAttention(nn.Module):
         # gamma & beta
         nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
+        # eta
+        nn.init.constant_(self.eta, 0.01)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
@@ -347,7 +350,7 @@ class MovingAverageGatedAttention(nn.Module):
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.activation(hx + self.h_proj(h * r))
+        h = self.activation(hx * self.eta + self.h_proj(h * r))
         h = self.dropout(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)

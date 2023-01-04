@@ -18,8 +18,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         norm_affine=True,
+        layer_scale=None,
+        init_mode='gaussian',
         export=False,
-        init_mode='gaussian'
     ):
         super().__init__()
 
@@ -28,6 +29,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.act_fn = activation
         self.activation = utils.get_activation_fn(activation)
         self.init_mode = init_mode
+        self.layer_scale = layer_scale
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -35,7 +37,11 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
-        self.gamma = nn.Parameter(torch.Tensor(embed_dim))  # layer scale
+        if layer_scale is None:
+            self.register_parameter('gamma', None)
+        else:
+            assert layer_scale > 0., 'Layer scale init value should be positive.'
+            self.gamma = nn.Parameter(torch.Tensor(embed_dim))  # layer scale
 
         assert init_mode in ['gaussian', 'xavier']
         self.reset_parameters(init_mode)
@@ -55,7 +61,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.constant_(self.fc1.bias, 0.0)
         nn.init.constant_(self.fc2.bias, 0.0)
         # gamma
-        nn.init.constant_(self.gamma, 1e-4)
+        if self.gamma is not None:
+            nn.init.constant_(self.gamma, self.init_scale)
 
     def forward(self, x):
         residual = x
@@ -68,9 +75,13 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.fc2(x)
         x = self.dropout(x)
         # residual
-        out = x * self.gamma + residual
+        if self.gamma is None:
+            out = x + residual
+        else:
+            out = x * self.gamma + residual
 
         return out
 
     def extra_repr(self) -> str:
-        return 'edim={}, hdim={}, act={}, init={}'.format(self.embedding_dim, self.hidden_dim, self.act_fn, self.init_mode)
+        return 'edim={}, hdim={}, act={}, init={}, layerscale={}'.format(self.embedding_dim, self.hidden_dim, self.act_fn,
+                                                                         self.init_mode, self.layer_scale)
