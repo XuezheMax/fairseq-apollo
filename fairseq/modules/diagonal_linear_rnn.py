@@ -28,10 +28,11 @@ class DiagonalLinearRNN(BaseMovingLayer):
         self.complex = True
         self.embed_dim = embed_dim
         self.ndim = ndim
-        self.scale = 1.0 / self.ndim
+        self.scale = math.sqrt(1.0 / self.ndim)
 
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
+        self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
@@ -51,8 +52,9 @@ class DiagonalLinearRNN(BaseMovingLayer):
 
     def reset_parameters(self):
         with torch.no_grad():
-            # alpha
+            # delta & alpha
             nn.init.normal_(self.alpha, mean=0.0, std=0.1)
+            nn.init.normal_(self.delta, mean=0.0, std=0.1)
             # theta
             nn.init.normal_(self.theta, mean=0.0, std=1.0)
             # gamma
@@ -64,7 +66,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x 1 x 1
-        theta = torch.sigmoid(self.theta) * (2 * math.pi / self.ndim)
+        theta = torch.tanh(self.theta) * (math.pi * 0.5 / self.ndim)
         # 1 x N
         wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
         # D x N x 1
@@ -73,21 +75,23 @@ class DiagonalLinearRNN(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        alpha = 0.5 * (1.0 - torch.erf(self.alpha - 1.0))
+        alpha = torch.sigmoid(self.alpha)
+        delta = (1.0 + torch.erf(self.delta - 1.0)) * 0.5
         # coeffs
-        q = alpha * c
+        p = alpha
+        q = (1.0 - alpha * delta) * c
         # D x N
         gamma = _r2c(self.gamma) * self.scale
-        return None, q, gamma
+        return p, q, gamma
 
     def _compute_kernel(self, length: int):
         self._kernel = None
         # D x N x 1
-        _, q, gamma = self._calc_coeffs()
+        p, q, gamma = self._calc_coeffs()
         # D x N x L
-        vander = torch.arange(length).to(q).view(1, 1, length) * torch.log(q)
+        vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
         # D x N x L
-        kernel = torch.exp(vander)
+        kernel = p * torch.exp(vander)
         # D x L
         return torch.einsum('dnl,dn->dl', kernel, gamma).real
 
