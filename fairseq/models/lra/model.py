@@ -142,6 +142,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
 
         parser.add_argument('--chunk-size', type=int, metavar='N',
                             help='chunk size of Mega.')
@@ -299,6 +300,7 @@ class LRAEncoder(FairseqEncoder):
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
+                layer_scale=args.layer_scale,
                 init_mode=args.init_mode
             )
         else:
@@ -364,6 +366,7 @@ def base_architecture(args):
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
+    args.layer_scale = getattr(args, 'layer_scale', False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_ffn_embed_dim * 2 if args.layer_type == 'lstm' else args.encoder_embed_dim)
 

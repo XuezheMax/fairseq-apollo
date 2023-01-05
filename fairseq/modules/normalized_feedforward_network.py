@@ -38,10 +38,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
         if layer_scale is None:
-            self.register_parameter('gamma', None)
+            self.register_parameter('layerscale_weight', None)
         else:
             assert layer_scale > 0., 'Layer scale init value should be positive.'
-            self.gamma = nn.Parameter(torch.Tensor(embed_dim))  # layer scale
+            self.layerscale_weight = nn.Parameter(torch.Tensor(embed_dim))
 
         assert init_mode in ['gaussian', 'xavier']
         self.reset_parameters(init_mode)
@@ -60,9 +60,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
         # bias
         nn.init.constant_(self.fc1.bias, 0.0)
         nn.init.constant_(self.fc2.bias, 0.0)
-        # gamma
-        if self.gamma is not None:
-            nn.init.constant_(self.gamma, self.init_scale)
+        # layer scale weight
+        if self.layerscale_weight is not None:
+            nn.init.constant_(self.layerscale_weight, self.init_scale)
 
     def forward(self, x):
         residual = x
@@ -75,10 +75,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
         x = self.fc2(x)
         x = self.dropout(x)
         # residual
-        if self.gamma is None:
+        if self.layerscale_weight is None:
             out = x + residual
         else:
-            out = x * self.gamma + residual
+            out = x * self.layerscale_weight + residual
 
         return out
 

@@ -68,6 +68,7 @@ class MegaLRAEncoder(nn.Module):
         export: bool = False,
         traceable: bool = False,
         sen_rep_type: str = 'cls',
+        layer_scale: bool = False,
         init_mode='gaussian'
     ) -> None:
 
@@ -93,6 +94,7 @@ class MegaLRAEncoder(nn.Module):
             self.layers = nn.ModuleList([])
         self.num_layers = num_encoder_layers
 
+        ls_weights = [None,] * self.num_layers if layer_scale is None else [0.01 * (0.5 ** i) for i in range(self.num_layers)]
         self.layers.extend([
             self.build_mega_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
@@ -110,10 +112,11 @@ class MegaLRAEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
+                layer_scale=ls_weights[i],
                 init_mode=init_mode,
                 export=export
             )
-            for _ in range(self.num_layers)
+            for i in range(self.num_layers)
         ])
 
         self.final_norm = MaskedBatchNorm(embedding_dim)
@@ -143,6 +146,7 @@ class MegaLRAEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
+        layer_scale,
         init_mode,
         export,
     ):
@@ -162,6 +166,7 @@ class MegaLRAEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
+            layer_scale=layer_scale,
             init_mode=init_mode,
             export=export
         )

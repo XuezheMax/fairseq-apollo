@@ -45,6 +45,7 @@ class MovingAverageGatedAttention(nn.Module):
         norm_affine=True,
         rel_pos_bias='simple',
         max_positions=1024,
+        layer_scale=None,
         init_mode='gaussian',
     ):
         super().__init__()
@@ -56,6 +57,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.init_mode = init_mode
+        self.layer_scale = layer_scale
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -80,7 +82,6 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
-        self.eta = Parameter(torch.Tensor(embed_dim))
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -90,6 +91,12 @@ class MovingAverageGatedAttention(nn.Module):
             self.rel_pos_bias = RotaryRelativePositionalBias(zdim, max_positions)
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
+
+        if layer_scale is None:
+            self.register_parameter('layerscale_weight', None)
+        else:
+            assert layer_scale > 0., 'Layer scale init value should be positive.'
+            self.layerscale_weight = nn.Parameter(torch.Tensor(embed_dim))
 
         assert init_mode in ['gaussian', 'xavier']
         self.reset_parameters(init_mode)
@@ -119,12 +126,14 @@ class MovingAverageGatedAttention(nn.Module):
         # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
+        # nn.init.constant_(self.mx_proj.bias[:self.embed_dim], -1.0)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
-        # eta
-        nn.init.constant_(self.eta, 0.01)
+        # layer scale weight
+        if self.layerscale_weight is not None:
+            nn.init.constant_(self.layerscale_weight, self.init_scale)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
@@ -350,10 +359,13 @@ class MovingAverageGatedAttention(nn.Module):
         # B x K x C x E -> B x L x E -> L x B x E
         h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
         # L x B x E -> L x B x D
-        h = self.activation(hx * self.eta + self.h_proj(h * r))
+        h = self.activation(hx * u + self.h_proj(h * r))
         h = self.dropout(h)
-        # L x B x D
-        out = torch.addcmul(residual, u, h - residual)
+        # residual
+        if self.layerscale_weight is None:
+            out = h + residual
+        else:
+            out = h * self.layerscale_weight + residual
 
         if need_weights:
             return out, attn_weights
@@ -409,5 +421,7 @@ class MovingAverageGatedAttention(nn.Module):
         return new_padding_mask
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, init={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim,
-                                                                                           self.chunk_size, self.attention_activation, self.init_mode)
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, init={}, layerscale={}'.format(self.embed_dim, self.zdim, self.hdim,
+                                                                                                          self.ndim, self.chunk_size,
+                                                                                                          self.attention_activation, self.init_mode,
+                                                                                                          self.layer_scale)
