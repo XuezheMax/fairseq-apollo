@@ -133,7 +133,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.beta, 0.0)
         # layer scale weight
         if self.layerscale_weight is not None:
-            nn.init.constant_(self.layerscale_weight, self.init_scale)
+            nn.init.constant_(self.layerscale_weight, self.layer_scale)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)

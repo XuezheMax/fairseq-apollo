@@ -62,7 +62,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         nn.init.constant_(self.fc2.bias, 0.0)
         # layer scale weight
         if self.layerscale_weight is not None:
-            nn.init.constant_(self.layerscale_weight, self.init_scale)
+            nn.init.constant_(self.layerscale_weight, self.layer_scale)
 
     def forward(self, x):
         residual = x
