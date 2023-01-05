@@ -94,7 +94,7 @@ class MegaLRAEncoder(nn.Module):
             self.layers = nn.ModuleList([])
         self.num_layers = num_encoder_layers
 
-        ls_weights = [None,] * self.num_layers if layer_scale is None else [0.01 * (0.5 ** i) for i in range(self.num_layers)]
+        ls_weights = [None,] * self.num_layers if layer_scale else [0.01 * (0.5 ** i) for i in range(self.num_layers)]
         self.layers.extend([
             self.build_mega_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
