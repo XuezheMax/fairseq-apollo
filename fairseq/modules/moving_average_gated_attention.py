@@ -75,7 +75,7 @@ class MovingAverageGatedAttention(nn.Module):
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
         self.v_proj = nn.Linear(embed_dim, hdim)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 3 * embed_dim)
         self.h_proj = nn.Linear(hdim, embed_dim)
 
         self.gamma = Parameter(torch.Tensor(2, zdim))
@@ -232,15 +232,14 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x E
         v = self.activation(self.v_proj(x))
-        v = self.hidden_dropout(v)
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
-        mx = self.dropout(mx)
+        mx = self.hidden_dropout(mx)
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim * 2], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
         # L x B x S
@@ -251,6 +250,8 @@ class MovingAverageGatedAttention(nn.Module):
         q, k = torch.unbind(F.silu(z), dim=2)
         # L x B x E
         r = F.silu(r)
+        # L x B x 2D -> L x B x D
+        hx = F.glu(hx)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
@@ -345,9 +346,11 @@ class MovingAverageGatedAttention(nn.Module):
 
         kernel = self.attention_dropout(attn_weights)
         # B x K x C x E -> B x L x E -> L x B x E
-        h = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
+        attn = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
+        # L x B x E
+        h = self.hidden_dropout(attn * r)
         # L x B x E -> L x B x D
-        h = self.activation(hx + self.h_proj(h * r))
+        h = self.activation(hx + self.h_proj(h))
         h = self.dropout(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)
