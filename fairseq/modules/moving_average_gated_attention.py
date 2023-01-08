@@ -56,6 +56,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.init_mode = init_mode
+        self.scaling = self.zdim ** -0.5
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -131,14 +132,14 @@ class MovingAverageGatedAttention(nn.Module):
             # B x K x 1
             lengths = inverse_mask.sum(dim=-1, keepdim=True)
             # B x K x 1 x 1
-            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
+            len_scale = self.scaling * torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
         else:
-            len_scale = 1.0 / math.sqrt(slen)
+            len_scale = 1.0 / math.sqrt(slen) * self.scaling
             inverse_mask = None
 
         if attn_mask is not None:
             # C x 1
-            len_scale = torch.rsqrt(attn_mask.sum(dim=-1, keepdim=True))
+            len_scale = self.scaling * torch.rsqrt(attn_mask.sum(dim=-1, keepdim=True))
 
         # C x C
         bias = self.rel_pos_bias(slen)
@@ -170,6 +171,8 @@ class MovingAverageGatedAttention(nn.Module):
 
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
+        # scaled attention
+        q = q * self.scaling
         # C x C
         bias = self.rel_pos_bias(slen)
         if slen != q.size(2):
@@ -239,17 +242,15 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, zr, hx = torch.split(base, [self.embed_dim, self.zdim + self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x S
-        z = F.normalize(z, p=2, dim=-1, eps=1e-5)
+        # L x B x (E+S)
+        z, r = torch.split(F.silu(zr), [self.zdim, self.hdim], dim=-1)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(F.silu(z), dim=2)
-        # L x B x E
-        r = F.silu(r)
+        q, k = torch.unbind(z, dim=2)
 
         # L x B x D -> B x L x D
         q = q.transpose(0, 1)
