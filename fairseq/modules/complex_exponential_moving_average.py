@@ -59,7 +59,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
             # thetas
             nn.init.normal_(self.theta1, mean=0.0, std=1.0)
-            nn.init.normal_(self.theta2, mean=0.0, std=1.0)
+            nn.init.normal_(self.theta2, mean=0.0, std=0.02)
             # gamma
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
