@@ -247,7 +247,7 @@ class MovingAverageGatedAttention(nn.Module):
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
         z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(torch.tanh(z), dim=2)
+        q, k = torch.unbind(z, dim=2)
         # L x B x E
         r = F.silu(r)
 
