@@ -33,7 +33,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         kernel_dim = 2 * embed_dim if self.bidirectional else embed_dim
         self.alpha = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
-        self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 2))
+        self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
@@ -65,15 +65,13 @@ class DiagonalLinearRNN(BaseMovingLayer):
 
     def _calc_coeffs(self):
         self._coeffs = None
-        # D x 1 x 2
+        # D x 1 x 1
         theta = torch.sigmoid(self.theta) * (2 * math.pi / self.ndim)
-        # D x 1
-        theta1, theta2 = torch.unbind(theta, dim=2)
         # 1 x N
-        wavelets = torch.arange(0, self.ndim).to(theta).view(1, self.ndim)
-        # D x N
-        theta = wavelets * theta1 + theta2
-        # D x N
+        wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
+        # D x N x 1
+        theta = wavelets.unsqueeze(2) * theta
+        # D x N x 1
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
@@ -81,7 +79,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         delta = (1.0 + torch.erf(self.delta - 1.0)) * 0.5
         # coeffs
         p = alpha
-        q = (1.0 - alpha * delta) * c.unsqueeze(2)
+        q = (1.0 - alpha * delta) * c
         # D x N
         gamma = _r2c(self.gamma) * self.scale
         return p, q, gamma
