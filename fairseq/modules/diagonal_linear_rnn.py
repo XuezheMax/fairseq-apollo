@@ -70,7 +70,7 @@ class DiagonalLinearRNN(BaseMovingLayer):
         # D x 1
         theta1, theta2 = torch.unbind(theta, dim=2)
         # 1 x N
-        wavelets = torch.arange(0, self.ndim).to(theta).view(1, self.ndim)
+        wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
         # D x N
         theta = wavelets * theta1 + theta2
         # D x N
