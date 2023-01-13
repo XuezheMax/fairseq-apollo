@@ -21,7 +21,7 @@ from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
-    SequenceNorm,
+    MaskedBatchNorm,
     MegaEncoderLayer,
     MegaDecoderLayer
 )
@@ -68,8 +68,6 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='dropout probability for hidden vectors in Mega.')
         parser.add_argument('--activation-dropout', type=float, metavar='D',
                             help='dropout probability after activation in FFN.')
-        parser.add_argument('--feature-dropout', action='store_true',
-                            help='apply feature dropout')
 
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
@@ -114,12 +112,6 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='comma separated list of adaptive softmax cutoff points. Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--normalization-type', choices=['dualnorm', 'layernorm', 'scalenorm', 'rmsnorm'],
-                            help='normalization type')
-        parser.add_argument('--normalize-before', action='store_true',
-                            help='apply normalization layer before each encoder block')
-        parser.add_argument('--normalize-embedding', action='store_true',
-                            help='normalize embedding for Mega.')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
@@ -245,17 +237,11 @@ class MegaEncoder(FairseqEncoder):
         self.embed_tokens = embed_tokens
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
 
-        norm_type = args.normalization_type
-        normalize_embedding = getattr(args, 'normalize_embedding', False)
-        normalize_before = getattr(args, 'normalize_before', False)
-        assert not normalize_embedding or not normalize_before
-        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
-
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
+        self.final_norm = MaskedBatchNorm(embed_dim)
 
     def build_encoder_layer(self, args):
         return MegaEncoderLayer(args)
@@ -295,9 +281,6 @@ class MegaEncoder(FairseqEncoder):
         if not encoder_padding_mask.any():
             encoder_padding_mask = None
 
-        if self.embed_norm is not None:
-            x = self.embed_norm(x, encoder_padding_mask)
-
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
@@ -319,9 +302,7 @@ class MegaEncoder(FairseqEncoder):
                 assert encoder_states is not None
                 encoder_states.append(x)
 
-        if self.final_norm is not None:
-            x = self.final_norm(x, encoder_padding_mask)
-
+        x = self.final_norm(x, encoder_padding_mask)
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
 
@@ -439,17 +420,11 @@ class MegaDecoder(FairseqIncrementalDecoder):
         else:
             self.project_in_dim = None
 
-        norm_type = args.normalization_type
-        normalize_embedding = getattr(args, 'normalize_embedding', False)
-        normalize_before = getattr(args, 'normalize_before', False)
-        assert not normalize_embedding or not normalize_before
-        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
-
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = SequenceNorm(norm_type, embed_dim) if normalize_before else None
+        self.final_norm = MaskedBatchNorm(embed_dim)
 
         self.adaptive_softmax = None
         self.output_projection = None
@@ -583,9 +558,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
 
-        if self.embed_norm is not None:
-            x = self.embed_norm(x, decoder_padding_mask)
-
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
@@ -615,8 +587,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
 
-        if self.final_norm is not None:
-            x = self.final_norm(x, decoder_padding_mask)
+        x = self.final_norm(x, decoder_padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -705,12 +676,8 @@ def base_architecture(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
-    args.feature_dropout = getattr(args, 'feature_dropout', False)
 
     args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'simple')
-    args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
-    args.normalize_before = getattr(args, 'normalize_before', False)
-    args.normalize_embedding = getattr(args, 'normalize_embedding', False)
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
@@ -721,7 +688,7 @@ def base_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
-    args.truncation_length = getattr(args, 'truncation_length', 1024)
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
 

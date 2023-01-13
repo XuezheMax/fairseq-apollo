@@ -39,15 +39,14 @@ class MegaEncoderLayer(nn.Module):
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.encoder_chunk_size,
+            moving_layer=args.moving_layer,
             truncation=args.truncation_length,
             rel_pos_bias=args.rel_pos_bias,
             max_positions=args.max_source_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             bidirectional=True,
-            norm_type=args.normalization_type,
-            prenorm=args.normalize_before,
-            feature_dropout=args.feature_dropout,
+            init_mode=args.init_mode,
         )
 
     def build_nffn_layer(self, embed_dim, args):
@@ -57,9 +56,7 @@ class MegaEncoderLayer(nn.Module):
             dropout=args.dropout,
             hidden_dropout=args.activation_dropout,
             activation=args.activation_fn,
-            norm_type=args.normalization_type,
-            prenorm=args.normalize_before,
-            feature_dropout=args.feature_dropout,
+            init_mode=args.init_mode,
         )
 
     def forward(self, x, encoder_padding_mask):
@@ -74,7 +71,7 @@ class MegaEncoderLayer(nn.Module):
         """
         x, _ = self.mega_layer(x, encoder_padding_mask)
         if self.nffn is not None:
-            x = self.nffn(x, encoder_padding_mask)
+            x = self.nffn(x)
 
         return x
 
@@ -109,15 +106,14 @@ class MegaDecoderLayer(nn.Module):
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
             chunk_size=args.decoder_chunk_size,
+            moving_layer=args.moving_layer,
             truncation=args.truncation_length,
             rel_pos_bias=args.rel_pos_bias,
             max_positions=args.max_target_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             bidirectional=False,
-            norm_type=args.normalization_type,
-            prenorm=args.normalize_before,
-            feature_dropout=args.feature_dropout,
+            init_mode=args.init_mode,
         )
 
     def build_cross_attn(self, embed_dim, args):
@@ -130,11 +126,9 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.hidden_dropout,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
-            norm_type=args.normalization_type,
-            prenorm=args.normalize_before,
-            feature_dropout=args.feature_dropout,
             rel_pos_bias=args.rel_pos_bias,
             max_positions=max(args.max_target_positions, args.max_source_positions),
+            init_mode=args.init_mode,
         )
 
     def build_nffn_layer(self, embed_dim, args):
@@ -144,9 +138,7 @@ class MegaDecoderLayer(nn.Module):
             dropout=args.dropout,
             hidden_dropout=args.activation_dropout,
             activation=args.activation_fn,
-            norm_type=args.normalization_type,
-            prenorm=args.normalize_before,
-            feature_dropout=args.feature_dropout,
+            init_mode=args.init_mode,
         )
 
     def prepare_for_onnx_export_(self):
@@ -187,7 +179,7 @@ class MegaDecoderLayer(nn.Module):
                                       static_kv=True, need_weights=need_attn)
 
         if self.nffn is not None:
-            x = self.nffn(x, decoder_padding_mask)
+            x = self.nffn(x)
 
         return x, attn, None
 
