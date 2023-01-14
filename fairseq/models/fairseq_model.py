@@ -39,6 +39,12 @@ class BaseFairseqModel(nn.Module):
         """Build a new model instance."""
         raise NotImplementedError("Model must implement the build_model method")
 
+    def get_moving_parameters(self):
+        for module_name, module in self.named_modules():
+            if hasattr(module, 'moving_parameters'):
+                for name, param in module.moving_parameters():
+                    yield module_name + '.' + name, param
+
     def get_targets(self, sample, net_output):
         """Get targets from either the sample or the net's output."""
         return sample["target"]

@@ -39,6 +39,10 @@ class DiagonalLinearRNN(BaseMovingLayer):
         self._kernel = None
         self._coeffs = None
 
+        self.register_moving_parameters('alpha', self.alpha)
+        self.register_moving_parameters('delta', self.delta)
+        self.register_moving_parameters('theta', self.theta)
+
         self.reset_parameters()
 
         self.onnx_trace = False

@@ -34,6 +34,11 @@ class FairseqAdam(FairseqOptimizer):
             and fused_adam_cls is not None
             and torch.cuda.is_available()
         )
+        moving_weight_decay = self.optimizer_config.pop('moving_weight_decay')
+        if moving_weight_decay is not None:
+            assert len(params) == 2
+            params[1]['weight_decay'] = moving_weight_decay
+
         if getattr(args, 'tpu', False):
             # on TPUs we use the Adam defined here, since it
             # automatically casts gradients to FP32
@@ -54,6 +59,8 @@ class FairseqAdam(FairseqOptimizer):
                             help='epsilon for Adam optimizer')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
+        parser.add_argument('--moving-weight-decay', '--mwd', default=None, type=float, metavar='MWD',
+                            help='weight decay for moving parameters')
         # Maintain backward compatibility with old checkpoints that have stored
         # optimizer state as fairseq.optim.adam.Adam.
         parser.add_argument(
@@ -77,6 +84,7 @@ class FairseqAdam(FairseqOptimizer):
             'betas': eval(self.args.adam_betas),
             'eps': self.args.adam_eps,
             'weight_decay': self.args.weight_decay,
+            'moving_weight_decay': self.args.moving_weight_decay,
         }
 
     def average_params(self):

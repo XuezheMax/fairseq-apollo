@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Dict, Optional
+from collections import OrderedDict
 
 import torch
 import torch.nn.functional as F
@@ -19,6 +20,7 @@ class BaseMovingLayer(nn.Module):
 
     def __init__(self, bidirectional=False, truncation=None, shift=True):
         super().__init__()
+        self._moving_parameters = OrderedDict()
         self.complex = False
         self.bidirectional = bidirectional
         self.truncation = truncation
@@ -31,6 +33,13 @@ class BaseMovingLayer(nn.Module):
 
     def prepare_for_tpu_(self, **kwargs):
         self.tpu = True
+
+    def register_moving_parameters(self, name, param):
+        self._moving_parameters[name] = param
+
+    def moving_parameters(self):
+        for name, param in self._moving_parameters.items():
+            yield name, param
 
     def _calc_coeffs(self):
         raise NotImplementedError

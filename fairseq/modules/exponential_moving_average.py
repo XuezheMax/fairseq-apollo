@@ -5,7 +5,7 @@
 
 import math
 import torch
-from torch import Tensor, nn
+from torch import nn
 
 from .base_moving_average import BaseMovingLayer
 
@@ -38,6 +38,9 @@ class MultiHeadEMA(BaseMovingLayer):
         self.omega = nn.Parameter(torch.Tensor(embed_dim))
         self._kernel = None
         self._coeffs = None
+
+        self.register_moving_parameters('alpha', self.alpha)
+        self.register_moving_parameters('delta', self.delta)
 
         self.reset_parameters()
 
