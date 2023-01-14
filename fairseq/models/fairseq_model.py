@@ -43,7 +43,7 @@ class BaseFairseqModel(nn.Module):
         for module_name, module in self.named_modules():
             if hasattr(module, 'moving_parameters'):
                 for name, param in module.moving_parameters():
-                    yield module_name + '.' + name, param
+                    yield param
 
     def get_targets(self, sample, net_output):
         """Get targets from either the sample or the net's output."""
