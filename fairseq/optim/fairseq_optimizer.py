@@ -52,6 +52,9 @@ class FairseqOptimizer(object):
     def __getstate__(self):
         return self._optimizer.__getstate__()
 
+    def __repr__(self):
+        return self._optimizer.__repr__()
+
     def get_lr(self):
         """Return the current learning rate."""
         return self.param_groups[0]['lr']
