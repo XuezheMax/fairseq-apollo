@@ -188,7 +188,7 @@ class Trainer(object):
         return self._lr_scheduler
 
     def _build_optimizer(self):
-        mwd = self.args.pop('moving_weight_decay', None)
+        mwd = getattr(self.args, 'moving_weight_decay', None)
         if mwd is not None:
             logger.info('using weight decay {} for moving layer parameters'.format(mwd))
             move_params = list(
