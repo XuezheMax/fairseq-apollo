@@ -102,7 +102,7 @@ class GatedCrossAttention(nn.Module):
         nn.init.constant_(self.q_proj.bias, 0.0)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.constant_(self.gamma, 1.0)
+        nn.init.constant_(self.gamma, 0.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
@@ -222,8 +222,9 @@ class GatedCrossAttention(nn.Module):
         base = self.q_proj(q)
         u, r, q = torch.split(base, [self.embed_dim, self.embed_dim, self.zdim], dim=-1)
         # L2 x B x S
+        gamma = self.gamma + 1.0
         q = F.normalize(q, p=2, dim=-1, eps=1e-5)
-        q = q * self.gamma[0] + self.beta[0]
+        q = q * gamma[0] + self.beta[0]
 
         # L2 x B x D
         u = torch.sigmoid(u)
@@ -236,7 +237,7 @@ class GatedCrossAttention(nn.Module):
             # L1 x B x S
             k = self.k_proj(key)
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
-            k = k * self.gamma[1] + self.beta[1]
+            k = k * gamma[1] + self.beta[1]
             # L1 x B x D
             v = self.activation(self.v_proj(key))
 
