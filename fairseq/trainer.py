@@ -188,21 +188,30 @@ class Trainer(object):
         return self._lr_scheduler
 
     def _build_optimizer(self):
-        move_params = list(
-            filter(
-                lambda p: p.requires_grad,
-                self.model.get_moving_parameters(),
+        mwd = self.args.pop('moving_weight_decay', None)
+        if mwd is not None:
+            logger.info('using weight decay {} for moving layer parameters'.format(mwd))
+            move_params = list(
+                filter(
+                    lambda p: p.requires_grad,
+                    self.model.get_moving_parameters(),
+                )
             )
-        )
-        mp = set(move_params)
-        params = list(
-            filter(
-                lambda p: p.requires_grad and p not in mp,
-                chain(self.model.parameters(), self.criterion.parameters()),
+            mp = set(move_params)
+            params = list(
+                filter(
+                    lambda p: p.requires_grad and p not in mp,
+                    chain(self.model.parameters(), self.criterion.parameters()),
+                )
             )
-        )
-        if len(move_params) > 0:
-            params = [{'params': params}, {'params': move_params}]
+            params = [{'params': params}, {'params': move_params, 'weight_decay': mwd}]
+        else:
+            params = list(
+                filter(
+                    lambda p: p.requires_grad,
+                    chain(self.model.parameters(), self.criterion.parameters()),
+                )
+            )
 
         if self.args.fp16 or self.args.bf16:
             if self.cuda and torch.cuda.get_device_capability(0)[0] < 7:
@@ -223,6 +232,8 @@ class Trainer(object):
 
         if self.args.use_bmuf:
             self._optimizer = optim.FairseqBMUF(self.args, self._optimizer)
+
+        logger.info(self._optimizer)
 
         # We should initialize the learning rate scheduler immediately after
         # building the optimizer, so that the initial learning rate is set.
