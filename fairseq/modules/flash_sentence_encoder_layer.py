@@ -48,8 +48,6 @@ class FlashSentenceEncoderLayer(nn.Module):
             return LayerNorm(embedding_dim, export=export)
         elif norm_type == 'scalenorm':
             return ScaleNorm(dim=-1)
-        elif norm_type == 'batchnorm':
-            return nn.BatchNorm1d(embedding_dim)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 

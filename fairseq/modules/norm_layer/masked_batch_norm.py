@@ -5,10 +5,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules._functions import SyncBatchNorm as sync_batch_norm
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, momentum=0.1, eps=1e-5, affine=True):
+    def __init__(self, num_features, momentum=0.1, eps=1e-5, affine=True, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
@@ -27,6 +28,8 @@ class MaskedBatchNorm(nn.Module):
         self.register_buffer('num_batches_tracked', torch.zeros(1))
 
         self.reset_parameters()
+
+        self.process_group = process_group
 
     def reset_parameters(self):
         if self.affine:
@@ -69,9 +72,28 @@ class MaskedBatchNorm(nn.Module):
         return out
 
     def forward(self, x, padding_mask=None):
+        need_sync = self.training
+        if need_sync:
+            process_group = torch.distributed.group.WORLD
+            if self.process_group:
+                process_group = self.process_group
+
+            if process_group is None:
+                world_size = 0
+            else:
+                world_size = torch.distributed.get_world_size(process_group)
+            need_sync = world_size > 1
+
         if padding_mask is None:
-            out = F.batch_norm(x.permute(1, 2, 0), self.running_mean, self.running_var,
-                               self.weight + 1.0, self.bias, self.training, self.momentum, self.eps)
+            x = x.permute(1, 2, 0)
+            if not need_sync:
+                out = F.batch_norm(x, self.running_mean, self.running_var, self.weight + 1.0,
+                                   self.bias, self.training, self.momentum, self.eps)
+            else:
+                out = sync_batch_norm.apply(x, self.weight + 1.0, self.bias,
+                                            self.running_mean, self.running_var,
+                                            self.eps, self.momentum,
+                                            process_group, world_size)
             return out.permute(2, 0, 1)
         else:
             return self._forward_with_padding(x, padding_mask)
