@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules._functions import SyncBatchNorm as sync_batch_norm
+from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
@@ -50,7 +51,7 @@ class MaskedBatchNorm(nn.Module):
 
         return mean, var
 
-    def _forward_with_padding(self, x, padding_mask):
+    def _batch_norm_with_padding(self, x, padding_mask):
         if self.training:
             # zero out paddings
             # L x B
@@ -94,9 +95,20 @@ class MaskedBatchNorm(nn.Module):
                                             self.running_mean, self.running_var,
                                             self.eps, self.momentum,
                                             process_group, world_size)
-            return out.permute(2, 0, 1)
+            out = out.permute(2, 0, 1)
         else:
-            return self._forward_with_padding(x, padding_mask)
+            if not need_sync:
+                out = self._batch_norm_with_padding(x, padding_mask)
+            else:
+                x = x.permute(1, 2, 0)
+                out = sync_batch_norm_with_mask.apply(x, self.weight + 1.0, self.bias,
+                                                      padding_mask,
+                                                      self.running_mean, self.running_var,
+                                                      self.eps, self.momentum,
+                                                      process_group, world_size)
+                out = out.permute(2, 0, 1)
+
+        return out
 
     def extra_repr(self) -> str:
         return 'num_features={num_features}, eps={eps}, affine={affine}'.format(**self.__dict__)
