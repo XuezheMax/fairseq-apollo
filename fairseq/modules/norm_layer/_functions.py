@@ -14,7 +14,7 @@ class MaskedSyncBatchNorm(Function):
 
         # B x L
         inverse_mask = 1.0 - padding_mask.type_as(input)
-        count = inverse_mask.sum()
+        count = inverse_mask.sum().view(1)
 
         # B x D x L
         x = input * inverse_mask.unsqueeze(1)
