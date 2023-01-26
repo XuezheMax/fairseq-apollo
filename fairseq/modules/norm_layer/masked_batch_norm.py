@@ -45,7 +45,6 @@ class MaskedBatchNorm(nn.Module):
         var = ssum_x / nums - torch.square(mean)
 
         with torch.no_grad():
-            self.num_batches_tracked = self.num_batches_tracked + 1
             self.running_mean.mul_(1.0 - self.momentum).add_(mean, alpha=self.momentum)
             self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum * nums / (nums - 1)) # unbias var estimator for running var
 
@@ -73,6 +72,9 @@ class MaskedBatchNorm(nn.Module):
         return out
 
     def forward(self, x, padding_mask=None):
+        if self.training:
+            self.num_batches_tracked.add_(1)
+
         need_sync = self.training
         if need_sync:
             process_group = torch.distributed.group.WORLD
