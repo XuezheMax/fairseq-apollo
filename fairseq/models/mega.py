@@ -115,7 +115,8 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
-        parser.add_argument('--truncation-length', type=int, metavar='N',
+        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
+        parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
         # fmt: on
 
@@ -688,6 +689,7 @@ def base_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
+    args.moving_layer = getattr(args, 'moving_layer', 'cema')
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 

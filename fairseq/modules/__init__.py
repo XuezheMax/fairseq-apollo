@@ -36,7 +36,6 @@ from .luna_sentence_encoder import LunaSentenceEncoder, LunaSentenceEncoderLayer
 from .base_moving_average import BaseMovingLayer
 from .exponential_moving_average import MultiHeadEMA
 from .complex_exponential_moving_average import MultiHeadComplexEMA
-from .diagonal_linear_rnn import DiagonalLinearRNN
 from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
 from .gated_cross_attention import GatedCrossAttention
@@ -105,7 +104,6 @@ __all__ = [
     'BaseMovingLayer',
     'MultiHeadEMA',
     'MultiHeadComplexEMA',
-    'DiagonalLinearRNN',
     'MovingAverageGatedAttention',
     'MegaEncoderLayer',
     'MegaDecoderLayer',

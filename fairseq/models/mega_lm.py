@@ -16,7 +16,7 @@ from fairseq.models import (
 from fairseq.modules import (
     AdaptiveSoftmax,
     FairseqDropout,
-    SequenceNorm,
+    MaskedBatchNorm,
     AdaptiveInput,
     MegaDecoderLayer
 )
@@ -62,8 +62,6 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='dropout probability for hidden vectors in Mega.')
         parser.add_argument('--activation-dropout', type=float, metavar='D',
                             help='dropout probability after activation in FFN.')
-        parser.add_argument('--feature-dropout', action='store_true',
-                            help='apply feature dropout')
 
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
@@ -106,25 +104,14 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--tie-adaptive-proj', action='store_true',
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
 
-        parser.add_argument('--normalization-type', choices=['dualnorm', 'layernorm', 'scalenorm'],
-                            help='normalization type')
-        parser.add_argument('--normalize-before', action='store_true',
-                            help='apply normalization layer before each encoder block')
         parser.add_argument('--no-affine-final-norm', action='store_true',
                             help='no affine parameters in the final norm.')
-        parser.add_argument('--normalize-embedding', action='store_true',
-                            help='normalize embedding for Mega.')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
-        parser.add_argument('--truncation-length', type=int, metavar='N',
+        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
+        parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
-
-        # analysis of alpha
-        parser.add_argument('--report-ema-alpha', action='store_true', default=False,
-                            help='report the ema weights statistics at the end of each epoch')
-        parser.add_argument('--write-out-alpha', action='store_true', default=False,
-                            help='write the ema weights to files at the end of training')
         # fmt: on
 
     @classmethod
@@ -192,36 +179,6 @@ class MegaLanguageModel(FairseqLanguageModel):
         )
         return decoder_out
 
-    def analyze_ema(self, report=False, output=False):
-        # todo: fixme
-        if self.args.report_ema_alpha and report:
-            with torch.no_grad():
-                for lidx, layer in enumerate(self.decoder.layers):
-                    # emb_dim x ndim
-                    alpha = np.squeeze(layer.mega_layer.move.alpha.cpu().numpy(), axis=-1)
-                    ndim_mean = np.mean(alpha, axis=1)
-                    edim_mean = np.mean(ndim_mean)
-                    edim_std = np.std(ndim_mean)
-                    edim_max, edim_min = np.max(ndim_mean), np.min(ndim_mean)
-
-                    ndim_std = np.std(alpha, axis=1)
-                    edim_std_mean = np.mean(ndim_std)
-                    edim_std_std = np.std(ndim_std)
-                    edim_std_max, edim_std_min = np.max(ndim_std), np.min(ndim_std)
-
-                    logger.info("EMA Layer {}, mean of ndim--mean={:.5f},std={:.5f},max={:.5f},min={:.5f}, "
-                                "std of ndim--mean={:.5f},std={:.5f},max={:.5f},min={:.5f}".format(lidx, edim_mean,
-                                                                                                   edim_std, edim_max,
-                                                                                                   edim_min, edim_std_mean,
-                                                                                                   edim_std_std, edim_std_max,
-                                                                                                   edim_std_min))
-        if self.args.write_out_alpha and output:
-            with torch.no_grad():
-                for lidx, layer in enumerate(self.decoder.layers):
-                    # emb_dim x ndim
-                    alpha = np.squeeze(layer.mega_layer.move.alpha.cpu().numpy(), axis=-1)
-                    np.savetxt(os.path.join(self.args.save_dir, "layer{}"), alpha, fmt='%.5f')
-
 
 class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
     """
@@ -259,12 +216,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         else:
             self.project_in_dim = None
 
-        norm_type = args.normalization_type
-        normalize_embedding = getattr(args, 'normalize_embedding', False)
-        normalize_before = getattr(args, 'normalize_before', False)
-        assert not normalize_embedding or not normalize_before
-        self.embed_norm = SequenceNorm(norm_type, embed_dim) if normalize_embedding else None
-
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
@@ -272,7 +223,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         final_norm_affine = True
         if hasattr(args, 'no_affine_final_norm'):
             final_norm_affine = not args.no_affine_final_norm
-        self.final_norm = SequenceNorm(norm_type, embed_dim, affine=final_norm_affine) if normalize_before else None
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=final_norm_affine)
 
         self.adaptive_softmax = None
         self.output_projection = None
@@ -383,9 +334,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
 
-        if self.embed_norm is not None:
-            x = self.embed_norm(x, decoder_padding_mask)
-
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
@@ -412,8 +360,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                                      need_attn=False)
             inner_states.append(x)
 
-        if self.final_norm is not None:
-            x = self.final_norm(x, decoder_padding_mask)
+        x = self.final_norm(x, decoder_padding_mask)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -497,12 +444,8 @@ def base_lm_architecture(args):
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)
     args.hidden_dropout = getattr(args, "hidden_dropout", 0.0)
     args.dropout = getattr(args, "dropout", 0.1)
-    args.feature_dropout = getattr(args, 'feature_dropout', False)
 
-    args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'simple')
-    args.normalization_type = getattr(args, 'normalization_type', 'layernorm')
-    args.normalize_before = getattr(args, 'normalize_before', False)
-    args.normalize_embedding = getattr(args, 'normalize_embedding', False)
+    args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'rotary')
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
     args.no_affine_final_norm = getattr(args, 'no_affine_final_norm', False)
 
@@ -514,7 +457,8 @@ def base_lm_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
-    args.truncation_length = getattr(args, 'truncation_length', 2048)
+    args.moving_layer = getattr(args, 'moving_layer', 'cema')
+    args.truncation_length = getattr(args, 'truncation_length', 0)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
 
 
