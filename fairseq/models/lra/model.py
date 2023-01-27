@@ -166,21 +166,7 @@ class LRAModel(FairseqEncoderModel):
                 sentence_rep = sentence_rep[1][0]
         else:
             sentence_rep = sentence_rep[1][1].mean(dim=0)
-        if 'net_input1' in sample:
-            src1_tokens = sample['net_input1']['src_tokens']
-            src1_lengths = sample['net_input1']['src_lengths']
-            sentence1_rep = self.encoder(src1_tokens, src1_lengths)
-            if not self.use_p:
-                if self.layer_type in ['transformer', 'lstm', 'flash', 'mega']:
-                    sentence1_rep = sentence1_rep[1]
-                elif self.layer_type == 'luna':
-                    sentence1_rep = sentence1_rep[1][0]
-            else:
-                sentence1_rep = sentence1_rep[1][1].mean(dim=0)
-            concat_rep = []
-            concat_rep.append(sentence1_rep)
-            concat_rep.append(sentence_rep)
-            sentence_rep = torch.cat(concat_rep, dim=-1)
+
         for layer in self.classifier:
             sentence_rep = self.classifier_activation(layer(sentence_rep))
         if self.sentence_projection_layer:
@@ -465,7 +451,7 @@ def mega_lra_imdb(args):
 @register_model_architecture('lra', 'transformer_lra_aan')
 def transformer_lra_aan_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.max_positions = getattr(args, 'max_positions', 4002)
+    args.max_positions = getattr(args, 'max_positions', 8003)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
@@ -499,7 +485,7 @@ def mega_lra_aan(args):
     args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 2)
     args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 0)
-    args.max_positions = getattr(args, 'max_positions', 4002)
+    args.max_positions = getattr(args, 'max_positions', 8003)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
