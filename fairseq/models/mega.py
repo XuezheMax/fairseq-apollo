@@ -118,6 +118,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
         # fmt: on
 
     @classmethod
