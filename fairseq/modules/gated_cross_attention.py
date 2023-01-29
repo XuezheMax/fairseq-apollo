@@ -240,7 +240,7 @@ class GatedCrossAttention(nn.Module):
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
             k = k * gamma[1] + self.beta[1]
             # L1 x B x D
-            v = self.activation(self.v_proj(key))
+            v = self.activation(self.v_proj(value))
 
         # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
@@ -300,9 +300,6 @@ class GatedCrossAttention(nn.Module):
         h = self.activation(self.h_proj(attn))
         h = self.dropout(h)
         out = torch.addcmul(query, u, h - query)
-
-        if not self.prenorm:
-            out = self.norm(out, padding_mask=padding_mask)
 
         if need_weights:
             return out, attn_weights
