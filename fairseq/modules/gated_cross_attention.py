@@ -45,6 +45,7 @@ class GatedCrossAttention(nn.Module):
         self.ndim = ndim
         self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
+        self.init_mode = init_mode
 
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
@@ -336,5 +337,5 @@ class GatedCrossAttention(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, ndim={}, attn_act={}, prenorm={}'.format(self.embed_dim, self.zdim, self.ndim,
-                                                                           self.attention_activation, self.prenorm)
+        return 'edim={}, zdim={}, ndim={}, attn_act={}, init={}'.format(self.embed_dim, self.zdim, self.ndim,
+                                                                        self.attention_activation, self.init_mode)
