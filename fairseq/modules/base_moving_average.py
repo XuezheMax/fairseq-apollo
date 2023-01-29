@@ -112,6 +112,8 @@ class BaseMovingLayer(nn.Module):
         h = p.squeeze(-1) * x if p is not None else x
         if hx is not None:
             h = h + q.squeeze(-1) * hx
+        else:
+            h = h.type_as(q)
         # B x D
         out = torch.einsum('bdn,dn->bd', h, gamma)
         if self.complex:
