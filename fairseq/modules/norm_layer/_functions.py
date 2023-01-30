@@ -93,8 +93,7 @@ class MaskedSyncBatchNorm(Function):
             # synchronizing stats used to calculate input gradient.
             num_channels = sum_dy.shape[0]
             combined = torch.cat([sum_dy, sum_dy_xmu], dim=0)
-            torch.distributed.all_reduce(
-                combined, torch.distributed.ReduceOp.SUM, process_group, async_op=False)
+            torch.distributed.all_reduce(combined, torch.distributed.ReduceOp.SUM, process_group, async_op=False)
             sum_dy, sum_dy_xmu = torch.split(combined, num_channels)
 
             # backward pass for gradient calculation
