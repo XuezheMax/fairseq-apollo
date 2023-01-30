@@ -20,7 +20,6 @@ from fairseq.models import (
 from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     AdaptiveSoftmax,
-    FairseqDropout,
     MaskedBatchNorm,
     MegaEncoderLayer,
     MegaDecoderLayer
@@ -135,6 +134,8 @@ class MegaModel(FairseqEncoderDecoderModel):
 
         src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
 
+        assert args.encoder_embed_dim == args.decoder_embed_dim, 'Mega requires --encoder-embed-dim to match --decoder-embed-dim'
+
         if args.share_all_embeddings:
             if src_dict != tgt_dict:
                 raise ValueError("--share-all-embeddings requires a joined dictionary")
@@ -230,8 +231,6 @@ class MegaEncoder(FairseqEncoder):
         super().__init__(dictionary)
         self.register_buffer("version", torch.Tensor([3]))
 
-        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
         self.max_source_positions = args.max_source_positions
@@ -282,8 +281,6 @@ class MegaEncoder(FairseqEncoder):
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
             encoder_padding_mask = None
-
-        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if encoder_padding_mask is not None:
@@ -402,12 +399,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
-        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.share_input_output_embed = args.share_decoder_input_output_embed
-
-        input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
+        self.share_input_output_embed = args.share_decoder_input_output_embed
 
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
@@ -416,11 +410,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         self.embed_tokens = embed_tokens
         self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
-
-        if embed_dim != input_embed_dim:
-            self.project_in_dim = Linear(input_embed_dim, embed_dim, bias=False)
-        else:
-            self.project_in_dim = None
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
@@ -553,14 +542,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
         # embed tokens
         x = self.embed_scale * self.embed_tokens(prev_output_tokens)
 
-        if self.project_in_dim is not None:
-            x = self.project_in_dim(x)
-
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
-
-        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if decoder_padding_mask is not None:
@@ -672,7 +656,6 @@ def base_architecture(args):
     args.decoder_n_dim = getattr(args, 'decoder_n_dim', args.encoder_n_dim)
     args.decoder_layers = getattr(args, "decoder_layers", 6)
     args.decoder_chunk_size = getattr(args, 'decoder_chunk_size', args.encoder_chunk_size)
-    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
 
     args.dropout = getattr(args, "dropout", 0.1)
     args.attention_dropout = getattr(args, "attention_dropout", 0.0)

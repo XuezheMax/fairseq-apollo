@@ -15,7 +15,6 @@ from fairseq.models import (
 )
 from fairseq.modules import (
     AdaptiveSoftmax,
-    FairseqDropout,
     MaskedBatchNorm,
     AdaptiveInput,
     MegaDecoderLayer
@@ -197,12 +196,10 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
-        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.share_input_output_embed = args.share_decoder_input_output_embed
-
         input_embed_dim = embed_tokens.embedding_dim
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
+        self.share_input_output_embed = args.share_decoder_input_output_embed
 
         self.padding_idx = embed_tokens.padding_idx
         self.max_target_positions = args.max_target_positions
@@ -334,8 +331,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
-
-        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if decoder_padding_mask is not None:

@@ -16,7 +16,6 @@ from fairseq.modules import (
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
 )
-from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
 class MegaLRAEncoder(nn.Module):
@@ -75,7 +74,6 @@ class MegaLRAEncoder(nn.Module):
         super().__init__()
         self.padding_idx = padding_idx
         self.vocab_size = vocab_size
-        self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
         self.layerdrop = layerdrop
         self.max_seq_len = max_seq_len
@@ -195,8 +193,6 @@ class MegaLRAEncoder(nn.Module):
             padding_mask = None
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
-
-        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
