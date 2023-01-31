@@ -11,7 +11,7 @@ from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, momentum=0.01, momentum_decay=0.99999,  eps=1e-5, affine=True, process_group=None):
+    def __init__(self, num_features, momentum=0.1, momentum_decay=0.99999,  eps=1e-5, affine=True, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
