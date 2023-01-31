@@ -10,7 +10,7 @@ from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, momentum=0.1, eps=1e-5, affine=True, process_group=None):
+    def __init__(self, num_features, momentum=0.01, eps=1e-5, affine=True, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
@@ -113,4 +113,4 @@ class MaskedBatchNorm(nn.Module):
         return out
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}, eps={eps}, affine={affine}'.format(**self.__dict__)
+        return 'num_features={num_features}, eps={eps}, affine={affine}, momentum={momentum}'.format(**self.__dict__)
