@@ -11,12 +11,13 @@ from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, momentum=0.01, eps=1e-5, affine=True, process_group=None):
+    def __init__(self, num_features, momentum=0.01, momentum_decay=0.99999,  eps=1e-5, affine=True, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
         self.affine = affine
         self.momentum = momentum
+        self.momentum_decay = momentum_decay
 
         if affine:
             self.weight = nn.Parameter(torch.Tensor(num_features))
@@ -73,13 +74,13 @@ class MaskedBatchNorm(nn.Module):
         return out
 
     def forward(self, x, padding_mask=None):
-        if self.training:
-            self.num_batches_tracked.add_(1)
-
         if self.momentum is None:
             exponential_average_factor = 1.0 / np.sqrt(float(self.num_batches_tracked))
         else:
-            exponential_average_factor = self.momentum
+            exponential_average_factor = self.momentum * (self.momentum_decay ** float(self.num_batches_tracked))
+
+        if self.training:
+            self.num_batches_tracked.add_(1)
 
         need_sync = self.training
         if need_sync:
@@ -119,4 +120,4 @@ class MaskedBatchNorm(nn.Module):
         return out
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}, eps={eps}, affine={affine}, momentum={momentum}'.format(**self.__dict__)
+        return 'num_features={num_features}, eps={eps}, affine={affine}, momentum={momentum}(momentum_decay)'.format(**self.__dict__)
