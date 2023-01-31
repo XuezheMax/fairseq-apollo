@@ -19,6 +19,7 @@ from fairseq.models import (
 )
 from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
+    FairseqDropout,
     AdaptiveSoftmax,
     MaskedBatchNorm,
     MegaEncoderLayer,
@@ -233,6 +234,7 @@ class MegaEncoder(FairseqEncoder):
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.max_source_positions = args.max_source_positions
         self.chunk_size = args.encoder_chunk_size
         self.embed_tokens = embed_tokens
@@ -281,6 +283,8 @@ class MegaEncoder(FairseqEncoder):
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
             encoder_padding_mask = None
+
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if encoder_padding_mask is not None:
@@ -401,9 +405,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         embed_dim = args.decoder_embed_dim
         self.embed_dim = embed_dim
-        self.share_input_output_embed = args.share_decoder_input_output_embed
-
         self.padding_idx = embed_tokens.padding_idx
+        self.share_input_output_embed = args.share_decoder_input_output_embed
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.max_target_positions = args.max_target_positions
         self.chunk_size = args.decoder_chunk_size
         self.attention_activation = args.attention_activation_fn
@@ -545,6 +549,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
+
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if decoder_padding_mask is not None:
