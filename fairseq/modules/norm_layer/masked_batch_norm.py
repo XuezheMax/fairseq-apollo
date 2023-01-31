@@ -2,6 +2,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +38,7 @@ class MaskedBatchNorm(nn.Module):
             nn.init.zeros_(self.weight)
             nn.init.zeros_(self.bias)
 
-    def _compute_mean_var(self, x, nums):
+    def _compute_mean_var(self, x, nums, momentum):
         sum_x = torch.sum(x, dim=(0, 1))
         ssum_x = torch.sum(torch.square(x), dim=(0, 1))
 
@@ -45,12 +46,12 @@ class MaskedBatchNorm(nn.Module):
         var = ssum_x / nums - torch.square(mean)
 
         with torch.no_grad():
-            self.running_mean.mul_(1.0 - self.momentum).add_(mean, alpha=self.momentum)
-            self.running_var.mul_(1.0 - self.momentum).add_(var, alpha=self.momentum * nums / (nums - 1)) # unbias var estimator for running var
+            self.running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
+            self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * nums / (nums - 1)) # unbias var estimator for running var
 
         return mean, var
 
-    def _batch_norm_with_padding(self, x, padding_mask):
+    def _batch_norm_with_padding(self, x, padding_mask, momentum):
         if self.training:
             # zero out paddings
             # L x B
@@ -58,7 +59,7 @@ class MaskedBatchNorm(nn.Module):
             nums = inverse_mask.sum()
             # L x B x D
             x = x * inverse_mask.unsqueeze(2)
-            mean, var = self._compute_mean_var(x, nums)
+            mean, var = self._compute_mean_var(x, nums, momentum)
         else:
             mean, var = self.running_mean, self.running_var
 
@@ -74,6 +75,11 @@ class MaskedBatchNorm(nn.Module):
     def forward(self, x, padding_mask=None):
         if self.training:
             self.num_batches_tracked.add_(1)
+
+        if self.momentum is None:
+            exponential_average_factor = 1.0 / np.sqrt(float(self.num_batches_tracked))
+        else:
+            exponential_average_factor = self.momentum
 
         need_sync = self.training
         if need_sync:
@@ -91,22 +97,22 @@ class MaskedBatchNorm(nn.Module):
             x = x.permute(1, 2, 0)
             if not need_sync:
                 out = F.batch_norm(x, self.running_mean, self.running_var, self.weight + 1.0,
-                                   self.bias, self.training, self.momentum, self.eps)
+                                   self.bias, self.training, exponential_average_factor, self.eps)
             else:
                 out = sync_batch_norm.apply(x, self.weight + 1.0, self.bias,
                                             self.running_mean, self.running_var,
-                                            self.eps, self.momentum,
+                                            self.eps, exponential_average_factor,
                                             process_group, world_size)
             out = out.permute(2, 0, 1)
         else:
             if not need_sync:
-                out = self._batch_norm_with_padding(x, padding_mask)
+                out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
             else:
                 x = x.permute(1, 2, 0)
                 out = sync_batch_norm_with_mask.apply(x, self.weight + 1.0, self.bias,
                                                       padding_mask,
                                                       self.running_mean, self.running_var,
-                                                      self.eps, self.momentum,
+                                                      self.eps, exponential_average_factor,
                                                       process_group, world_size)
                 out = out.permute(2, 0, 1)
 
