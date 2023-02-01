@@ -51,10 +51,7 @@ class MaskedBatchNorm(nn.Module):
 
         with torch.no_grad():
             self.running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
-            var_corr = nums / (nums - 1.0) * var # unbias var estimator for running var
-            if self.correction > 0:
-                var_corr = (1.0 - self.correction) * var_corr - self.correction * torch.square(mean)
-            self.running_var.mul_(1.0 - momentum).add_(var_corr, alpha=momentum)
+            self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * nums / (nums - 1))  # unbias var estimator for running var
 
         return mean, var
 
@@ -69,6 +66,7 @@ class MaskedBatchNorm(nn.Module):
             mean, var = self._compute_mean_var(x, nums, momentum)
         else:
             mean, var = self.running_mean, self.running_var
+            var = (1.0 - self.correction) * var - self.correction * torch.square(mean)
 
         inv_std = torch.rsqrt(var + self.eps)
 
