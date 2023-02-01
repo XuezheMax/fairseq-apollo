@@ -119,7 +119,7 @@ class MegaLRAEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = MaskedBatchNorm(embedding_dim)
+        self.final_norm = MaskedBatchNorm(embedding_dim, correction=dropout)
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx):
         if embedding_type == 'sparse':

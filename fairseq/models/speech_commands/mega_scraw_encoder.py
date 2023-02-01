@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from fairseq.modules import (
-    SequenceNorm,
+    MaskedBatchNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -110,7 +110,7 @@ class MegaSCRawEncoder(nn.Module):
         ])
 
         if normalize_before:
-            self.final_norm = SequenceNorm(norm_type, embedding_dim, export=export)
+            self.final_norm = MaskedBatchNorm(embedding_dim)
         else:
             self.final_norm = None
 
