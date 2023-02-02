@@ -11,14 +11,11 @@ from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, eps=1e-5, affine=True, correction=0.0, momentum=0.1, momentum_decay=None, process_group=None):
+    def __init__(self, num_features, eps=1e-5, affine=True, momentum=0.1, momentum_decay=None, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
         self.affine = affine
-
-        assert correction < 1.0, 'correction should be in the range [0.0, 1.0)'
-        self.correction = correction
         self.momentum = momentum
         self.momentum_decay = momentum_decay
 
@@ -66,7 +63,6 @@ class MaskedBatchNorm(nn.Module):
             mean, var = self._compute_mean_var(x, nums, momentum)
         else:
             mean, var = self.running_mean, self.running_var
-            var = (1.0 - self.correction) * var - self.correction * torch.square(mean)
 
         inv_std = torch.rsqrt(var + self.eps)
 
