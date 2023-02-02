@@ -125,7 +125,7 @@ class MegaLRAEncoder(nn.Module):
         if embedding_type == 'sparse':
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx)
             nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
-            nn.init.constant_(embedding_dim.weight[padding_idx], 0)
+            nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
         else:
             embed_tokens = RealNumberEmbedding(embedding_dim)
