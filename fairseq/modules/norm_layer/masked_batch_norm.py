@@ -123,4 +123,4 @@ class MaskedBatchNorm(nn.Module):
 
     def extra_repr(self) -> str:
         return 'num_features={num_features}, eps={eps}, affine={affine}, ' \
-               'correction={correction}, momentum={momentum}({momentum_decay})'.format(**self.__dict__)
+               'momentum={momentum}({momentum_decay})'.format(**self.__dict__)
