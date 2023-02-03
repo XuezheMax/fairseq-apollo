@@ -11,7 +11,7 @@ import torch.nn as nn
 
 from fairseq.modules import (
     LayerNorm,
-    ScaleNorm,
+    RMSNorm,
     GatedAttentionUnit,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
@@ -30,7 +30,7 @@ class FlashSentenceEncoderLayer(nn.Module):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
-        norm_type: str = 'scalenorm',
+        norm_type: str = 'layernorm',
         max_positions: int = 1024,
         export: bool = False,
     ) -> None:
@@ -46,8 +46,8 @@ class FlashSentenceEncoderLayer(nn.Module):
     def build_norm_layer(self, norm_type, embedding_dim, export):
         if norm_type == 'layernorm':
             return LayerNorm(embedding_dim, export=export)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
+        elif norm_type == 'rmsnorm':
+            return RMSNorm(embedding_dim, export=export)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 

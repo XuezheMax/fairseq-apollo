@@ -14,8 +14,7 @@ from fairseq.modules import (
     FlashSentenceEncoderLayer,
 )
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.norm_layer.scale_norm import ScaleNorm
-from fairseq.modules.norm_layer.layer_norm import LayerNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
 
 
 class FlashLRAEncoder(nn.Module):
@@ -54,7 +53,7 @@ class FlashLRAEncoder(nn.Module):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
-        norm_type: str = 'scalenorm',
+        norm_type: str = 'layernorm',
         layerdrop: float = 0.0,
         max_seq_len: int = 256,
         export: bool = False,
@@ -103,10 +102,8 @@ class FlashLRAEncoder(nn.Module):
     def build_final_norm_layer(self, norm_type, embedding_dim, export):
         if norm_type == 'layernorm':
             return LayerNorm(embedding_dim, export=export)
-        elif norm_type == 'scalenorm':
-            return ScaleNorm(dim=-1)
-        elif norm_type == 'batchnorm':
-            return nn.BatchNorm1d(embedding_dim)
+        elif norm_type == 'rmsnorm':
+            return RMSNorm(embedding_dim, export=export)
         else:
             raise ValueError('Unknown norm type: {}'.format(norm_type))
 
