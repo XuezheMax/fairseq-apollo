@@ -38,7 +38,7 @@ try:
             else:
                 return fused_layer_norm(input, self.normalized_shape, self.eps)
 
-    class FusedRMSNorm(_FusedLayerNorm):
+    class FusedRMSNorm(_FusedRMSNorm):
         def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
             super().__init__(normalized_shape, eps, elementwise_affine)
 
