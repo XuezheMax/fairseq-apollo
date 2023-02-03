@@ -19,11 +19,8 @@ from .grad_multiply import GradMultiply
 from .gumbel_vector_quantizer import GumbelVectorQuantizer
 from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
-from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm
-from .norm_layer.scale_norm import ScaleNorm
-from .norm_layer.root_mean_square_norm import RMSNorm
+from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm, RMSNorm
 from .norm_layer.masked_batch_norm import MaskedBatchNorm
-from .norm_layer.sequence_norm import SequenceNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
@@ -74,6 +71,7 @@ __all__ = [
     'KmeansVectorQuantizer',
     'LayerDropModuleList',
     'LayerNorm',
+    'RMSNorm',
     'LearnedPositionalEmbedding',
     'LightweightConv1dTBC',
     'LightweightConv',
@@ -87,9 +85,6 @@ __all__ = [
     'RotaryRelativePositionalBias',
     'SamePad',
     'ScalarBias',
-    'ScaleNorm',
-    'RMSNorm',
-    'SequenceNorm',
     'SinusoidalPositionalEmbedding',
     'TransformerSentenceEncoderLayer',
     'TransformerSentenceEncoder',

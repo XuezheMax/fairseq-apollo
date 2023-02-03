@@ -11,7 +11,9 @@ import torch.nn.functional as F
 
 try:
     from apex.normalization import FusedLayerNorm as _FusedLayerNorm
+    from apex.normalization import FusedRMSNorm as _FusedRMSNorm
     from apex.normalization.fused_layer_norm import fused_layer_norm_affine, fused_layer_norm
+    from apex.normalization.fused_layer_norm import manual_rms_norm, fused_rms_norm_affine, fused_rms_norm
 
     has_fused_layernorm = True
 
@@ -30,10 +32,30 @@ try:
             if not input.is_cuda:
                 weight = None if self.weight is None else self.weight + 1.0
                 return F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
+
             if self.elementwise_affine:
                 return fused_layer_norm_affine(input, self.weight + 1.0, self.bias, self.normalized_shape, self.eps)
             else:
                 return fused_layer_norm(input, self.normalized_shape, self.eps)
+
+    class FusedRMSNorm(_FusedLayerNorm):
+        def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
+            super().__init__(normalized_shape, eps, elementwise_affine)
+
+        def reset_parameters(self):
+            if self.elementwise_affine:
+                nn.init.zeros_(self.weight)
+
+        @torch.jit.unused
+        def forward(self, input):
+            if not input.is_cuda:
+                weight = None if self.weight is None else self.weight + 1.0
+                return manual_rms_norm(input, self.normalized_shape, weight, self.eps)
+
+            if self.elementwise_affine:
+                return fused_rms_norm_affine(input, self.weight + 1.0, self.normalized_shape, self.eps)
+            else:
+                return fused_rms_norm(input, self.normalized_shape, self.eps)
 
 except ImportError:
     has_fused_layernorm = False
@@ -45,6 +67,15 @@ def LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False)
     if not export and torch.cuda.is_available() and has_fused_layernorm:
         return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
     return FairseqLayerNorm(normalized_shape, eps, elementwise_affine)
+
+
+def RMSNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
+    if torch.jit.is_scripting():
+        export = True
+    if not export and torch.cuda.is_available() and has_fused_layernorm:
+        return FusedRMSNorm(normalized_shape, eps, elementwise_affine)
+    else:
+        raise NotImplementedError('No RMSNorm implementation installed')
 
 
 _shape_t = Union[int, List[int], torch.Size]
