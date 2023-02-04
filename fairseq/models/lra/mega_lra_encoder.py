@@ -70,7 +70,7 @@ class MegaLRAEncoder(nn.Module):
         sen_rep_type: str = 'cls',
         layer_scale: bool = False,
         init_mode='gaussian'
-    ) -> None:
+    ):
 
         super().__init__()
         self.padding_idx = padding_idx

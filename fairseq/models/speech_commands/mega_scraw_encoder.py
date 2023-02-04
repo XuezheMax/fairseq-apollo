@@ -55,17 +55,17 @@ class MegaSCRawEncoder(nn.Module):
         attention_dropout: float = 0.0,
         hidden_dropout: float = 0.0,
         chunk_size: int = -1,
-        norm_type: str = 'layernorm',
-        normalize_before: bool = False,
-        feature_dropout: bool = False,
+        moving_layer: str = 'cema',
         layerdrop: float = 0.0,
         truncation: int = None,
         rel_pos_bias: str = 'simple',
         max_seq_len: int = 16000,
-        export: bool = False,
         traceable: bool = False,
         sen_rep_type: str = 'cls',
-    ) -> None:
+        layer_scale: bool = False,
+        init_mode='gaussian',
+        export: bool = False,
+    ):
 
         super().__init__()
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
@@ -85,6 +85,7 @@ class MegaSCRawEncoder(nn.Module):
             self.layers = nn.ModuleList([])
         self.num_layers = num_encoder_layers
 
+        ls_weights = [0.1 * (0.5 ** i) for i in range(self.num_layers)] if layer_scale else [None, ] * self.num_layers
         self.layers.extend([
             self.build_mega_sentence_encoder_layer(
                 embedding_dim=self.embedding_dim,
@@ -96,23 +97,20 @@ class MegaSCRawEncoder(nn.Module):
                 attention_dropout=attention_dropout,
                 hidden_dropout=hidden_dropout,
                 chunk_size=chunk_size,
+                moving_layer=moving_layer,
                 truncation=truncation,
                 rel_pos_bias=rel_pos_bias,
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
-                norm_type=norm_type,
-                prenorm=normalize_before,
-                feature_dropout=feature_dropout,
+                layer_scale=ls_weights[i],
+                init_mode=init_mode,
                 export=export
             )
-            for _ in range(self.num_layers)
+            for i in range(self.num_layers)
         ])
 
-        if normalize_before:
-            self.final_norm = MaskedBatchNorm(embedding_dim)
-        else:
-            self.final_norm = None
+        self.final_norm = MaskedBatchNorm(embedding_dim)
 
     def build_mega_sentence_encoder_layer(
         self,
@@ -125,14 +123,14 @@ class MegaSCRawEncoder(nn.Module):
         attention_dropout,
         hidden_dropout,
         chunk_size,
+        moving_layer,
         truncation,
         rel_pos_bias,
         max_positions,
         activation,
         attention_activation,
-        norm_type,
-        prenorm,
-        feature_dropout,
+        layer_scale,
+        init_mode,
         export,
     ):
         return MegaSentenceEncoderLayer(
@@ -145,22 +143,22 @@ class MegaSCRawEncoder(nn.Module):
             attention_dropout=attention_dropout,
             hidden_dropout=hidden_dropout,
             chunk_size=chunk_size,
+            moving_layer=moving_layer,
             truncation=truncation,
             rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
-            norm_type=norm_type,
-            prenorm=prenorm,
-            feature_dropout=feature_dropout,
+            layer_scale=layer_scale,
+            init_mode=init_mode,
             export=export
         )
 
     def forward(
-            self,
-            tokens: torch.Tensor,
-            src_lengths: torch.Tensor,
-            last_state_only: bool = False,
+        self,
+        tokens: torch.Tensor,
+        src_lengths: torch.Tensor,
+        last_state_only: bool = False,
     ) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], torch.Tensor]:
 
         bsz, seq_len = tokens.size()
@@ -183,8 +181,7 @@ class MegaSCRawEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        if self.final_norm is not None:
-            x = self.final_norm(x)
+        x = self.final_norm(x)
 
         if self.sen_rep_type == 'mp':
             sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)

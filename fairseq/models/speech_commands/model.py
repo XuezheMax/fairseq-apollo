@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from fairseq import utils
 from fairseq.models import (
@@ -13,7 +12,6 @@ from fairseq.modules import (
     FairseqDropout,
 )
 from fairseq.models.speech_commands.mega_scraw_encoder import MegaSCRawEncoder
-from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 
 def Linear(in_features, out_features, bias=True):
@@ -51,13 +49,6 @@ class SCRawModel(FairseqEncoderModel):
             bias=False
         )
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
-        self.layer_type = args.layer_type
-
-        # if specified then apply bert initialization on the model. We need
-        # to explictly call this to make sure that the output embeddings
-        # and projection layers are also correctly initialized
-        if getattr(args, 'apply_bert_init', False):
-            self.apply(init_bert_params)
 
     @staticmethod
     def add_args(parser):
@@ -66,7 +57,6 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--dropout', type=float, metavar='D', help='dropout probability')
         parser.add_argument('--attention-dropout', type=float, metavar='D', help='dropout probability for attention weights')
         parser.add_argument('--act-dropout', type=float, metavar='D', help='dropout probability after activation in FFN')
-        parser.add_argument('--feature-dropout', action='store_true', help='apply feature dropout')
 
         # Arguments related to hidden states and self-attention
         parser.add_argument('--encoder-hidden-dim', type=int, metavar='N', help='encoder hidden dimension for Mega')
@@ -74,6 +64,7 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--z-dim', type=int, metavar='N', help='encoder z dimension for FLASH')
         parser.add_argument('--n-dim', type=int, metavar='N', help='encoder n dimension for Mega')
         parser.add_argument('--encoder-layers', type=int, metavar='N', help='num encoder layers')
+        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='ema')
 
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N', help='encoder embedding dimension')
@@ -84,22 +75,16 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--sentence-class-num', type=int, metavar='N', help='number of classes for sentence task')
         parser.add_argument('--sent-loss', action='store_true', help='if set, calculate sentence level predictions')
 
-        # Arguments related to parameter initialization
-        parser.add_argument('--apply-bert-init', action='store_true', help='use custom param initialization for BERT')
-
         # misc params
         parser.add_argument('--activation-fn', choices=utils.get_available_activation_fns(), help='activation function to use')
         parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'], help='activation function for attention mechanism')
         parser.add_argument('--classifier-activation-fn', choices=utils.get_available_activation_fns(),
                             help='Which activation function to use for classifier layer.')
-        parser.add_argument('--encoder-normalize-before', action='store_true', help='apply layernorm before each encoder block')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0, help='LayerDrop probability for encoder')
 
-        parser.add_argument('--layer-type', choices=['mega'])
-        parser.add_argument('--norm-type', choices=['layernorm', 'scalenorm', 'rmsnorm', 'batchnorm', 'syncbatchnorm'])
-        parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
-
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
         parser.add_argument('--chunk-size', type=int, metavar='N',help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N', help='truncation length of moving average layer.')
 
@@ -137,31 +122,29 @@ class SCRawEncoder(FairseqEncoder):
     """LRA encoder."""
 
     def __init__(self, args, task):
-        assert args.sen_rep_type == 'mp' or args.layer_type == 'lstm'
         super().__init__(None)
         self.args = args
-        if args.layer_type == 'mega':
-            self.encoder = MegaSCRawEncoder(
-                num_encoder_layers=args.encoder_layers,
-                embedding_dim=args.encoder_embed_dim,
-                hidden_dim=args.encoder_hidden_dim,
-                ffn_hidden_dim=args.encoder_ffn_embed_dim,
-                z_dim=args.z_dim,
-                n_dim=args.n_dim,
-                activation=args.activation_fn,
-                attention_activation=args.attention_activation_fn,
-                dropout=args.dropout,
-                attention_dropout=args.attention_dropout,
-                hidden_dropout=args.act_dropout,
-                norm_type=args.norm_type,
-                normalize_before=args.encoder_normalize_before,
-                feature_dropout=args.feature_dropout,
-                chunk_size=getattr(args, 'chunk_size', -1),
-                truncation=getattr(args, 'truncation_length', None),
-                rel_pos_bias=args.rel_pos_bias,
-                max_seq_len=args.max_positions,
-                sen_rep_type=getattr(args, 'sen_rep_type', 'mp')
-            )
+        self.encoder = MegaSCRawEncoder(
+            num_encoder_layers=args.encoder_layers,
+            embedding_dim=args.encoder_embed_dim,
+            hidden_dim=args.encoder_hidden_dim,
+            ffn_hidden_dim=args.encoder_ffn_embed_dim,
+            z_dim=args.z_dim,
+            n_dim=args.n_dim,
+            activation=args.activation_fn,
+            attention_activation=args.attention_activation_fn,
+            dropout=args.dropout,
+            attention_dropout=args.attention_dropout,
+            hidden_dropout=args.act_dropout,
+            chunk_size=getattr(args, 'chunk_size', -1),
+            moving_layer=args.moving_layer,
+            truncation=getattr(args, 'truncation_length', None),
+            rel_pos_bias=args.rel_pos_bias,
+            max_seq_len=args.max_positions,
+            sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
+            layer_scale=args.layer_scale,
+            init_mode=args.init_mode
+        )
 
     def forward(self, src_tokens, src_lengths=None, **kwargs):
         return self.encoder(src_tokens, src_lengths, last_state_only=True)
@@ -169,26 +152,20 @@ class SCRawEncoder(FairseqEncoder):
 
 @register_model_architecture('sc_raw', 'sc_raw')
 def base_architecture(args):
-    args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.layer_type = getattr(args, 'layer_type', 'mega')
-
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 60)
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 120)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', args.encoder_hidden_dim)
     args.z_dim = getattr(args, 'z_dim', 30)
     args.n_dim = getattr(args, 'n_dim', 16)
+    args.moving_layer = getattr(args, 'moving_layer', 'cema')
 
     args.dropout = getattr(args, 'dropout', 0.0)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.0)
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
-    args.feature_dropout = getattr(args, 'feature_dropout', False)
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'laplace')
-    args.norm_type = getattr(args, 'norm_type', 'batchnorm')
-    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
-
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2 * args.encoder_embed_dim)
@@ -201,6 +178,7 @@ def base_architecture(args):
     args.truncation_length = getattr(args, 'truncation_length', 1000)
     args.max_positions = getattr(args, 'max_positions', 16000)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
+    args.layer_scale = getattr(args, 'layer_scale', False)
 
 
 @register_model_architecture('sc_raw', 'mega_sc_raw')
