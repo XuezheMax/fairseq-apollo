@@ -137,6 +137,7 @@ class MegaModel(FairseqEncoderDecoderModel):
 
         assert args.encoder_embed_dim == args.decoder_embed_dim, 'Mega requires --encoder-embed-dim to match --decoder-embed-dim'
 
+        scale_embedding = not args.no_scale_embedding
         if args.share_all_embeddings:
             if src_dict != tgt_dict:
                 raise ValueError("--share-all-embeddings requires a joined dictionary")
@@ -145,23 +146,26 @@ class MegaModel(FairseqEncoderDecoderModel):
             if args.decoder_embed_path and (args.decoder_embed_path != args.encoder_embed_path):
                 raise ValueError("--share-all-embeddings not compatible with --decoder-embed-path")
 
-            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.encoder_embed_path)
+            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, scale_embedding, args.encoder_embed_path)
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
         else:
-            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.encoder_embed_path)
-            decoder_embed_tokens = cls.build_embedding(args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path)
+            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, scale_embedding, args.encoder_embed_path)
+            decoder_embed_tokens = cls.build_embedding(args, tgt_dict, args.decoder_embed_dim, scale_embedding, args.decoder_embed_path)
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
     @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, path=None):
+    def build_embedding(cls, args, dictionary, embed_dim, scale_embedding, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
 
-        emb = Embedding(num_embeddings, embed_dim, padding_idx)
+        if scale_embedding:
+            emb = ScaleEmbedding(num_embeddings, embed_dim, padding_idx)
+        else:
+            emb = nn.Embedding(num_embeddings, embed_dim, padding_idx)
         # if provided, load from preloaded dictionaries
         if path:
             embed_dict = utils.parse_embedding(path)
@@ -238,7 +242,7 @@ class MegaEncoder(FairseqEncoder):
         self.max_source_positions = args.max_source_positions
         self.chunk_size = args.encoder_chunk_size
         self.embed_tokens = embed_tokens
-        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
@@ -278,7 +282,11 @@ class MegaEncoder(FairseqEncoder):
         else:
             num_paddings = 0
 
-        x = encoder_embedding = self.embed_scale * self.embed_tokens(src_tokens)
+        encoder_embedding = self.embed_tokens(src_tokens)
+        if self.embed_scale is not None:
+            encoder_embedding = encoder_embedding * self.embed_scale
+
+        x = encoder_embedding
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
@@ -413,7 +421,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.attention_activation = args.attention_activation_fn
 
         self.embed_tokens = embed_tokens
-        self.embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
@@ -434,15 +442,14 @@ class MegaDecoder(FairseqIncrementalDecoder):
                 tie_proj=args.tie_adaptive_proj,
             )
         elif self.share_input_output_embed:
-            self.output_projection = nn.Linear(
-                self.embed_tokens.weight.shape[1],
-                self.embed_tokens.weight.shape[0],
-                bias=False,
-            )
-            self.output_projection.weight = self.embed_tokens.weight
+            self.output_projection = OutputProjection(self.embed_tokens.weight.shape[1],
+                                                      self.embed_tokens.weight.shape[0],
+                                                      bias=False,
+                                                      scale_weight=args.no_scale_embedding,
+                                                      _weight=self.embed_tokens.weight)
         else:
-            self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
-            nn.init.normal_(self.output_projection.weight, mean=0, std=self.embed_dim ** -0.5)
+            self.output_projection = OutputProjection(self.embed_dim, len(dictionary),
+                                                      bias=False, scale_weight=False)
 
     def build_decoder_layer(self, args):
         return MegaDecoderLayer(args)
@@ -544,7 +551,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
             num_paddings = 0
 
         # embed tokens
-        x = self.embed_scale * self.embed_tokens(prev_output_tokens)
+        x = self.embed_tokens(prev_output_tokens)
+        if self.embed_scale is not None:
+            x = x * self.embed_scale
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -628,19 +637,41 @@ class MegaDecoder(FairseqIncrementalDecoder):
         return self._future_mask[:dim, :dim]
 
 
-def Embedding(num_embeddings, embedding_dim, padding_idx):
+def ScaleEmbedding(num_embeddings, embedding_dim, padding_idx):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
     nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m
 
 
-def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
-    if bias:
-        nn.init.constant_(m.bias, 0.0)
-    return m
+class OutputProjection(nn.Module):
+    def __init__(self, in_features, out_features, bias=True, scale_weight=False, _weight=None):
+        super().__init__()
+        self.weight_scale = in_features ** -0.5 if scale_weight else None
+
+        if _weight is None:
+            self.weight = nn.Parameter(torch.empty((out_features, in_features)))
+            nn.init.normal_(self.weight, mean=0, std=in_features ** -0.5)
+        else:
+            self.weight = _weight
+
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features))
+            nn.init.zeros_(self.bias)
+        else:
+            self.register_parameter('bias', None)
+
+    def forward(self, input: Tensor) -> Tensor:
+        if self.weight_scale is not None:
+            weight = self.weight * self.weight_scale
+        else:
+            weight = self.weight
+        return F.linear(input, weight, self.bias)
+
+    def extra_repr(self) -> str:
+        return 'in_features={}, out_features={}, bias={}, weight_scale={}'.format(
+            self.in_features, self.out_features, self.bias is not None, self.weight_scale is not None
+        )
 
 
 @register_model_architecture("mega", "mega")
