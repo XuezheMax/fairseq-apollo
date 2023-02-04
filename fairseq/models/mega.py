@@ -647,6 +647,8 @@ def ScaleEmbedding(num_embeddings, embedding_dim, padding_idx):
 class OutputProjection(nn.Module):
     def __init__(self, in_features, out_features, bias=True, scale_weight=False, _weight=None):
         super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
         self.weight_scale = in_features ** -0.5 if scale_weight else None
 
         if _weight is None:
