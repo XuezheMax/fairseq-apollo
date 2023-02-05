@@ -93,13 +93,14 @@ class MaskedBatchNorm(nn.Module):
                 world_size = torch.distributed.get_world_size(process_group)
             need_sync = world_size > 1
 
+        weight = self.weight + 1.0 if self.affine else None
         if padding_mask is None:
             x = x.permute(1, 2, 0)
             if not need_sync:
-                out = F.batch_norm(x, self.running_mean, self.running_var, self.weight + 1.0,
+                out = F.batch_norm(x, self.running_mean, self.running_var, weight,
                                    self.bias, self.training, exponential_average_factor, self.eps)
             else:
-                out = sync_batch_norm.apply(x, self.weight + 1.0, self.bias,
+                out = sync_batch_norm.apply(x, weight, self.bias,
                                             self.running_mean, self.running_var,
                                             self.eps, exponential_average_factor,
                                             process_group, world_size)
@@ -109,7 +110,7 @@ class MaskedBatchNorm(nn.Module):
                 out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
             else:
                 x = x.permute(1, 2, 0)
-                out = sync_batch_norm_with_mask.apply(x, self.weight + 1.0, self.bias,
+                out = sync_batch_norm_with_mask.apply(x, weight, self.bias,
                                                       padding_mask,
                                                       self.running_mean, self.running_var,
                                                       self.eps, exponential_average_factor,
