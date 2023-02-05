@@ -17,7 +17,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         dropout=0.0,
         hidden_dropout=0.0,
         activation='silu',
-        norm_affine=True,
         layer_scale=None,
         init_mode='gaussian',
         export=False,
@@ -34,9 +33,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
-        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim)
-        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim)
+        self.norm = LayerNorm(embed_dim, elementwise_affine=False, export=export)
+        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=False)
+        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
         if layer_scale is None:
             self.register_parameter('layerscale_weight', None)
         else:
@@ -57,9 +56,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
             nn.init.xavier_uniform_(self.fc2.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
-        # bias
-        nn.init.constant_(self.fc1.bias, 0.0)
-        nn.init.constant_(self.fc2.bias, 0.0)
         # layer scale weight
         if self.layerscale_weight is not None:
             nn.init.constant_(self.layerscale_weight, self.layer_scale)

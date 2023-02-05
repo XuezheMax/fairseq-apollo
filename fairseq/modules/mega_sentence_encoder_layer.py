@@ -37,7 +37,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         layer_scale=None,
         init_mode='gaussian',
         export: bool = False,
-    ) -> None:
+    ):
         super().__init__()
 
         self.embedding_dim = embedding_dim

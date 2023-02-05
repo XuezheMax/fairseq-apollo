@@ -32,7 +32,6 @@ class GatedCrossAttention(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         attention_activation='softmax',
-        norm_affine=True,
         rel_pos_bias='simple',
         max_positions=1024,
         export=False,
@@ -52,15 +51,13 @@ class GatedCrossAttention(nn.Module):
         # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
-        self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, export=export)
+        self.norm = LayerNorm(embed_dim, elementwise_affine=False, export=export)
 
-        self.k_proj = nn.Linear(embed_dim, zdim)
-        self.v_proj = nn.Linear(embed_dim, embed_dim)
-        self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim)
-        self.h_proj = nn.Linear(embed_dim, embed_dim)
-
+        self.k_proj = nn.Linear(embed_dim, zdim, bias=False)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.q_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim, bias=False)
+        self.h_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.gamma = Parameter(torch.Tensor(2, zdim))
-        self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
         if rel_pos_bias == 'simple':
@@ -97,14 +94,8 @@ class GatedCrossAttention(nn.Module):
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
-        # bias
-        nn.init.constant_(self.k_proj.bias, 0.0)
-        nn.init.constant_(self.v_proj.bias, 0.0)
-        nn.init.constant_(self.q_proj.bias, 0.0)
-        nn.init.constant_(self.h_proj.bias, 0.0)
-        # gamma & beta
+        # gamma
         nn.init.constant_(self.gamma, 0.0)
-        nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
         bsz, clen, _ = k.size()
@@ -225,7 +216,7 @@ class GatedCrossAttention(nn.Module):
         # L2 x B x S
         gamma = self.gamma + 1.0
         q = F.normalize(q, p=2, dim=-1, eps=1e-5)
-        q = q * gamma[0] + self.beta[0]
+        q = q * gamma[0]
 
         # L2 x B x D
         u = torch.sigmoid(u)
@@ -238,7 +229,7 @@ class GatedCrossAttention(nn.Module):
             # L1 x B x S
             k = self.k_proj(key)
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
-            k = k * gamma[1] + self.beta[1]
+            k = k * gamma[1]
             # L1 x B x D
             v = self.activation(self.v_proj(value))
 
