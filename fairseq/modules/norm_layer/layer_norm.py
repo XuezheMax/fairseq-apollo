@@ -10,69 +10,27 @@ import torch.nn.functional as F
 
 
 try:
-    from apex.normalization import FusedLayerNorm as _FusedLayerNorm
-    from apex.normalization import FusedRMSNorm as _FusedRMSNorm
-    from apex.normalization.fused_layer_norm import fused_layer_norm_affine, fused_layer_norm
-    from apex.normalization.fused_layer_norm import manual_rms_norm, fused_rms_norm_affine, fused_rms_norm
+    # from apex.normalization import FusedLayerNorm
+    from apex.normalization import FusedRMSNorm
 
-    has_fused_layernorm = True
-
-    class FusedLayerNorm(_FusedLayerNorm):
-        def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
-            super().__init__(normalized_shape, eps, elementwise_affine)
-            self.reset_parameters()
-
-        def reset_parameters(self):
-            if self.elementwise_affine:
-                nn.init.zeros_(self.weight)
-                nn.init.zeros_(self.bias)
-
-        @torch.jit.unused
-        def forward(self, input):
-            if not input.is_cuda:
-                weight = None if self.weight is None else self.weight + 1.0
-                return F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
-
-            if self.elementwise_affine:
-                return fused_layer_norm_affine(input, self.weight + 1.0, self.bias, self.normalized_shape, self.eps)
-            else:
-                return fused_layer_norm(input, self.normalized_shape, self.eps)
-
-    class FusedRMSNorm(_FusedRMSNorm):
-        def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
-            super().__init__(normalized_shape, eps, elementwise_affine)
-
-        def reset_parameters(self):
-            if self.elementwise_affine:
-                nn.init.zeros_(self.weight)
-
-        @torch.jit.unused
-        def forward(self, input):
-            if not input.is_cuda:
-                weight = None if self.weight is None else self.weight + 1.0
-                return manual_rms_norm(input, self.normalized_shape, weight, self.eps)
-
-            if self.elementwise_affine:
-                return fused_rms_norm_affine(input, self.weight + 1.0, self.normalized_shape, self.eps)
-            else:
-                return fused_rms_norm(input, self.normalized_shape, self.eps)
+    has_fusednorm = True
 
 except ImportError:
-    has_fused_layernorm = False
+    has_fusednorm = False
 
 
-def LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
-    if torch.jit.is_scripting():
-        export = True
-    if not export and torch.cuda.is_available() and has_fused_layernorm:
-        return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
+def LayerNorm(normalized_shape, eps=1e-6, elementwise_affine=True, export=False):
+    # if torch.jit.is_scripting():
+    #     export = True
+    # if not export and torch.cuda.is_available() and has_fusednorm:
+    #     return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
     return FairseqLayerNorm(normalized_shape, eps, elementwise_affine)
 
 
-def RMSNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
+def RMSNorm(normalized_shape, eps=1e-6, elementwise_affine=True, export=False):
     if torch.jit.is_scripting():
         export = True
-    if not export and torch.cuda.is_available() and has_fused_layernorm:
+    if not export and torch.cuda.is_available() and has_fusednorm:
         return FusedRMSNorm(normalized_shape, eps, elementwise_affine)
     else:
         raise NotImplementedError('No RMSNorm implementation installed')
@@ -83,8 +41,8 @@ _shape_t = Union[int, List[int], torch.Size]
 
 class FairseqLayerNorm(nn.Module):
 
-    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5, elementwise_affine: bool = True,
-                 device=None, dtype=None) -> None:
+    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-6,
+                 elementwise_affine: bool = True, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(FairseqLayerNorm, self).__init__()
         if isinstance(normalized_shape, numbers.Integral):
@@ -94,20 +52,17 @@ class FairseqLayerNorm(nn.Module):
         self.elementwise_affine = elementwise_affine
         if self.elementwise_affine:
             self.weight = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
-            self.bias = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
         else:
             self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
 
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         if self.elementwise_affine:
-            nn.init.zeros_(self.weight)
-            nn.init.zeros_(self.bias)
+            nn.init.ones_(self.weight)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.layer_norm(input, self.normalized_shape, self.weight + 1.0, self.bias, self.eps)
+        return F.layer_norm(input, self.normalized_shape, self.weight, None, self.eps)
 
     def extra_repr(self) -> str:
         return '{normalized_shape}, eps={eps}, elementwise_affine={elementwise_affine}'.format(**self.__dict__)

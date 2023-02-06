@@ -58,6 +58,7 @@ class MegaSCRawEncoder(nn.Module):
         moving_layer: str = 'cema',
         layerdrop: float = 0.0,
         truncation: int = None,
+        norm_type='layernorm',
         rel_pos_bias: str = 'simple',
         max_seq_len: int = 16000,
         traceable: bool = False,
@@ -103,6 +104,7 @@ class MegaSCRawEncoder(nn.Module):
                 max_positions=self.max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
+                norm_type=norm_type,
                 layer_scale=ls_weights[i],
                 init_mode=init_mode,
                 export=export
@@ -110,7 +112,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = MaskedBatchNorm(embedding_dim, affine=False)
+        self.final_norm = MaskedBatchNorm(embedding_dim)
 
     def build_mega_sentence_encoder_layer(
         self,
@@ -129,6 +131,7 @@ class MegaSCRawEncoder(nn.Module):
         max_positions,
         activation,
         attention_activation,
+        norm_type,
         layer_scale,
         init_mode,
         export,
@@ -149,6 +152,7 @@ class MegaSCRawEncoder(nn.Module):
             max_positions=max_positions,
             activation=activation,
             attention_activation=attention_activation,
+            norm_type=norm_type,
             layer_scale=layer_scale,
             init_mode=init_mode,
             export=export

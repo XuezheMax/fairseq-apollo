@@ -19,7 +19,7 @@ from fairseq.models.lra.mega_lra_encoder import MegaLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 
-def Linear(in_features, out_features, bias=True):
+def Linear(in_features, out_features, bias=False):
     m = nn.Linear(in_features, out_features, bias)
     nn.init.xavier_uniform_(m.weight)
     if bias:
@@ -51,7 +51,7 @@ class LRAModel(FairseqEncoderModel):
             ])
             self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
+        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
         self.layer_type = args.layer_type
@@ -140,6 +140,7 @@ class LRAModel(FairseqEncoderModel):
 
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
+        parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
@@ -283,6 +284,7 @@ class LRAEncoder(FairseqEncoder):
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
+                norm_type=args.norm_type,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),

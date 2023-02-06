@@ -109,6 +109,7 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
+        parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
         # fmt: on
 
@@ -216,7 +217,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
-        self.final_norm = MaskedBatchNorm(embed_dim, affine=False)
+        self.final_norm = MaskedBatchNorm(embed_dim)
 
         self.adaptive_softmax = None
         self.output_projection = None

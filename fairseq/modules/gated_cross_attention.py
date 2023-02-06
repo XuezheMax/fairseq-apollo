@@ -12,7 +12,7 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
-from fairseq.modules.norm_layer.layer_norm import LayerNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
 
 
 @with_incremental_state
@@ -32,6 +32,7 @@ class GatedCrossAttention(nn.Module):
         hidden_dropout=0.0,
         activation='silu',
         attention_activation='softmax',
+        norm_type='layernorm',
         rel_pos_bias='simple',
         max_positions=1024,
         export=False,
@@ -51,7 +52,12 @@ class GatedCrossAttention(nn.Module):
         # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
-        self.norm = LayerNorm(embed_dim, elementwise_affine=False, export=export)
+        if norm_type == 'layernorm':
+            self.norm = LayerNorm(embed_dim, export=export)
+        elif norm_type == 'rmsnorm':
+            self.norm = RMSNorm(embed_dim, export=export)
+        else:
+            raise ValueError('unknown norm type: {}'.format(norm_type))
 
         self.k_proj = nn.Linear(embed_dim, zdim, bias=False)
         self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)

@@ -11,7 +11,7 @@ from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
 class MaskedBatchNorm(nn.Module):
-    def __init__(self, num_features, eps=1e-5, affine=True, momentum=0.1, process_group=None):
+    def __init__(self, num_features, eps=1e-6, affine=True, momentum=0.1, process_group=None):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
@@ -20,10 +20,8 @@ class MaskedBatchNorm(nn.Module):
 
         if affine:
             self.weight = nn.Parameter(torch.Tensor(num_features))
-            self.bias = nn.Parameter(torch.Tensor(num_features))
         else:
             self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
 
         self.register_buffer('running_mean', torch.zeros(num_features))
         self.register_buffer('running_var', torch.ones(num_features))
@@ -35,8 +33,7 @@ class MaskedBatchNorm(nn.Module):
 
     def reset_parameters(self):
         if self.affine:
-            nn.init.zeros_(self.weight)
-            nn.init.zeros_(self.bias)
+            nn.init.ones_(self.weight)
 
     def _compute_mean_var(self, x, nums, momentum):
         sum_x = torch.sum(x, dim=(0, 1))
@@ -66,8 +63,7 @@ class MaskedBatchNorm(nn.Module):
         inv_std = torch.rsqrt(var + self.eps)
 
         if self.affine:
-            weight = self.weight + 1.0
-            out = (x - mean) * (weight * inv_std) + self.bias
+            out = (x - mean) * (self.weight * inv_std)
         else:
             out = (x - mean) * inv_std
         return out
@@ -93,14 +89,13 @@ class MaskedBatchNorm(nn.Module):
                 world_size = torch.distributed.get_world_size(process_group)
             need_sync = world_size > 1
 
-        weight = self.weight + 1.0 if self.affine else None
         if padding_mask is None:
             x = x.permute(1, 2, 0)
             if not need_sync:
-                out = F.batch_norm(x, self.running_mean, self.running_var, weight,
-                                   self.bias, self.training, exponential_average_factor, self.eps)
+                out = F.batch_norm(x, self.running_mean, self.running_var, self.weight, None,
+                                   self.training, exponential_average_factor, self.eps)
             else:
-                out = sync_batch_norm.apply(x, weight, self.bias,
+                out = sync_batch_norm.apply(x, self.weight, None,
                                             self.running_mean, self.running_var,
                                             self.eps, exponential_average_factor,
                                             process_group, world_size)
@@ -110,8 +105,7 @@ class MaskedBatchNorm(nn.Module):
                 out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
             else:
                 x = x.permute(1, 2, 0)
-                out = sync_batch_norm_with_mask.apply(x, weight, self.bias,
-                                                      padding_mask,
+                out = sync_batch_norm_with_mask.apply(x, self.weight, None, padding_mask,
                                                       self.running_mean, self.running_var,
                                                       self.eps, exponential_average_factor,
                                                       process_group, world_size)

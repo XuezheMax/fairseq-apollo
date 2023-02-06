@@ -6,7 +6,7 @@ from torch import nn
 
 from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.norm_layer.layer_norm import LayerNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
 
 
 class NormalizedFeedForwardNetwork(nn.Module):
@@ -17,6 +17,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         dropout=0.0,
         hidden_dropout=0.0,
         activation='silu',
+        norm_type='layernorm',
         layer_scale=None,
         init_mode='gaussian',
         export=False,
@@ -33,7 +34,13 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
 
-        self.norm = LayerNorm(embed_dim, elementwise_affine=False, export=export)
+        if norm_type == 'layernorm':
+            self.norm = LayerNorm(embed_dim, export=export)
+        elif norm_type == 'rmsnorm':
+            self.norm = RMSNorm(embed_dim, export=export)
+        else:
+            raise ValueError('unknown norm type: {}'.format(norm_type))
+
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=False)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
         if layer_scale is None:

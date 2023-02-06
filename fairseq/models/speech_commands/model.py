@@ -87,6 +87,7 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
         parser.add_argument('--chunk-size', type=int, metavar='N',help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N', help='truncation length of moving average layer.')
+        parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
 
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
@@ -139,6 +140,7 @@ class SCRawEncoder(FairseqEncoder):
             chunk_size=getattr(args, 'chunk_size', -1),
             moving_layer=args.moving_layer,
             truncation=getattr(args, 'truncation_length', None),
+            norm_type=args.norm_type,
             rel_pos_bias=args.rel_pos_bias,
             max_seq_len=args.max_positions,
             sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
