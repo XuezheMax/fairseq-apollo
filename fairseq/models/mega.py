@@ -248,7 +248,7 @@ class MegaEncoder(FairseqEncoder):
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = MaskedBatchNorm(embed_dim)
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=False)
 
     def build_encoder_layer(self, args):
         return MegaEncoderLayer(args)
@@ -427,7 +427,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = MaskedBatchNorm(embed_dim)
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=False)
 
         self.adaptive_softmax = None
         self.output_projection = None

@@ -103,9 +103,6 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='if set, ties the weights of adaptive softmax and adaptive input')
         parser.add_argument('--tie-adaptive-proj', action='store_true',
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
-
-        parser.add_argument('--no-affine-final-norm', action='store_true',
-                            help='no affine parameters in the final norm.')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
@@ -219,11 +216,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.layers = nn.ModuleList([])
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
-
-        final_norm_affine = True
-        if hasattr(args, 'no_affine_final_norm'):
-            final_norm_affine = not args.no_affine_final_norm
-        self.final_norm = MaskedBatchNorm(embed_dim, affine=final_norm_affine)
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=False)
 
         self.adaptive_softmax = None
         self.output_projection = None
@@ -447,7 +440,6 @@ def base_lm_architecture(args):
 
     args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'rotary')
     args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
-    args.no_affine_final_norm = getattr(args, 'no_affine_final_norm', False)
 
     args.adaptive_input = getattr(args, 'adaptive_input', False)
     args.adaptive_input_factor = getattr(args, 'adaptive_input_factor', 4)

@@ -110,7 +110,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = MaskedBatchNorm(embedding_dim)
+        self.final_norm = MaskedBatchNorm(embedding_dim, affine=False)
 
     def build_mega_sentence_encoder_layer(
         self,
