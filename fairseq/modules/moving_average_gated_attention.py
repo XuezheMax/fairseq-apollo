@@ -75,7 +75,8 @@ class MovingAverageGatedAttention(nn.Module):
         self.v_proj = nn.Linear(embed_dim, hdim, bias=False)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=False)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
-        self.gamma = Parameter(torch.Tensor(2, zdim))
+        self.gamma = Parameter(torch.Tensor(zdim))
+        self.beta = Parameter(torch.Tensor(zdim))
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -111,8 +112,10 @@ class MovingAverageGatedAttention(nn.Module):
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
-        # gamma
+
+        # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
+        nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
@@ -235,10 +238,9 @@ class MovingAverageGatedAttention(nn.Module):
         u = torch.sigmoid(u)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
-        z = z.unsqueeze(2) * (self.gamma + 1.0)
-        # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(z, dim=2)
+        # L x B x S
+        q = z * (self.gamma + 1.0) + self.beta
+        k = z
         # L x B x E
         r = F.silu(r)
 
