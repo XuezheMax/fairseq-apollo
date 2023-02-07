@@ -11,7 +11,27 @@ import torch.nn.functional as F
 
 try:
     from apex.normalization import FusedLayerNorm
-    from apex.normalization import FusedRMSNorm
+    from apex.normalization import FusedRMSNorm as _FusedRMSNorm
+    from apex.normalization.fused_layer_norm import manual_rms_norm, fused_rms_norm_affine, fused_rms_norm
+
+    class FusedRMSNorm(_FusedRMSNorm):
+        def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
+            super().__init__(normalized_shape, eps, elementwise_affine)
+
+        def reset_parameters(self):
+            if self.elementwise_affine:
+                nn.init.zeros_(self.weight)
+
+        @torch.jit.unused
+        def forward(self, input):
+            weight = None if self.weight is None else self.weight + 1.0
+            if not input.is_cuda:
+                return manual_rms_norm(input, self.normalized_shape, weight, self.eps)
+
+            if self.elementwise_affine:
+                return fused_rms_norm_affine(input, weight, self.normalized_shape, self.eps)
+            else:
+                return fused_rms_norm(input, self.normalized_shape, self.eps)
 
     has_fusednorm = True
 
@@ -42,7 +62,7 @@ _shape_t = Union[int, List[int], torch.Size]
 class FairseqLayerNorm(nn.Module):
 
     def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5,
-                 elementwise_affine: bool = True, device=None, dtype=None) -> None:
+                 elementwise_affine: bool = True, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(FairseqLayerNorm, self).__init__()
         if isinstance(normalized_shape, numbers.Integral):
@@ -59,10 +79,10 @@ class FairseqLayerNorm(nn.Module):
 
     def reset_parameters(self) -> None:
         if self.elementwise_affine:
-            nn.init.ones_(self.weight)
+            nn.init.zeros_(self.weight)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.layer_norm(input, self.normalized_shape, self.weight, None, self.eps)
+        return F.layer_norm(input, self.normalized_shape, self.weight + 1.0, None, self.eps)
 
     def extra_repr(self) -> str:
         return '{normalized_shape}, eps={eps}, elementwise_affine={elementwise_affine}'.format(**self.__dict__)
