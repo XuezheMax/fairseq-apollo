@@ -88,6 +88,9 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--chunk-size', type=int, metavar='N',help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N', help='truncation length of moving average layer.')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
+        parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
+        parser.add_argument('--no-affine-norm', action='store_true', default=False,
+                            help='no affine parameters in normalization layers.')
 
     def forward(self, sample):
         src_tokens = sample['net_input']['src_tokens']
@@ -141,6 +144,8 @@ class SCRawEncoder(FairseqEncoder):
             moving_layer=args.moving_layer,
             truncation=getattr(args, 'truncation_length', None),
             norm_type=args.norm_type,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             rel_pos_bias=args.rel_pos_bias,
             max_seq_len=args.max_positions,
             sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
@@ -168,6 +173,9 @@ def base_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'laplace')
+
+    args.norm_type = getattr(args, 'norm_type', 'layernorm')
+    args.no_affine_norm = getattr(args, 'no_affine_norm', False)
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2 * args.encoder_embed_dim)

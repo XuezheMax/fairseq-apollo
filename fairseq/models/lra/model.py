@@ -141,6 +141,9 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
+        parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
+        parser.add_argument('--no-affine-norm', action='store_true', default=False,
+                            help='no affine parameters in normalization layers.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
@@ -285,6 +288,8 @@ class LRAEncoder(FairseqEncoder):
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
                 norm_type=args.norm_type,
+                norm_affine=not args.no_affine_norm,
+                norm_eps=args.norm_eps,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
@@ -349,6 +354,10 @@ def base_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'relu2')
+
+    args.norm_type = getattr(args, 'norm_type', 'layernorm')
+    args.no_affine_norm = getattr(args, 'no_affine_norm', False)
+
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)

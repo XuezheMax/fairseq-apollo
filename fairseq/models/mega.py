@@ -119,6 +119,9 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
+        parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
+        parser.add_argument('--no-affine-norm', action='store_true', default=False,
+                            help='no affine parameters in normalization layers.')
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
         # fmt: on
 
@@ -249,7 +252,8 @@ class MegaEncoder(FairseqEncoder):
         self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = MaskedBatchNorm(embed_dim)
+        norm_affine = not args.no_affine_norm
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=norm_affine, eps=args.norm_eps)
 
     def build_encoder_layer(self, args):
         return MegaEncoderLayer(args)
@@ -428,7 +432,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
         self.num_layers = len(self.layers)
 
-        self.final_norm = MaskedBatchNorm(embed_dim)
+        norm_affine = not args.no_affine_norm
+        self.final_norm = MaskedBatchNorm(embed_dim, affine=norm_affine, eps=args.norm_eps)
 
         self.adaptive_softmax = None
         self.output_projection = None
@@ -716,6 +721,9 @@ def base_architecture(args):
     args.moving_layer = getattr(args, 'moving_layer', 'cema')
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.tie_adaptive_weights = getattr(args, "tie_adaptive_weights", False)
+
+    args.norm_type = getattr(args, 'norm_type', 'layernorm')
+    args.no_affine_norm = getattr(args, 'no_affine_norm', False)
 
 
 @register_model_architecture("mega", "mega_wmt_en_de")

@@ -59,6 +59,8 @@ class MegaSCRawEncoder(nn.Module):
         layerdrop: float = 0.0,
         truncation: int = None,
         norm_type='layernorm',
+        norm_affine=True,
+        norm_eps=1e-5,
         rel_pos_bias: str = 'simple',
         max_seq_len: int = 16000,
         traceable: bool = False,
@@ -88,8 +90,8 @@ class MegaSCRawEncoder(nn.Module):
 
         ls_weights = [0.1 * (0.5 ** i) for i in range(self.num_layers)] if layer_scale else [None, ] * self.num_layers
         self.layers.extend([
-            self.build_mega_sentence_encoder_layer(
-                embedding_dim=self.embedding_dim,
+            MegaSentenceEncoderLayer(
+                embedding_dim=embedding_dim,
                 hidden_dim=hidden_dim,
                 ffn_hidden_dim=ffn_hidden_dim,
                 z_dim=z_dim,
@@ -101,10 +103,12 @@ class MegaSCRawEncoder(nn.Module):
                 moving_layer=moving_layer,
                 truncation=truncation,
                 rel_pos_bias=rel_pos_bias,
-                max_positions=self.max_seq_len,
+                max_positions=max_seq_len,
                 activation=activation,
                 attention_activation=attention_activation,
                 norm_type=norm_type,
+                norm_affine=norm_affine,
+                norm_eps=norm_eps,
                 layer_scale=ls_weights[i],
                 init_mode=init_mode,
                 export=export
@@ -112,51 +116,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = MaskedBatchNorm(embedding_dim)
-
-    def build_mega_sentence_encoder_layer(
-        self,
-        embedding_dim,
-        hidden_dim,
-        ffn_hidden_dim,
-        z_dim,
-        n_dim,
-        dropout,
-        attention_dropout,
-        hidden_dropout,
-        chunk_size,
-        moving_layer,
-        truncation,
-        rel_pos_bias,
-        max_positions,
-        activation,
-        attention_activation,
-        norm_type,
-        layer_scale,
-        init_mode,
-        export,
-    ):
-        return MegaSentenceEncoderLayer(
-            embedding_dim=embedding_dim,
-            hidden_dim=hidden_dim,
-            ffn_hidden_dim=ffn_hidden_dim,
-            z_dim=z_dim,
-            n_dim=n_dim,
-            dropout=dropout,
-            attention_dropout=attention_dropout,
-            hidden_dropout=hidden_dropout,
-            chunk_size=chunk_size,
-            moving_layer=moving_layer,
-            truncation=truncation,
-            rel_pos_bias=rel_pos_bias,
-            max_positions=max_positions,
-            activation=activation,
-            attention_activation=attention_activation,
-            norm_type=norm_type,
-            layer_scale=layer_scale,
-            init_mode=init_mode,
-            export=export
-        )
+        self.final_norm = MaskedBatchNorm(embedding_dim, affine=norm_affine, eps=norm_eps)
 
     def forward(
         self,

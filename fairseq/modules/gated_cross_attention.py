@@ -33,6 +33,8 @@ class GatedCrossAttention(nn.Module):
         activation='silu',
         attention_activation='softmax',
         norm_type='layernorm',
+        norm_affine=True,
+        norm_eps=1e-5,
         rel_pos_bias='simple',
         max_positions=1024,
         export=False,
@@ -53,9 +55,9 @@ class GatedCrossAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
         if norm_type == 'layernorm':
-            self.norm = LayerNorm(embed_dim, export=export)
+            self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps, export=export)
         elif norm_type == 'rmsnorm':
-            self.norm = RMSNorm(embed_dim, export=export)
+            self.norm = RMSNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps, export=export)
         else:
             raise ValueError('unknown norm type: {}'.format(norm_type))
 

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 try:
-    # from apex.normalization import FusedLayerNorm
+    from apex.normalization import FusedLayerNorm
     from apex.normalization import FusedRMSNorm
 
     has_fusednorm = True
@@ -22,8 +22,8 @@ except ImportError:
 def LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
     # if torch.jit.is_scripting():
     #     export = True
-    # if not export and torch.cuda.is_available() and has_fusednorm:
-    #     return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
+    if not export and torch.cuda.is_available() and has_fusednorm and not elementwise_affine:
+        return FusedLayerNorm(normalized_shape, eps, elementwise_affine)
     return FairseqLayerNorm(normalized_shape, eps, elementwise_affine)
 
 

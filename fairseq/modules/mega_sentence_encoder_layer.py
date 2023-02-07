@@ -31,6 +31,8 @@ class MegaSentenceEncoderLayer(nn.Module):
         moving_layer='ema',
         truncation: int = None,
         norm_type='layernorm',
+        norm_affine=True,
+        norm_eps=1e-5,
         rel_pos_bias = 'simple',
         max_positions: int = 1024,
         activation='silu',
@@ -43,24 +45,7 @@ class MegaSentenceEncoderLayer(nn.Module):
 
         self.embedding_dim = embedding_dim
         self.chunk_size = chunk_size
-        self.mega_layer = self.build_mega_layer(embedding_dim, hidden_dim, z_dim, n_dim,
-                                                dropout, attention_dropout, hidden_dropout,
-                                                activation, attention_activation,
-                                                chunk_size, moving_layer, truncation,
-                                                rel_pos_bias, max_positions, init_mode)
-
-        if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
-            self.nffn = self.build_nffn_layer(embedding_dim, ffn_hidden_dim, dropout, hidden_dropout,
-                                              activation, norm_type, layer_scale, init_mode, export)
-        else:
-            self.nffn = None
-
-    def build_mega_layer(self, embedding_dim, hidden_dim, z_dim, n_dim,
-                         dropout, attention_dropout, hidden_dropout,
-                         activation, attention_activation,
-                         chunk_size, moving_layer, truncation,
-                         rel_pos_bias, max_positions, init_mode):
-        return MovingAverageGatedAttention(
+        self.mega_layer = MovingAverageGatedAttention(
             embed_dim=embedding_dim,
             zdim=z_dim,
             hdim=hidden_dim,
@@ -71,6 +56,8 @@ class MegaSentenceEncoderLayer(nn.Module):
             chunk_size=chunk_size,
             moving_layer=moving_layer,
             truncation=truncation,
+            norm_affine=norm_affine,
+            norm_eps=norm_eps,
             rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,
             activation=activation,
@@ -79,18 +66,22 @@ class MegaSentenceEncoderLayer(nn.Module):
             init_mode=init_mode,
         )
 
-    def build_nffn_layer(self, embedding_dim, ffn_hidden_dim, dropout, hidden_dropout, activation, norm_type, layer_scale, init_mode, export):
-        return NormalizedFeedForwardNetwork(
-            embed_dim=embedding_dim,
-            ffn_hidden_dim=ffn_hidden_dim,
-            dropout=dropout,
-            hidden_dropout=hidden_dropout,
-            activation=activation,
-            norm_type=norm_type,
-            layer_scale=layer_scale,
-            init_mode=init_mode,
-            export=export,
-        )
+        if ffn_hidden_dim is not None and ffn_hidden_dim > 0:
+            self.nffn = NormalizedFeedForwardNetwork(
+                embed_dim=embedding_dim,
+                ffn_hidden_dim=ffn_hidden_dim,
+                dropout=dropout,
+                hidden_dropout=hidden_dropout,
+                activation=activation,
+                norm_type=norm_type,
+                norm_affine=norm_affine,
+                norm_eps=norm_eps,
+                layer_scale=layer_scale,
+                init_mode=init_mode,
+                export=export,
+            )
+        else:
+            self.nffn = None
 
     def forward(
         self,
