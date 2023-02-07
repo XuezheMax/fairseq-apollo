@@ -19,7 +19,7 @@ except ImportError:
     has_fusednorm = False
 
 
-def LayerNorm(normalized_shape, eps=1e-6, elementwise_affine=True, export=False):
+def LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
     # if torch.jit.is_scripting():
     #     export = True
     # if not export and torch.cuda.is_available() and has_fusednorm:
@@ -27,7 +27,7 @@ def LayerNorm(normalized_shape, eps=1e-6, elementwise_affine=True, export=False)
     return FairseqLayerNorm(normalized_shape, eps, elementwise_affine)
 
 
-def RMSNorm(normalized_shape, eps=1e-6, elementwise_affine=True, export=False):
+def RMSNorm(normalized_shape, eps=1e-5, elementwise_affine=True, export=False):
     if torch.jit.is_scripting():
         export = True
     if not export and torch.cuda.is_available() and has_fusednorm:
@@ -41,7 +41,7 @@ _shape_t = Union[int, List[int], torch.Size]
 
 class FairseqLayerNorm(nn.Module):
 
-    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-6,
+    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5,
                  elementwise_affine: bool = True, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(FairseqLayerNorm, self).__init__()
