@@ -45,6 +45,8 @@ class MegaEncoderLayer(nn.Module):
             max_positions=args.max_source_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             bidirectional=True,
             init_mode=args.init_mode,
         )
@@ -57,6 +59,8 @@ class MegaEncoderLayer(nn.Module):
             hidden_dropout=args.activation_dropout,
             activation=args.activation_fn,
             norm_type=args.norm_type,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             init_mode=args.init_mode,
         )
 
@@ -113,6 +117,8 @@ class MegaDecoderLayer(nn.Module):
             max_positions=args.max_target_positions,
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             bidirectional=False,
             init_mode=args.init_mode,
         )
@@ -128,6 +134,8 @@ class MegaDecoderLayer(nn.Module):
             activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             norm_type=args.norm_type,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             rel_pos_bias=args.rel_pos_bias,
             max_positions=max(args.max_target_positions, args.max_source_positions),
             init_mode=args.init_mode,
@@ -141,6 +149,8 @@ class MegaDecoderLayer(nn.Module):
             hidden_dropout=args.activation_dropout,
             activation=args.activation_fn,
             norm_type=args.norm_type,
+            norm_affine=not args.no_affine_norm,
+            norm_eps=args.norm_eps,
             init_mode=args.init_mode,
         )
 
