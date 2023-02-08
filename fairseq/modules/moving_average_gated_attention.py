@@ -72,11 +72,11 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.v_proj = nn.Linear(embed_dim, hdim, bias=False)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=False)
-        self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
-        self.gamma = Parameter(torch.Tensor(zdim))
-        self.beta = Parameter(torch.Tensor(zdim))
+        self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
+        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
+        self.gamma = Parameter(torch.Tensor(2, zdim))
+        self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
         max_positions = max_positions if chunk_size < 0 else chunk_size
@@ -112,7 +112,10 @@ class MovingAverageGatedAttention(nn.Module):
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
-
+        # bias
+        nn.init.constant_(self.v_proj.bias, 0.0)
+        nn.init.constant_(self.mx_proj.bias, 0.0)
+        nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
         nn.init.constant_(self.beta, 0.0)
@@ -238,9 +241,10 @@ class MovingAverageGatedAttention(nn.Module):
         u = torch.sigmoid(u)
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x S
-        q = z * (self.gamma + 1.0) + self.beta
-        k = z
+        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
+        z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
+        # L x B x 2 x S -> L x B x S
+        q, k = torch.unbind(z, dim=2)
         # L x B x E
         r = F.silu(r)
 

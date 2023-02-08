@@ -43,8 +43,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         else:
             raise ValueError('unknown norm type: {}'.format(norm_type))
 
-        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=False)
-        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
+        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=True)
+        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=True)
         if layer_scale is None:
             self.register_parameter('layerscale_weight', None)
         else:
@@ -65,6 +65,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
             nn.init.xavier_uniform_(self.fc2.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
+        # bias
+        nn.init.constant_(self.fc1.bias, 0.0)
+        nn.init.constant_(self.fc2.bias, 0.0)
         # layer scale weight
         if self.layerscale_weight is not None:
             nn.init.constant_(self.layerscale_weight, self.layer_scale)

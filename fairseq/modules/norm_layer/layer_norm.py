@@ -72,17 +72,20 @@ class FairseqLayerNorm(nn.Module):
         self.elementwise_affine = elementwise_affine
         if self.elementwise_affine:
             self.weight = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
+            self.bias = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
         else:
             self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
 
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         if self.elementwise_affine:
             nn.init.zeros_(self.weight)
+            nn.init.zeros_(self.bias)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.layer_norm(input, self.normalized_shape, self.weight + 1.0, None, self.eps)
+        return F.layer_norm(input, self.normalized_shape, self.weight + 1.0, self.bias, self.eps)
 
     def extra_repr(self) -> str:
         return '{normalized_shape}, eps={eps}, elementwise_affine={elementwise_affine}'.format(**self.__dict__)
