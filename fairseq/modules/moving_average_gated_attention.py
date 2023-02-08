@@ -117,7 +117,7 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.mx_proj.bias, 0.0)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.constant_(self.gamma, 0.0)
+        nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
@@ -242,7 +242,7 @@ class MovingAverageGatedAttention(nn.Module):
         # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # L x B x S -> L x B x 1 x S -> L x B x 2 x S
-        z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
+        z = z.unsqueeze(2) * self.gamma + self.beta
         # L x B x 2 x S -> L x B x S
         q, k = torch.unbind(z, dim=2)
         # L x B x E
