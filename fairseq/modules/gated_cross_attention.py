@@ -61,12 +61,12 @@ class GatedCrossAttention(nn.Module):
         else:
             raise ValueError('unknown norm type: {}'.format(norm_type))
 
-        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=False)
-        self.z_proj = nn.Linear(embed_dim, zdim, bias=False)
-        self.ru_proj = nn.Linear(embed_dim, 2 * embed_dim, bias=False)
-        self.h_proj = nn.Linear(embed_dim, embed_dim, bias=False)
-        self.gamma = Parameter(torch.Tensor(zdim))
-        self.beta = Parameter(torch.Tensor(zdim))
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=True)
+        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
+        self.ru_proj = nn.Linear(embed_dim, 2 * embed_dim, bias=True)
+        self.h_proj = nn.Linear(embed_dim, embed_dim, bias=True)
+        self.gamma = Parameter(torch.Tensor(2, zdim))
+        self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
         if rel_pos_bias == 'simple':
@@ -104,8 +104,13 @@ class GatedCrossAttention(nn.Module):
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
 
+        # bias
+        nn.init.constant_(self.v_proj.bias, 0.0)
+        nn.init.constant_(self.z_proj.bias, 0.0)
+        nn.init.constant_(self.ru_proj.bias, 0.0)
+        nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
-        nn.init.constant_(self.gamma, 0.0)
+        nn.init.constant_(self.gamma, 1.0)
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
@@ -231,7 +236,7 @@ class GatedCrossAttention(nn.Module):
         # L2 x B x S
         q = self.z_proj(q)
         q = F.normalize(q, p=2, dim=-1, eps=1e-5)
-        q = q * (self.gamma + 1.0) + self.beta
+        q = q * self.gamma[0] + self.beta[0]
 
         if key is None:
             assert value is None
@@ -240,6 +245,7 @@ class GatedCrossAttention(nn.Module):
             # L1 x B x S
             k = self.z_proj(key)
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
+            k = k * self.gamma[1] + self.beta[1]
             # L1 x B x D
             v = self.activation(self.v_proj(value))
 
