@@ -228,8 +228,7 @@ class MovingAverageGatedAttention(nn.Module):
         x = self.norm(x, padding_mask)
 
         # L x B x E
-        v1, v2 = torch.chunk(self.v_proj(x), 2, dim=-1)
-        v = self.activation(v1) * v2
+        v = F.glu(self.v_proj(x), dim=-1)
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)

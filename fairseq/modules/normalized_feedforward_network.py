@@ -3,6 +3,7 @@
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout
@@ -30,7 +31,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
         self.act_fn = 'swiglu' if activation == 'silu' else 'geglu'
-        self.activation = utils.get_activation_fn(activation)
+        # self.activation = utils.get_activation_fn(activation)
         self.init_mode = init_mode
         self.layer_scale = layer_scale
 
@@ -78,8 +79,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         # layernorm
         x = self.norm(x)
         # fc1
-        x1, x2 = torch.chunk(self.fc1(x), 2, dim=-1)
-        x = self.activation(x1) * x2
+        x = F.glu(self.fc1(x), dim=-1)
         x = self.hidden_dropout(x)
         # fc2
         x = self.fc2(x)
