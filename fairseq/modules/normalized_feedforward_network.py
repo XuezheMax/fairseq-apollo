@@ -26,9 +26,10 @@ class NormalizedFeedForwardNetwork(nn.Module):
     ):
         super().__init__()
 
+        assert activation in ['silu', 'gelu']
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
-        self.act_fn = activation
+        self.act_fn = 'swiglu' if activation == 'sliu' else 'geglu'
         self.activation = utils.get_activation_fn(activation)
         self.init_mode = init_mode
         self.layer_scale = layer_scale
@@ -43,7 +44,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         else:
             raise ValueError('unknown norm type: {}'.format(norm_type))
 
-        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=True)
+        self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim * 2, bias=True)
         self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=True)
         if layer_scale is None:
             self.register_parameter('layerscale_weight', None)
@@ -77,7 +78,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         # layernorm
         x = self.norm(x)
         # fc1
-        x = self.activation(self.fc1(x))
+        x1, x2 = torch.chunk(self.fc1(x), 2, dim=-1)
+        x = self.activation(x1) * x2
         x = self.hidden_dropout(x)
         # fc2
         x = self.fc2(x)
