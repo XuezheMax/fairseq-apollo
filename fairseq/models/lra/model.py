@@ -391,8 +391,7 @@ def luna_lra_listop(args):
 def mega_lra_listop(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 160)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 108)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 120)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -445,8 +444,7 @@ def flash_lra_imdb(args):
 def mega_lra_imdb(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 176)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 192)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
@@ -486,8 +484,7 @@ def luna_lra_aan_architecture(args):
 def mega_lra_aan(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 176)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 192)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -542,8 +539,7 @@ def flash_lra_cifar10(args):
 def mega_lra_cifar10(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 320)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 220)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 240)
     args.z_dim = getattr(args, 'z_dim', 96)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
@@ -601,8 +597,7 @@ def flash_lra_pf32(args):
 def mega_lra_pf32(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 256)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 176)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 192)
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -629,8 +624,7 @@ def luna_lra_pf128(args):
 def mega_lra_pf128(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
-    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 128)
-    args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 88)
+    args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 96)
     args.z_dim = getattr(args, 'z_dim', 32)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
