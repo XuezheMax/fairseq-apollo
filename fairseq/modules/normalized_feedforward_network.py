@@ -29,7 +29,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         assert activation in ['silu', 'gelu']
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
-        self.act_fn = 'swiglu' if activation == 'sliu' else 'geglu'
+        self.act_fn = 'swiglu' if activation == 'silu' else 'geglu'
         self.activation = utils.get_activation_fn(activation)
         self.init_mode = init_mode
         self.layer_scale = layer_scale
