@@ -76,7 +76,6 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--sent-loss', action='store_true', help='if set, calculate sentence level predictions')
 
         # misc params
-        parser.add_argument('--activation-fn', choices=utils.get_available_activation_fns(), help='activation function to use')
         parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'], help='activation function for attention mechanism')
         parser.add_argument('--classifier-activation-fn', choices=utils.get_available_activation_fns(),
                             help='Which activation function to use for classifier layer.')
@@ -135,7 +134,6 @@ class SCRawEncoder(FairseqEncoder):
             ffn_hidden_dim=args.encoder_ffn_embed_dim,
             z_dim=args.z_dim,
             n_dim=args.n_dim,
-            activation=args.activation_fn,
             attention_activation=args.attention_activation_fn,
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
@@ -171,7 +169,6 @@ def base_architecture(args):
     args.attention_dropout = getattr(args, 'attention_dropout', 0.0)
     args.act_dropout = getattr(args, 'act_dropout', 0.0)
 
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'laplace')
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')

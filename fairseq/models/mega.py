@@ -56,8 +56,6 @@ class MegaModel(FairseqEncoderDecoderModel):
     def add_args(parser):
         """Add model-specific arguments to the parser."""
         # fmt: off
-        parser.add_argument('--activation-fn', choices=utils.get_available_activation_fns(),
-                            help='activation function to use')
         parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'],
                             help='activation function for attention mechanism')
         parser.add_argument('--dropout', type=float, metavar='D',
@@ -716,7 +714,6 @@ def base_architecture(args):
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
 
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.moving_layer = getattr(args, 'moving_layer', 'cema')
     args.truncation_length = getattr(args, 'truncation_length', 0)

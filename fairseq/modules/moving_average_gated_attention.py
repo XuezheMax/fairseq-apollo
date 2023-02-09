@@ -35,7 +35,6 @@ class MovingAverageGatedAttention(nn.Module):
         dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
-        activation='silu',
         attention_activation='softmax',
         bidirectional=False,
         chunk_size=-1,
@@ -53,7 +52,6 @@ class MovingAverageGatedAttention(nn.Module):
         self.hdim = hdim
         self.zdim = zdim
         self.ndim = ndim
-        self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.init_mode = init_mode
 
@@ -345,7 +343,7 @@ class MovingAverageGatedAttention(nn.Module):
         # L x B x E
         attn = self.hidden_dropout(attn * r)
         # L x B x E -> L x B x D
-        h = self.activation(hx + self.h_proj(attn))
+        h = F.silu(hx + self.h_proj(attn))
         h = self.dropout(h)
         # L x B x D
         out = torch.addcmul(residual, u, h - residual)

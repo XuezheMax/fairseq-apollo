@@ -5,7 +5,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from fairseq import utils
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
 
@@ -17,7 +16,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
         ffn_hidden_dim,
         dropout=0.0,
         hidden_dropout=0.0,
-        activation='silu',
         norm_type='layernorm',
         norm_affine=True,
         norm_eps=1e-5,
@@ -27,11 +25,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
     ):
         super().__init__()
 
-        assert activation in ['silu', 'gelu']
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
-        self.act_fn = 'swiglu' if activation == 'silu' else 'geglu'
-        # self.activation = utils.get_activation_fn(activation)
+        self.act_fn = 'glu'
         self.init_mode = init_mode
         self.layer_scale = layer_scale
 

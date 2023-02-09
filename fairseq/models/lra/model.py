@@ -279,7 +279,6 @@ class LRAEncoder(FairseqEncoder):
                 ffn_hidden_dim=args.encoder_ffn_embed_dim,
                 z_dim=args.z_dim,
                 n_dim=args.n_dim,
-                activation=args.activation_fn,
                 attention_activation=args.attention_activation_fn,
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
@@ -395,7 +394,6 @@ def mega_lra_listop(args):
     args.z_dim = getattr(args, 'z_dim', 40)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 120)
@@ -448,7 +446,6 @@ def mega_lra_imdb(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 192)
@@ -488,7 +485,6 @@ def mega_lra_aan(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 192)
@@ -543,7 +539,6 @@ def mega_lra_cifar10(args):
     args.z_dim = getattr(args, 'z_dim', 80)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 160)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 240)
@@ -601,7 +596,6 @@ def mega_lra_pf32(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 192)
@@ -628,7 +622,6 @@ def mega_lra_pf128(args):
     args.z_dim = getattr(args, 'z_dim', 32)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
-    args.activation_fn = getattr(args, 'activation_fn', 'silu')
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_out_dim = getattr(args, 'classifier_out_dim', 96)

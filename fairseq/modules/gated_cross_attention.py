@@ -30,7 +30,6 @@ class GatedCrossAttention(nn.Module):
         dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
-        activation='silu',
         attention_activation='softmax',
         norm_type='layernorm',
         norm_affine=True,
@@ -45,7 +44,6 @@ class GatedCrossAttention(nn.Module):
         self.embed_dim = embed_dim
         self.zdim = zdim
         self.ndim = ndim
-        self.activation = utils.get_activation_fn(activation=activation)
         self.attention_activation = attention_activation
         self.init_mode = init_mode
 
@@ -247,7 +245,7 @@ class GatedCrossAttention(nn.Module):
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
             k = k * self.gamma[1] + self.beta[1]
             # L1 x B x D
-            v = self.activation(self.v_proj(value))
+            v = F.silu(self.v_proj(value))
 
         # L2 x B x S -> B x L2 x S
         q = q.transpose(0, 1)
@@ -304,7 +302,7 @@ class GatedCrossAttention(nn.Module):
         attn = torch.bmm(kernel, v).transpose(0, 1)
         attn = self.hidden_dropout(attn * r)
         # L2 x B x D
-        h = self.activation(self.h_proj(attn))
+        h = F.silu(self.h_proj(attn))
         h = self.dropout(h)
         out = torch.addcmul(query, u, h - query)
 
