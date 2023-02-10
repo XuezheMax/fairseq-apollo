@@ -70,7 +70,7 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.v_proj = nn.Linear(embed_dim, hdim * 2, bias=True)
+        self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
         self.gamma = Parameter(torch.Tensor(2, zdim))
@@ -113,7 +113,6 @@ class MovingAverageGatedAttention(nn.Module):
         # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
-        # nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
         nn.init.constant_(self.beta, 0.0)
@@ -226,7 +225,7 @@ class MovingAverageGatedAttention(nn.Module):
         x = self.norm(x, padding_mask)
 
         # L x B x E
-        v = F.glu(self.v_proj(x), dim=-1)
+        v = F.silu(self.v_proj(x))
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
