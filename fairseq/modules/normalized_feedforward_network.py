@@ -27,7 +27,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
 
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
-        self.act_fn = 'swiglu'
+        self.act_fn = 'swi2glu'
         self.init_mode = init_mode
         self.layer_scale = layer_scale
 
@@ -75,8 +75,8 @@ class NormalizedFeedForwardNetwork(nn.Module):
         # layernorm
         x = self.norm(x)
         # fc1
-        x1, x2 = torch.chunk(self.fc1(x), 2, dim=-1)
-        x = F.silu(x1) * x2
+        x1, x2 = torch.chunk(F.silu(self.fc1(x)), 2, dim=-1)
+        x = x1 * x2
         x = self.hidden_dropout(x)
         # fc2
         x = self.fc2(x)
