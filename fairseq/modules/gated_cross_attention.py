@@ -101,7 +101,6 @@ class GatedCrossAttention(nn.Module):
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
-
         # bias
         nn.init.constant_(self.k_proj.bias, 0.0)
         nn.init.constant_(self.v_proj.bias, 0.0)
