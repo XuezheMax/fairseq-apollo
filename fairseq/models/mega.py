@@ -28,8 +28,8 @@ from fairseq.modules import (
 from torch import Tensor
 
 
-DEFAULT_MAX_SOURCE_POSITIONS = 512
-DEFAULT_MAX_TARGET_POSITIONS = 512
+DEFAULT_MAX_SOURCE_POSITIONS = 1024
+DEFAULT_MAX_TARGET_POSITIONS = 1024
 
 
 @register_model("mega")
