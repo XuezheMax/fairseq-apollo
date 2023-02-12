@@ -72,7 +72,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
-        self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
+        self.h_proj = nn.Linear(hdim, embed_dim, bias=True)
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 

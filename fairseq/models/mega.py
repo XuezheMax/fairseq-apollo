@@ -28,8 +28,8 @@ from fairseq.modules import (
 from torch import Tensor
 
 
-DEFAULT_MAX_SOURCE_POSITIONS = 1024
-DEFAULT_MAX_TARGET_POSITIONS = 1024
+DEFAULT_MAX_SOURCE_POSITIONS = 512
+DEFAULT_MAX_TARGET_POSITIONS = 512
 
 
 @register_model("mega")
@@ -684,7 +684,7 @@ class OutputProjection(nn.Module):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, "encoder_embed_path", None)
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 768)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1024)
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", args.encoder_hidden_dim)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 128)
     args.encoder_n_dim = getattr(args, 'encoder_n_dim', 16)
@@ -735,7 +735,7 @@ def mega_wmt_en_de(args):
 @register_model_architecture("mega", "mega_wmt_en_de_big")
 def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
-    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 1536)
+    args.encoder_hidden_dim = getattr(args, "encoder_hidden_dim", 2048)
     args.encoder_z_dim = getattr(args, 'encoder_z_dim', 256)
     args.dropout = getattr(args, "dropout", 0.3)
     args.attention_dropout = getattr(args, "attention_dropout", 0.1)
