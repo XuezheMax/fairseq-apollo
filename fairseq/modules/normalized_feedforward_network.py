@@ -27,7 +27,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
 
         self.embedding_dim = embed_dim
         self.hidden_dim = ffn_hidden_dim
-        self.act_fn = 'swi2glu'
+        self.act_fn = 'silu'
         self.init_mode = init_mode
         self.layer_scale = layer_scale
 
