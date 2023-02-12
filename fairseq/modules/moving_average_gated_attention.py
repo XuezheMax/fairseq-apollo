@@ -113,6 +113,7 @@ class MovingAverageGatedAttention(nn.Module):
         # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
+        nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
         nn.init.constant_(self.beta, 0.0)
