@@ -120,7 +120,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
-        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
         # fmt: on
 
     @classmethod

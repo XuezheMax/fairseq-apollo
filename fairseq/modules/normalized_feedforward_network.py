@@ -42,14 +42,14 @@ class NormalizedFeedForwardNetwork(nn.Module):
             raise ValueError('unknown norm type: {}'.format(norm_type))
 
         self.fc1 = nn.Linear(embed_dim, ffn_hidden_dim, bias=True)
-        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=True)
+        self.fc2 = nn.Linear(ffn_hidden_dim, embed_dim, bias=False)
         if layer_scale is None:
             self.register_parameter('layerscale_weight', None)
         else:
             assert layer_scale > 0., 'Layer scale init value should be positive.'
             self.layerscale_weight = nn.Parameter(torch.Tensor(embed_dim))
 
-        assert init_mode in ['gaussian', 'xavier']
+        assert init_mode in ['gaussian', 'xavier', 'he']
         self.reset_parameters(init_mode)
 
     def reset_parameters(self, mode):
@@ -58,6 +58,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
             std = 0.02
             nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
             nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
+        elif mode =='he':
+            nn.init.kaiming_normal_(self.fc1.weight, nonlinearity='linear')
+            nn.init.kaiming_normal_(self.fc2.weight, nonlinearity='linear')
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.fc1.weight)
             nn.init.xavier_uniform_(self.fc2.weight)
@@ -65,7 +68,6 @@ class NormalizedFeedForwardNetwork(nn.Module):
             raise ValueError('Unknown init mode: {}'.format(mode))
         # bias
         nn.init.constant_(self.fc1.bias, 0.0)
-        nn.init.constant_(self.fc2.bias, 0.0)
         # layer scale weight
         if self.layerscale_weight is not None:
             nn.init.constant_(self.layerscale_weight, self.layer_scale)

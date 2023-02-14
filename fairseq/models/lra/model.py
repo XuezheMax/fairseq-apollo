@@ -145,7 +145,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
-        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
 
         parser.add_argument('--chunk-size', type=int, metavar='N',

@@ -85,7 +85,7 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
-        assert init_mode in ['gaussian', 'xavier']
+        assert init_mode in ['gaussian', 'xavier', 'he']
         self.reset_parameters(init_mode)
 
         self.onnx_trace = False
@@ -104,6 +104,10 @@ class MovingAverageGatedAttention(nn.Module):
             nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
+        elif mode == 'he':
+            nn.init.kaiming_normal_(self.v_proj.weight, nonlinearity='linear')
+            nn.init.kaiming_normal_(self.mx_proj.weight, nonlinearity='linear')
+            nn.init.kaiming_normal_(self.h_proj.weight, nonlinearity='linear')
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.mx_proj.weight)

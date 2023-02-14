@@ -22,7 +22,6 @@ from .layer_drop import LayerDropModuleList
 from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm, RMSNorm
 from .norm_layer.masked_batch_norm import MaskedBatchNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
-from .embedding import Embedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
 from .relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
@@ -80,7 +79,6 @@ __all__ = [
     'MultiheadAttention',
     'LunarMultiheadAttention',
     'LunarCausalAttention',
-    'Embedding',
     'RealNumberEmbedding',
     'PositionalEmbedding',
     'SimpleRelativePositionalBias',

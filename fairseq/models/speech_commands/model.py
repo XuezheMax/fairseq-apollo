@@ -82,7 +82,7 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0, help='LayerDrop probability for encoder')
 
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
-        parser.add_argument('--init-mode', choices=['gaussian', 'xavier'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
         parser.add_argument('--chunk-size', type=int, metavar='N',help='chunk size of Mega.')
         parser.add_argument('--truncation-length', type=int, metavar='N', help='truncation length of moving average layer.')
