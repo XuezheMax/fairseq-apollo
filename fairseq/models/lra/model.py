@@ -291,6 +291,7 @@ class LRAEncoder(FairseqEncoder):
                 norm_eps=args.norm_eps,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
+                embed_scale=not args.no_scale_embedding,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
                 layer_scale=args.layer_scale,
                 init_mode=args.init_mode
@@ -356,6 +357,7 @@ def base_architecture(args):
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
