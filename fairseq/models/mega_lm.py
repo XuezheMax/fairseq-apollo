@@ -100,6 +100,7 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        parser.add_argument('--embedding-max-norm', type=float, default=None, help='max norm of embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
@@ -130,7 +131,7 @@ class MegaLanguageModel(FairseqLanguageModel):
                 options.eval_str_list(args.adaptive_input_cutoff, type=int),
             )
         else:
-            embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_embed_dim)
+            embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_embed_dim, args.embedding_max_norm)
 
         if args.tie_adaptive_weights:
             assert args.adaptive_input
@@ -142,11 +143,11 @@ class MegaLanguageModel(FairseqLanguageModel):
         return cls(args, decoder)
 
     @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, path=None):
+    def build_embedding(cls, args, dictionary, embed_dim, max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
 
-        emb = Embedding(num_embeddings, embed_dim, padding_idx)
+        emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
             embed_dict = utils.parse_embedding(path)
@@ -394,8 +395,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         return self._future_mask[:dim, :dim]
 
 
-def Embedding(num_embeddings, embedding_dim, padding_idx):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=1.0)
+def Embedding(num_embeddings, embedding_dim, padding_idx, max_norm):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm)
     nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m

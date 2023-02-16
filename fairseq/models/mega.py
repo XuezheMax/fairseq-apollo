@@ -112,6 +112,7 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='sets adaptive softmax dropout for the tail projections')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        parser.add_argument('--embedding-max-norm', type=float, default=None, help='max norm of embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
@@ -147,23 +148,23 @@ class MegaModel(FairseqEncoderDecoderModel):
             if args.decoder_embed_path and (args.decoder_embed_path != args.encoder_embed_path):
                 raise ValueError("--share-all-embeddings not compatible with --decoder-embed-path")
 
-            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.encoder_embed_path)
+            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.embedding_max_norm, args.encoder_embed_path)
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
         else:
-            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.encoder_embed_path)
-            decoder_embed_tokens = cls.build_embedding(args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path)
+            encoder_embed_tokens = cls.build_embedding(args, src_dict, args.encoder_embed_dim, args.embedding_max_norm, args.encoder_embed_path)
+            decoder_embed_tokens = cls.build_embedding(args, tgt_dict, args.decoder_embed_dim, args.embedding_max_norm, args.decoder_embed_path)
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
     @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, path=None):
+    def build_embedding(cls, args, dictionary, embed_dim, max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
 
-        emb = Embedding(num_embeddings, embed_dim, padding_idx)
+        emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
             embed_dict = utils.parse_embedding(path)
@@ -638,8 +639,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
         return self._future_mask[:dim, :dim]
 
 
-def Embedding(num_embeddings, embedding_dim, padding_idx):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=1.0)
+def Embedding(num_embeddings, embedding_dim, padding_idx, max_norm):
+    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm)
     nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     nn.init.constant_(m.weight[padding_idx], 0)
     return m

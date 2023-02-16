@@ -131,6 +131,7 @@ class LRAModel(FairseqEncoderModel):
                             help='LayerDrop probability for encoder')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+        parser.add_argument('--embedding-max-norm', type=float, default=None, help='max norm of embeddings')
         parser.add_argument('--quant-noise-pq', type=float, metavar='D', default=0,
                             help='iterative PQ quantization noise at training time')
         parser.add_argument('--quant-noise-pq-block-size', type=int, metavar='D', default=8,
@@ -292,6 +293,7 @@ class LRAEncoder(FairseqEncoder):
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
                 embed_scale=not args.no_scale_embedding,
+                embed_max_norm=args.embedding_max_norm,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
                 layer_scale=args.layer_scale,
                 init_mode=args.init_mode
