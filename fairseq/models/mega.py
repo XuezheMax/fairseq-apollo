@@ -121,6 +121,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
+        parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
         # fmt: on
 
@@ -244,14 +245,16 @@ class MegaEncoder(FairseqEncoder):
         self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
-        self.layers.extend([self.build_encoder_layer(args) for i in range(args.encoder_layers)])
+        depth = args.encoder_layers
+        lsw = [0.1 * (0.5 ** i) for i in range(depth)] if args.layer_scale else [None, ] * depth
+        self.layers.extend([self.build_encoder_layer(args, lsw[i]) for i in range(depth)])
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
         self.final_norm = MaskedBatchNorm(embed_dim, affine=norm_affine, eps=args.norm_eps)
 
-    def build_encoder_layer(self, args):
-        return MegaEncoderLayer(args)
+    def build_encoder_layer(self, args, layer_scale):
+        return MegaEncoderLayer(args, layer_scale=layer_scale)
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
         """
@@ -424,7 +427,9 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
-        self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
+        depth = args.decoder_layers
+        lsw = [0.1 * (0.5 ** i) for i in range(depth)] if args.layer_scale else [None, ] * depth
+        self.layers.extend([self.build_decoder_layer(args, lsw[i]) for i in range(depth)])
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
@@ -453,8 +458,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
             self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
             nn.init.normal_(self.output_projection.weight, mean=0, std=self.embed_dim ** -0.5)
 
-    def build_decoder_layer(self, args):
-        return MegaDecoderLayer(args)
+    def build_decoder_layer(self, args, layer_scale):
+        return MegaDecoderLayer(args, layer_scale=layer_scale)
 
     def forward(
         self,
@@ -687,6 +692,8 @@ def base_architecture(args):
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
+
+    args.layer_scale = getattr(args, 'layer_scale', False)
 
 
 @register_model_architecture("mega", "mega_wmt_en_de")

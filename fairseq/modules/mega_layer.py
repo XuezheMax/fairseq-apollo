@@ -20,12 +20,12 @@ class MegaEncoderLayer(nn.Module):
         args (argparse.Namespace): parsed command-line arguments
     """
 
-    def __init__(self, args):
+    def __init__(self, args, layer_scale=None):
         super().__init__()
         self.embed_dim = args.encoder_embed_dim
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         if args.encoder_ffn_embed_dim > 0:
-            self.nffn = self.build_nffn_layer(self.embed_dim, args)
+            self.nffn = self.build_nffn_layer(self.embed_dim, args, layer_scale)
         else:
             self.nffn = None
 
@@ -50,7 +50,7 @@ class MegaEncoderLayer(nn.Module):
             init_mode=args.init_mode,
         )
 
-    def build_nffn_layer(self, embed_dim, args):
+    def build_nffn_layer(self, embed_dim, args, layer_scale):
         return NormalizedFeedForwardNetwork(
             embed_dim=embed_dim,
             ffn_hidden_dim=args.encoder_ffn_embed_dim,
@@ -59,6 +59,7 @@ class MegaEncoderLayer(nn.Module):
             norm_type=args.norm_type,
             norm_affine=not args.no_affine_norm,
             norm_eps=args.norm_eps,
+            layer_scale=layer_scale,
             init_mode=args.init_mode,
         )
 
@@ -86,13 +87,13 @@ class MegaDecoderLayer(nn.Module):
         args (argparse.Namespace): parsed command-line arguments
     """
 
-    def __init__(self, args, no_cross_attention=False):
+    def __init__(self, args, no_cross_attention=False, layer_scale=None):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
         self.mega_layer = self.build_mega_layer(self.embed_dim, args)
         self.cross_attn = None if no_cross_attention else self.build_cross_attn(self.embed_dim, args)
         if args.decoder_ffn_embed_dim > 0:
-            self.nffn = self.build_nffn_layer(self.embed_dim, args)
+            self.nffn = self.build_nffn_layer(self.embed_dim, args, layer_scale)
         else:
             self.nffn = None
 
@@ -137,7 +138,7 @@ class MegaDecoderLayer(nn.Module):
             init_mode=args.init_mode,
         )
 
-    def build_nffn_layer(self, embed_dim, args):
+    def build_nffn_layer(self, embed_dim, args, layer_scale):
         return NormalizedFeedForwardNetwork(
             embed_dim=embed_dim,
             ffn_hidden_dim=args.decoder_ffn_embed_dim,
@@ -146,6 +147,7 @@ class MegaDecoderLayer(nn.Module):
             norm_type=args.norm_type,
             norm_affine=not args.no_affine_norm,
             norm_eps=args.norm_eps,
+            layer_scale=layer_scale,
             init_mode=args.init_mode,
         )
 

@@ -109,6 +109,7 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
+        parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
         parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
         # fmt: on
 
@@ -207,7 +208,9 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.layers = nn.ModuleList([])
-        self.layers.extend([self.build_decoder_layer(args) for _ in range(args.decoder_layers)])
+        depth = args.decoder_layers
+        lsw = [0.1 * (0.5 ** i) for i in range(depth)] if args.layer_scale else [None, ] * depth
+        self.layers.extend([self.build_decoder_layer(args, lsw[i]) for i in range(depth)])
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
@@ -236,8 +239,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
             nn.init.normal_(self.output_projection.weight, mean=0, std=self.embed_dim ** -0.5)
 
-    def build_decoder_layer(self, args):
-        return MegaDecoderLayer(args, no_cross_attention=True)
+    def build_decoder_layer(self, args, layer_scale):
+        return MegaDecoderLayer(args, no_cross_attention=True, layer_scale=layer_scale)
 
     def forward(
         self,
@@ -439,6 +442,8 @@ def base_lm_architecture(args):
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
+
+    args.layer_scale = getattr(args, 'layer_scale', False)
 
 
 @register_model_architecture('mega_lm', 'mega_lm_big')
