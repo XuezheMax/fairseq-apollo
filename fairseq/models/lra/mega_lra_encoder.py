@@ -88,7 +88,9 @@ class MegaLRAEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
-        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm, init_mode)
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
+                                                 self.vocab_size, self.padding_idx, embed_max_norm,
+                                                 init_mode)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         if self.layerdrop > 0.0:
