@@ -171,7 +171,7 @@ class LRAModel(FairseqEncoderModel):
             sentence_rep = sentence_rep[1][1].mean(dim=0)
 
         for layer in self.classifier:
-            sentence_rep = self.classifier_activation(self.dropout_module(layer(sentence_rep)))
+            sentence_rep = self.dropout_module(self.classifier_activation(layer(sentence_rep)))
 
         sentence_logits = self.sentence_projection_layer(sentence_rep)
         return {'encoder_out': sentence_logits}

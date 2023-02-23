@@ -1,6 +1,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import math
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -59,8 +60,9 @@ class NormalizedFeedForwardNetwork(nn.Module):
             nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
             nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
         elif mode =='he':
-            nn.init.kaiming_normal_(self.fc1.weight, nonlinearity='linear')
-            nn.init.kaiming_normal_(self.fc2.weight, nonlinearity='linear')
+            a = math.sqrt(3.0)
+            nn.init.kaiming_normal_(self.fc1.weight, a=a)
+            nn.init.kaiming_normal_(self.fc2.weight, a=a)
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.fc1.weight)
             nn.init.xavier_uniform_(self.fc2.weight)

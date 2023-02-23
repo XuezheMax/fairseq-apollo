@@ -29,3 +29,8 @@ class RealNumberEmbedding(nn.Module):
         if self.bias is not None:
             emb = emb + self.bias
         return emb
+
+    def extra_repr(self) -> str:
+        return '{}, bias={}'.format(
+            self.embedding_dim, self.bias is not None
+        )

@@ -105,9 +105,10 @@ class MovingAverageGatedAttention(nn.Module):
             nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         elif mode == 'he':
-            nn.init.kaiming_normal_(self.v_proj.weight, nonlinearity='linear')
-            nn.init.kaiming_normal_(self.mx_proj.weight, nonlinearity='linear')
-            nn.init.kaiming_normal_(self.h_proj.weight, nonlinearity='linear')
+            a = math.sqrt(3.0)
+            nn.init.kaiming_normal_(self.v_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.mx_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.h_proj.weight, a=a)
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.mx_proj.weight)
