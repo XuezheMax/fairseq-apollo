@@ -14,10 +14,9 @@ from fairseq.modules import (
 from fairseq.models.speech_commands.mega_scraw_encoder import MegaSCRawEncoder
 
 
-def Linear(in_features, out_features, bias=True):
+def Linear(in_features, out_features, bias=False):
     m = nn.Linear(in_features, out_features, bias)
-    std = 1.0 / in_features
-    nn.init.normal_(m.weight, mean=0.0, std=std)
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -45,8 +44,7 @@ class SCRawModel(FairseqEncoderModel):
         ])
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
-        nn.init.normal_(self.sentence_projection_layer.weight)
+        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
 

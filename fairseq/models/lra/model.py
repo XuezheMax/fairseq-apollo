@@ -19,10 +19,9 @@ from fairseq.models.lra.mega_lra_encoder import MegaLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 
-def Linear(in_features, out_features, bias=True):
+def Linear(in_features, out_features, bias=False):
     m = nn.Linear(in_features, out_features, bias)
-    std = 1.0 / in_features
-    nn.init.normal_(m.weight, mean=0.0, std=std)
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -52,8 +51,7 @@ class LRAModel(FairseqEncoderModel):
         ])
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
-        nn.init.normal_(self.sentence_projection_layer.weight)
+        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
         self.layer_type = args.layer_type
@@ -173,7 +171,7 @@ class LRAModel(FairseqEncoderModel):
             sentence_rep = sentence_rep[1][1].mean(dim=0)
 
         for layer in self.classifier:
-            sentence_rep = self.dropout_module(self.classifier_activation(layer(sentence_rep)))
+            sentence_rep = self.classifier_activation(self.dropout_module(layer(sentence_rep)))
 
         sentence_logits = self.sentence_projection_layer(sentence_rep)
         return {'encoder_out': sentence_logits}
