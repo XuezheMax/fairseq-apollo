@@ -361,7 +361,7 @@ def base_architecture(args):
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
-    args.embedding_max_norm, = getattr(args, 'embedding_max_norm', False)
+    args.embedding_max_norm = getattr(args, 'embedding_max_norm', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.layer_scale = getattr(args, 'layer_scale', False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
