@@ -110,9 +110,7 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='comma separated list of adaptive softmax cutoff points. Must be used with adaptive_loss criterion'),
         parser.add_argument('--adaptive-softmax-dropout', type=float, metavar='D',
                             help='sets adaptive softmax dropout for the tail projections')
-        parser.add_argument('--no-scale-embedding', action='store_true',
-                            help='if True, dont scale embeddings')
-        parser.add_argument('--embedding-max-norm', type=float, default=None, help='max norm of embeddings')
+        parser.add_argument('--embedding-max-norm', action='store_true', default=False, help='max norm of embeddings')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
@@ -122,7 +120,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
-        parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['bert', 'xavier', 'he'], default='bert')
         # fmt: on
 
     @classmethod
@@ -161,10 +159,10 @@ class MegaModel(FairseqEncoderDecoderModel):
         return cls(args, encoder, decoder)
 
     @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, max_norm, path=None):
+    def build_embedding(cls, args, dictionary, embed_dim, embed_max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
-
+        max_norm = math.sqrt(embed_dim) if embed_max_norm else None
         emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
@@ -242,7 +240,6 @@ class MegaEncoder(FairseqEncoder):
         self.max_source_positions = args.max_source_positions
         self.chunk_size = args.encoder_chunk_size
         self.embed_tokens = embed_tokens
-        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
         depth = args.encoder_layers
@@ -285,11 +282,7 @@ class MegaEncoder(FairseqEncoder):
         else:
             num_paddings = 0
 
-        encoder_embedding = self.embed_tokens(src_tokens)
-        if self.embed_scale is not None:
-            encoder_embedding = encoder_embedding * self.embed_scale
-
-        x = encoder_embedding
+        x = encoder_embedding = self.embed_tokens(src_tokens)
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
@@ -424,7 +417,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.attention_activation = args.attention_activation_fn
 
         self.embed_tokens = embed_tokens
-        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
 
         self.layers = nn.ModuleList([])
         depth = args.decoder_layers
@@ -436,6 +428,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.final_norm = MaskedBatchNorm(embed_dim, affine=norm_affine, eps=args.norm_eps)
 
         self.adaptive_softmax = None
+        self.pre_logits = None
         self.output_projection = None
         if args.adaptive_softmax_cutoff is not None:
             self.adaptive_softmax = AdaptiveSoftmax(
@@ -448,6 +441,11 @@ class MegaDecoder(FairseqIncrementalDecoder):
                 tie_proj=args.tie_adaptive_proj,
             )
         elif self.share_input_output_embed:
+            self.pre_logits = nn.Sequential(
+                Linear(self.embed_dim, self.embed_dim),
+                nn.GELU(),
+                FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+            )
             self.output_projection = nn.Linear(
                 self.embed_tokens.weight.shape[1],
                 self.embed_tokens.weight.shape[0],
@@ -455,8 +453,13 @@ class MegaDecoder(FairseqIncrementalDecoder):
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
+            self.pre_logits = nn.Sequential(
+                Linear(self.embed_dim, self.embed_dim),
+                nn.GELU(),
+                FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+            )
             self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
-            nn.init.normal_(self.output_projection.weight, mean=0, std=self.embed_dim ** -0.5)
+            nn.init.normal_(self.output_projection.weight)
 
     def build_decoder_layer(self, args, layer_scale):
         return MegaDecoderLayer(args, layer_scale=layer_scale)
@@ -559,8 +562,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         # embed tokens
         x = self.embed_tokens(prev_output_tokens)
-        if self.embed_scale is not None:
-            x = x * self.embed_scale
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -613,7 +614,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
     def output_layer(self, features):
         """Project features to the vocabulary size."""
         if self.adaptive_softmax is None:
-            # project back to size of vocabulary
+            features = self.pre_logits(features)
             return self.output_projection(features)
         else:
             return features
@@ -644,10 +645,17 @@ class MegaDecoder(FairseqIncrementalDecoder):
         return self._future_mask[:dim, :dim]
 
 
+def Linear(in_features, out_features, bias=True):
+    m = nn.Linear(in_features, out_features, bias)
+    std = 1.0 / in_features
+    nn.init.normal_(m.weight, mean=0.0, std=std)
+    if bias:
+        nn.init.constant_(m.bias, 0.0)
+    return m
+
+
 def Embedding(num_embeddings, embedding_dim, padding_idx, max_norm):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm)
-    nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
-    nn.init.constant_(m.weight[padding_idx], 0)
     return m
 
 
@@ -677,7 +685,6 @@ def base_architecture(args):
     args.activation_dropout = getattr(args, "activation_dropout", 0.0)
 
     args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'simple')
-    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.adaptive_softmax_dropout = getattr(args, "adaptive_softmax_dropout", 0)

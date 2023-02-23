@@ -37,7 +37,7 @@ class GatedCrossAttention(nn.Module):
         rel_pos_bias='simple',
         max_positions=1024,
         export=False,
-        init_mode='gaussian',
+        init_mode='bert',
     ):
         super().__init__()
 
@@ -74,7 +74,7 @@ class GatedCrossAttention(nn.Module):
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
-        assert init_mode in ['gaussian', 'xavier', 'he']
+        assert init_mode in ['bert', 'xavier', 'he']
         self.reset_parameters(init_mode)
 
         self.onnx_trace = False
@@ -88,7 +88,7 @@ class GatedCrossAttention(nn.Module):
 
     def reset_parameters(self, mode):
         # weights
-        if mode == 'gaussian':
+        if mode == 'bert':
             std = 0.02
             nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.z_proj.weight, mean=0.0, std=std)

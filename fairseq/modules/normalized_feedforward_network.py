@@ -20,7 +20,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
         norm_affine=True,
         norm_eps=1e-5,
         layer_scale=None,
-        init_mode='gaussian',
+        init_mode='bert',
         export=False,
     ):
         super().__init__()
@@ -49,12 +49,12 @@ class NormalizedFeedForwardNetwork(nn.Module):
             assert layer_scale > 0., 'Layer scale init value should be positive.'
             self.layerscale_weight = nn.Parameter(torch.Tensor(embed_dim))
 
-        assert init_mode in ['gaussian', 'xavier', 'he']
+        assert init_mode in ['bert', 'xavier', 'he']
         self.reset_parameters(init_mode)
 
     def reset_parameters(self, mode):
         # weights
-        if mode == 'gaussian':
+        if mode == 'bert':
             std = 0.02
             nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
             nn.init.normal_(self.fc2.weight, mean=0.0, std=std)

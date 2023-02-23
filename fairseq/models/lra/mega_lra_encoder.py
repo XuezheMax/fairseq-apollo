@@ -67,11 +67,10 @@ class MegaLRAEncoder(nn.Module):
         norm_eps=1e-5,
         rel_pos_bias: str = 'simple',
         max_seq_len: int = 256,
-        embed_scale: bool = True,
-        embed_max_norm: float = None,
+        embed_max_norm: bool = False,
         sen_rep_type: str = 'cls',
         layer_scale: bool = False,
-        init_mode='gaussian',
+        init_mode='bert',
         export: bool = False,
         traceable: bool = False,
     ):
@@ -91,7 +90,6 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.embed_scale = math.sqrt(self.embedding_dim) if embed_scale else None
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -128,11 +126,10 @@ class MegaLRAEncoder(nn.Module):
 
         self.final_norm = MaskedBatchNorm(embedding_dim, affine=norm_affine, eps=norm_eps)
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, max_norm):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm):
         if embedding_type == 'sparse':
+            max_norm = math.sqrt(embedding_dim) if embed_max_norm else None
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx, max_norm=max_norm)
-            nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
-            nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
         else:
             embed_tokens = RealNumberEmbedding(embedding_dim)
@@ -158,8 +155,6 @@ class MegaLRAEncoder(nn.Module):
                 padding_mask = None
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
-            if self.embed_scale is not None:
-                x = x * self.embed_scale
         else:
             padding_mask = None
             # B x T -> B x T x D

@@ -37,7 +37,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         max_positions: int = 1024,
         attention_activation: str = 'softmax',
         layer_scale=None,
-        init_mode='gaussian',
+        init_mode='bert',
         export: bool = False,
     ):
         super().__init__()

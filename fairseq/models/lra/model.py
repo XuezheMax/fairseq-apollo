@@ -19,9 +19,10 @@ from fairseq.models.lra.mega_lra_encoder import MegaLRAEncoder
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 
-def Linear(in_features, out_features, bias=False):
+def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
+    std = 1.0 / in_features
+    nn.init.normal_(m.weight, mean=0.0, std=std)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -41,17 +42,18 @@ class LRAModel(FairseqEncoderModel):
         self.sentence_out_dim = args.sentence_class_num
         self.lm_output_learned_bias = None
 
-        dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+        self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.classifier = nn.ModuleList([])
-        if args.classifier_layers > 0:
-            self.classifier.append(nn.Sequential(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True), dropout_module))
-            self.classifier.extend([
-                nn.Sequential(Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True), dropout_module)
-                for _ in range(args.classifier_layers - 1)
-            ])
-            self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
+        assert args.classifier_layers > 0
+        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True))
+        self.classifier.extend([
+            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True)
+            for _ in range(args.classifier_layers - 1)
+        ])
+        self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim)
+        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
+        nn.init.normal_(self.sentence_projection_layer.weight)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
         self.layer_type = args.layer_type
@@ -129,9 +131,7 @@ class LRAModel(FairseqEncoderModel):
                             help='apply layernorm before each encoder block')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
                             help='LayerDrop probability for encoder')
-        parser.add_argument('--no-scale-embedding', action='store_true',
-                            help='if True, dont scale embeddings')
-        parser.add_argument('--embedding-max-norm', type=float, default=None, help='max norm of embeddings')
+        parser.add_argument('--embedding-max-norm', action='store_true', default=False, help='max norm of embeddings')
         parser.add_argument('--quant-noise-pq', type=float, metavar='D', default=0,
                             help='iterative PQ quantization noise at training time')
         parser.add_argument('--quant-noise-pq-block-size', type=int, metavar='D', default=8,
@@ -146,7 +146,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
-        parser.add_argument('--init-mode', choices=['gaussian', 'xavier', 'he'], default='gaussian')
+        parser.add_argument('--init-mode', choices=['bert', 'xavier', 'he'], default='bert')
         parser.add_argument('--layer-scale', default=False, action='store_true', help='use layer scale')
 
         parser.add_argument('--chunk-size', type=int, metavar='N',
@@ -173,12 +173,10 @@ class LRAModel(FairseqEncoderModel):
             sentence_rep = sentence_rep[1][1].mean(dim=0)
 
         for layer in self.classifier:
-            sentence_rep = self.classifier_activation(layer(sentence_rep))
-        if self.sentence_projection_layer:
-            sentence_logits = self.sentence_projection_layer(sentence_rep)
-        return {
-            'encoder_out': sentence_logits
-        }
+            sentence_rep = self.dropout_module(self.classifier_activation(layer(sentence_rep)))
+
+        sentence_logits = self.sentence_projection_layer(sentence_rep)
+        return {'encoder_out': sentence_logits}
 
     def max_positions(self):
         """Maximum output length supported by the encoder."""
@@ -292,7 +290,6 @@ class LRAEncoder(FairseqEncoder):
                 norm_eps=args.norm_eps,
                 rel_pos_bias=args.rel_pos_bias,
                 max_seq_len=args.max_positions,
-                embed_scale=not args.no_scale_embedding,
                 embed_max_norm=args.embedding_max_norm,
                 sen_rep_type=getattr(args, 'sen_rep_type', 'mp'),
                 layer_scale=args.layer_scale,
@@ -359,12 +356,12 @@ def base_architecture(args):
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
-    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.classifier_layers = getattr(args, 'classifier_layers', 1)
     args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
+    args.embedding_max_norm, = getattr(args, 'embedding_max_norm', False)
     args.layer_type = getattr(args, 'layer_type', 'transformer')
     args.layer_scale = getattr(args, 'layer_scale', False)
     args.adaptive_input = getattr(args, "adaptive_input", False)
