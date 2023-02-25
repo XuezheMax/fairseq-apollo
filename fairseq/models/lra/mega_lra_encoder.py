@@ -88,9 +88,7 @@ class MegaLRAEncoder(nn.Module):
         self.sen_rep_type = sen_rep_type
 
         assert embedding_type in ['sparse', 'linear']
-        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim,
-                                                 self.vocab_size, self.padding_idx, embed_max_norm,
-                                                 init_mode)
+        self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
 
         if self.layerdrop > 0.0:
@@ -128,11 +126,11 @@ class MegaLRAEncoder(nn.Module):
 
         self.final_norm = MaskedBatchNorm(embedding_dim, affine=norm_affine, eps=norm_eps)
 
-    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm, init_mode):
+    def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm):
         if embedding_type == 'sparse':
-            max_norm = 1.0 if embed_max_norm else None
+            max_norm = 2.0 if embed_max_norm else None
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx, max_norm=max_norm)
-            std = 0.02 if init_mode == 'bert' else 1.0 / math.sqrt(embedding_dim * 3.0)
+            std = 1.0 / math.sqrt(embedding_dim)
             nn.init.normal_(embed_tokens.weight, mean=0, std=std)
             nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
