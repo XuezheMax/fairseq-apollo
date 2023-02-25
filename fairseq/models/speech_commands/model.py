@@ -38,7 +38,6 @@ class SCRawModel(FairseqEncoderModel):
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.classifier = nn.ModuleList([])
         assert args.classifier_layers > 0
-        init_mode = args.init_mode
         self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True))
         self.classifier.extend([
             Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True)
@@ -46,7 +45,15 @@ class SCRawModel(FairseqEncoderModel):
         ])
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
+        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
+        if args.init_mode == 'bert':
+            nn.init.normal_(self.sentence_projection_layer.weight, mean=0.0, std=0.02)
+        elif args.init_mode == 'he':
+            nn.init.kaiming_normal_(self.sentence_projection_layer.weight, a=math.sqrt(5.0))
+        elif args.init_mode == 'xavier':
+            nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
+        else:
+            raise ValueError('Unknown init mode: {}'.format(args.init_mode))
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
 
