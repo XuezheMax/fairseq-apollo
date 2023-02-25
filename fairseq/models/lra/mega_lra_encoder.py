@@ -132,10 +132,8 @@ class MegaLRAEncoder(nn.Module):
         if embedding_type == 'sparse':
             max_norm = 1.0 if embed_max_norm else None
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx, max_norm=max_norm)
-            if init_mode == 'bert':
-                nn.init.normal_(embed_tokens.weight, mean=0, std=0.02)
-            else:
-                nn.init.normal_(embed_tokens.weight, mean=0, std=embedding_dim ** -0.5)
+            std = 0.02 if init_mode == 'bert' else 1.0 / math.sqrt(embedding_dim * 3.0)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=std)
             nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
         else:
