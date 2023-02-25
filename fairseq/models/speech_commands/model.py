@@ -15,9 +15,16 @@ from fairseq.modules import (
 from fairseq.models.speech_commands.mega_scraw_encoder import MegaSCRawEncoder
 
 
-def Linear(in_features, out_features, bias=False):
+def Linear(in_features, out_features, bias=False, init_mode='xavier'):
     m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
+    if init_mode == 'bert':
+        nn.init.normal_(m.weight, mean=0.0, std=0.02)
+    elif init_mode == 'he':
+        nn.init.kaiming_normal_(m.weight, a=math.sqrt(5.0))
+    elif init_mode == 'xavier':
+        nn.init.xavier_uniform_(m.weight)
+    else:
+        raise ValueError('Unknown init mode: {}'.format(init_mode))
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -38,22 +45,14 @@ class SCRawModel(FairseqEncoderModel):
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.classifier = nn.ModuleList([])
         assert args.classifier_layers > 0
-        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True))
+        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode))
         self.classifier.extend([
-            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True)
+            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode)
             for _ in range(args.classifier_layers - 1)
         ])
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
-
         self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
-        if args.init_mode == 'bert':
-            nn.init.normal_(self.sentence_projection_layer.weight, mean=0.0, std=0.02)
-        elif args.init_mode == 'he':
-            nn.init.kaiming_normal_(self.sentence_projection_layer.weight, a=math.sqrt(5.0))
-        elif args.init_mode == 'xavier':
-            nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
-        else:
-            raise ValueError('Unknown init mode: {}'.format(args.init_mode))
+        nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
 
