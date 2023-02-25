@@ -60,7 +60,7 @@ class NormalizedFeedForwardNetwork(nn.Module):
             nn.init.normal_(self.fc1.weight, mean=0.0, std=std)
             nn.init.normal_(self.fc2.weight, mean=0.0, std=std)
         elif mode =='he':
-            a = math.sqrt(3.0)
+            a = math.sqrt(5.0)
             nn.init.kaiming_normal_(self.fc1.weight, a=a)
             nn.init.kaiming_normal_(self.fc2.weight, a=a)
         elif mode == 'xavier':

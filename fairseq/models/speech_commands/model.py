@@ -15,18 +15,9 @@ from fairseq.modules import (
 from fairseq.models.speech_commands.mega_scraw_encoder import MegaSCRawEncoder
 
 
-def Linear(in_features, out_features, bias=False, init_mode='xavier'):
+def Linear(in_features, out_features, bias=False):
     m = nn.Linear(in_features, out_features, bias)
-    if init_mode == 'bert':
-        nn.init.normal_(m.weight, mean=0.0, std=0.02)
-    elif init_mode == 'he':
-        std = 1.0 / math.sqrt(in_features)
-        nn.init.normal_(m.weight, mean=0.0, std=std)
-    elif init_mode == 'xavier':
-        nn.init.xavier_uniform_(m.weight)
-    else:
-        raise ValueError('Unknown init mode: {}'.format(init_mode))
-
+    nn.init.xavier_uniform_(m.weight)
     if bias:
         nn.init.constant_(m.bias, 0.0)
     return m
@@ -48,14 +39,14 @@ class SCRawModel(FairseqEncoderModel):
         self.classifier = nn.ModuleList([])
         assert args.classifier_layers > 0
         init_mode = args.init_mode
-        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True, init_mode=init_mode))
+        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True))
         self.classifier.extend([
-            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True, init_mode=init_mode)
+            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True)
             for _ in range(args.classifier_layers - 1)
         ])
         self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
 
-        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False, init_mode=init_mode)
+        self.sentence_projection_layer = Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
 
