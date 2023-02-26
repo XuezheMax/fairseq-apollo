@@ -428,7 +428,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if args.representation_dim is not None:
             self.num_features = args.representation_dim
             self.pre_logits = nn.Sequential(OrderedDict([
-                ('fc', Linear(embed_dim, args.representation_dim, bias=True, init_mode=args.init_mode)),
+                ('fc', Linear(embed_dim, self.num_features, bias=True, init_mode=args.init_mode)),
                 ('act', nn.GELU()),
                 ('dropout', FairseqDropout(args.dropout, module_name=self.__class__.__name__))
             ]))
@@ -631,19 +631,45 @@ class MegaDecoder(FairseqIncrementalDecoder):
         return self._future_mask[:dim, :dim]
 
 
-def Linear(in_features, out_features, bias=True, init_mode='xavier'):
-    m = nn.Linear(in_features, out_features, bias)
-    if init_mode == 'bert':
-        nn.init.normal_(m.weight, mean=0.0, std=0.02)
-    elif init_mode == 'he':
-        nn.init.kaiming_normal_(m.weight, a=math.sqrt(5.0))
-    elif init_mode == 'xavier':
-        nn.init.xavier_uniform_(m.weight)
-    else:
-        raise ValueError('Unknown init mode: {}'.format(init_mode))
-    if bias:
-        nn.init.constant_(m.bias, 0.0)
-    return m
+class Linear(nn.Module):
+    __constants__ = ['in_features', 'out_features']
+    in_features: int
+    out_features: int
+    weight: Tensor
+
+    def __init__(self, in_features: int, out_features: int, bias: bool = True,
+                 init_mode='xavier', device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(Linear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.init_mode = init_mode
+        self.weight = nn.Parameter(torch.empty((out_features, in_features), **factory_kwargs))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features, **factory_kwargs))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.init_mode == 'bert':
+            nn.init.normal_(self.weight, mean=0.0, std=0.02)
+        elif self.init_mode == 'he':
+            nn.init.kaiming_normal_(self.weight, a=math.sqrt(5.0))
+        elif self.init_mode == 'xavier':
+            nn.init.xavier_uniform_(self.weight)
+        else:
+            raise ValueError('Unknown init mode: {}'.format(self.init_mode))
+        if self.bias is not None:
+            nn.init.constant_(self.bias, 0.0)
+
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(input, self.weight, self.bias)
+
+    def extra_repr(self) -> str:
+        return 'in_features={}, out_features={}, bias={}, init_mode={}'.format(
+            self.in_features, self.out_features, self.bias is not None, self.init_mode
+        )
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx, max_norm):

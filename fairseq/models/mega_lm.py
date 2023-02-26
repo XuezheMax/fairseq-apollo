@@ -1,7 +1,7 @@
 import math
 import os
-import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -20,6 +20,7 @@ from fairseq.modules import (
     AdaptiveInput,
     MegaDecoderLayer
 )
+from fairseq.models.mega import Embedding, Linear
 from torch import Tensor
 import logging
 logger = logging.getLogger(__name__)
@@ -77,6 +78,8 @@ class MegaLanguageModel(FairseqLanguageModel):
                             help='chunk size of Mega decoder.')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
+        parser.add_argument('--representation-dim', type=int, metavar='N', default=None,
+                            help='the dimension of pre-logict representation')
 
         parser.add_argument('--share-decoder-input-output-embed', action='store_true',
                             help='share decoder input and output embeddings')
@@ -130,7 +133,7 @@ class MegaLanguageModel(FairseqLanguageModel):
                 options.eval_str_list(args.adaptive_input_cutoff, type=int),
             )
         else:
-            embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_embed_dim, args.embedding_max_norm, args.init_mode)
+            embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_embed_dim, args.embedding_max_norm)
 
         if args.tie_adaptive_weights:
             assert args.adaptive_input
@@ -142,11 +145,11 @@ class MegaLanguageModel(FairseqLanguageModel):
         return cls(args, decoder)
 
     @classmethod
-    def build_embedding(cls, args, dictionary, embed_dim, embed_max_norm, init_mode, path=None):
+    def build_embedding(cls, args, dictionary, embed_dim, embed_max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
-        max_norm = 1.0 if embed_max_norm else None
-        emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm, init_mode)
+        max_norm = 2.0 if embed_max_norm else None
+        emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
             embed_dict = utils.parse_embedding(path)
@@ -213,12 +216,24 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         norm_affine = not args.no_affine_norm
         self.final_norm = MaskedBatchNorm(embed_dim, affine=norm_affine, eps=args.norm_eps)
 
+        if args.representation_dim is not None:
+            self.num_features = args.representation_dim
+            self.pre_logits = nn.Sequential(OrderedDict([
+                ('fc', Linear(embed_dim, self.num_features, bias=True, init_mode=args.init_mode)),
+                ('act', nn.GELU()),
+                ('dropout', FairseqDropout(args.dropout, module_name=self.__class__.__name__))
+            ]))
+        else:
+            self.num_features = self.embed_dim
+            self.pre_logits = nn.Identity()
+
         self.adaptive_softmax = None
         self.output_projection = None
         if args.adaptive_softmax_cutoff is not None:
+            assert not args.tie_adaptive_weights or self.embed_dim == self.num_features
             self.adaptive_softmax = AdaptiveSoftmax(
                 len(dictionary),
-                self.embed_dim,
+                self.num_features,
                 options.eval_str_list(args.adaptive_softmax_cutoff, type=int),
                 dropout=args.adaptive_softmax_dropout,
                 adaptive_inputs=embed_tokens if args.tie_adaptive_weights else None,
@@ -226,6 +241,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                 tie_proj=args.tie_adaptive_proj,
             )
         elif self.share_input_output_embed:
+            assert args.representation_dim is None or args.representation_dim == self.embed_dim
             self.output_projection = nn.Linear(
                 self.embed_tokens.weight.shape[1],
                 self.embed_tokens.weight.shape[0],
@@ -233,8 +249,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             )
             self.output_projection.weight = self.embed_tokens.weight
         else:
-            self.output_projection = nn.Linear(self.embed_dim, len(dictionary), bias=False)
-            std = 0.02 if args.init_mode == 'bert' else 1.0 / math.sqrt(self.embed_dim * 3.0)
+            self.output_projection = nn.Linear(self.num_features, len(dictionary), bias=False)
+            std = 1.0 / math.sqrt(self.num_features)
             nn.init.normal_(self.output_projection.weight, mean=0, std=std)
 
     def build_decoder_layer(self, args, layer_scale):
@@ -347,6 +363,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             inner_states.append(x)
 
         x = self.final_norm(x, decoder_padding_mask)
+        x = self.pre_logits(x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
@@ -392,14 +409,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
 
         self._future_mask = self._future_mask.to(tensor)
         return self._future_mask[:dim, :dim]
-
-
-def Embedding(num_embeddings, embedding_dim, padding_idx, max_norm, init_mode):
-    m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, max_norm=max_norm)
-    std = 0.02 if init_mode == 'bert' else 1.0 / math.sqrt(embedding_dim * 3.0)
-    nn.init.normal_(m.weight, mean=0, std=std)
-    nn.init.constant_(m.weight[padding_idx], 0)
-    return m
 
 
 @register_model_architecture("mega_lm", "mega_lm")
