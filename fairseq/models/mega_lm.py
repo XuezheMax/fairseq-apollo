@@ -220,7 +220,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
             self.num_features = args.representation_dim
             self.pre_logits = nn.Sequential(OrderedDict([
                 ('fc', Linear(embed_dim, self.num_features, bias=True, init_mode=args.init_mode)),
-                ('act', nn.GELU()),
+                ('act', nn.SiLU()),
                 ('dropout', FairseqDropout(args.dropout, module_name=self.__class__.__name__))
             ]))
         else:
