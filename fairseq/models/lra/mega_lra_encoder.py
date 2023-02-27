@@ -20,28 +20,6 @@ from fairseq.modules.fairseq_dropout import FairseqDropout
 
 
 class MegaLRAEncoder(nn.Module):
-    """
-    Implementation for a Bi-directional FLASH based Sentence Encoder used
-    in masked pre-trained language models.
-
-    This first computes the token embedding using the token embedding matrix,
-    position embeddings (if specified) and segment embeddings
-    (if specified). After applying the specified number of
-    TransformerEncoderLayers, it outputs all the internal states of the
-    encoder as well as the final representation associated with the first
-    token (usually CLS token).
-
-    Input:
-        - tokens: B x T matrix representing sentences
-        - segment_labels: B x T matrix representing segment label for tokens
-
-    Output:
-        - a tuple of the following:
-            - a list of internal model states used to compute the
-              predictions where each tensor has shape T x B x C
-            - sentence representation associated with first input token
-              in format B x C.
-    """
 
     def __init__(
         self,
@@ -90,12 +68,7 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        if embedding_type == 'sparse':
-            self.embed_proj = nn.Linear(embedding_dim, embedding_dim)
-            nn.init.normal_(self.embed_proj.weight, mean=0.0, std=1.0)
-            nn.init.zeros_(self.embed_proj.bias)
-        else:
-            self.embed_proj = nn.Identity()
+        self.embed_scale = math.sqrt(embedding_dim)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -163,14 +136,13 @@ class MegaLRAEncoder(nn.Module):
             if not self.traceable and not self.tpu and not padding_mask.any():
                 padding_mask = None
             # B x T -> B x T x D
-            x = self.embed_tokens(tokens)
+            x = self.embed_tokens(tokens) * self.embed_scale
         else:
             padding_mask = None
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
         x = self.embedding_dropout(x)
-        x = self.embed_proj(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
