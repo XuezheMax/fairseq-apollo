@@ -90,6 +90,12 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
+        if embedding_type == 'sparse':
+            self.embed_proj = nn.Linear(embedding_dim, embedding_dim)
+            nn.init.normal_(self.embed_proj.weight, mean=0.0, std=1.0)
+            nn.init.zeros_(self.embed_proj.bias)
+        else:
+            self.embed_proj = nn.Identity()
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -128,8 +134,11 @@ class MegaLRAEncoder(nn.Module):
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm):
         if embedding_type == 'sparse':
-            max_norm = math.sqrt(embedding_dim) if embed_max_norm else None
+            max_norm = 1.0 if embed_max_norm else None
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx, max_norm=max_norm)
+            std = 1.0 / math.sqrt(embedding_dim)
+            nn.init.normal_(embed_tokens.weight, mean=0, std=std)
+            nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
         else:
             embed_tokens = RealNumberEmbedding(embedding_dim)
@@ -161,6 +170,7 @@ class MegaLRAEncoder(nn.Module):
             x = self.embed_tokens(tokens)
 
         x = self.embedding_dropout(x)
+        x = self.embed_proj(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
