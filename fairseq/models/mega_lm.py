@@ -102,6 +102,9 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--tie-adaptive-proj', action='store_true',
                             help='if set, ties the projection weights of adaptive softmax and adaptive input')
         parser.add_argument('--embedding-max-norm', action='store_true', default=False, help='max norm of embeddings')
+        parser.add_argument('--no-scale-embedding', action='store_true',
+                            help='if True, dont scale embeddings')
+
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
@@ -148,7 +151,7 @@ class MegaLanguageModel(FairseqLanguageModel):
     def build_embedding(cls, args, dictionary, embed_dim, embed_max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
-        max_norm = 2.0 if embed_max_norm else None
+        max_norm = 1.0 if embed_max_norm else None
         emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
@@ -205,6 +208,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.attention_activation = args.attention_activation_fn
 
         self.embed_tokens = embed_tokens
+        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
         self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.layers = nn.ModuleList([])
@@ -331,6 +335,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
 
         # embed tokens
         x = self.embed_tokens(prev_output_tokens)
+        if self.embed_scale is not None:
+            x = self.embed_scale * x
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -439,6 +445,7 @@ def base_lm_architecture(args):
     args.adaptive_input_cutoff = getattr(args, 'adaptive_input_cutoff', None)
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.moving_layer = getattr(args, 'moving_layer', 'cema')

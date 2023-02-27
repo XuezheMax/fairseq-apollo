@@ -107,8 +107,10 @@ class MegaModel(FairseqEncoderDecoderModel):
                             help='share decoder input and output embeddings')
         parser.add_argument('--share-all-embeddings', action='store_true',
                             help='share encoder, decoder and output embeddings (requires shared dictionary and embed dim)')
-
         parser.add_argument('--embedding-max-norm', action='store_true', default=False, help='max norm of embeddings')
+        parser.add_argument('--no-scale-embedding', action='store_true',
+                            help='if True, dont scale embeddings')
+
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
@@ -160,7 +162,7 @@ class MegaModel(FairseqEncoderDecoderModel):
     def build_embedding(cls, args, dictionary, embed_dim, embed_max_norm, path=None):
         num_embeddings = len(dictionary)
         padding_idx = dictionary.pad()
-        max_norm = 2.0 if embed_max_norm else None
+        max_norm = 1.0 if embed_max_norm else None
         emb = Embedding(num_embeddings, embed_dim, padding_idx, max_norm)
         # if provided, load from preloaded dictionaries
         if path:
@@ -234,10 +236,11 @@ class MegaEncoder(FairseqEncoder):
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
-        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.max_source_positions = args.max_source_positions
         self.chunk_size = args.encoder_chunk_size
         self.embed_tokens = embed_tokens
+        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.layers = nn.ModuleList([])
         depth = args.encoder_layers
@@ -280,7 +283,10 @@ class MegaEncoder(FairseqEncoder):
         else:
             num_paddings = 0
 
-        x = encoder_embedding = self.embed_tokens(src_tokens)
+        x = self.embed_tokens(src_tokens)
+        if self.embed_scale is not None:
+            x = self.embed_scale * x
+        encoder_embedding = x
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         if not encoder_padding_mask.any():
@@ -409,12 +415,13 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.embed_dim = embed_dim
         self.padding_idx = embed_tokens.padding_idx
         self.share_input_output_embed = args.share_decoder_input_output_embed
-        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.max_target_positions = args.max_target_positions
         self.chunk_size = args.decoder_chunk_size
         self.attention_activation = args.attention_activation_fn
 
         self.embed_tokens = embed_tokens
+        self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.layers = nn.ModuleList([])
         depth = args.decoder_layers
@@ -550,6 +557,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
 
         # embed tokens
         x = self.embed_tokens(prev_output_tokens)
+        if self.embed_scale is not None:
+            x = self.embed_scale * x
 
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
@@ -707,6 +716,7 @@ def base_architecture(args):
     args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'simple')
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.share_all_embeddings = getattr(args, "share_all_embeddings", False)
+    args.no_scale_embedding = getattr(args, "no_scale_embedding", False)
 
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.moving_layer = getattr(args, 'moving_layer', 'cema')
