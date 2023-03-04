@@ -420,7 +420,6 @@ def validate_mega_lm(args, trainer, task, epoch_itr, subsets):
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(stats[args.best_checkpoint_metric])
-        trainer.model.analyze_ema(report=True)
     return valid_losses
 
 
