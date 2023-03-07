@@ -67,18 +67,15 @@ class MaskedSyncBatchNorm(Function):
 
         # calculate global mean & invstd
         mean, invstd = torch.batch_norm_gather_stats_with_counts(
-            x.float(),
+            x,
             mean_all.float(),
             invstd_all.float(),
-            running_mean.float(),
-            running_var.float(),
+            running_mean,
+            running_var,
             momentum,
             eps,
             count_all.view(-1).float()
         )
-
-        mean = mean.type_as(x)
-        invstd = invstd.type_as(x)
 
         self.save_for_backward(x, inverse_mask, weight, mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
