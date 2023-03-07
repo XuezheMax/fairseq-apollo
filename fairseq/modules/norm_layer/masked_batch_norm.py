@@ -37,31 +37,25 @@ class MaskedBatchNorm(nn.Module):
             nn.init.zeros_(self.weight)
             nn.init.zeros_(self.bias)
 
-    def _compute_mean_var(self, x, nums):
-        sum_x = torch.sum(x, dim=(0, 1))
-        ssum_x = torch.sum(torch.square(x), dim=(0, 1))
-
-        mean = sum_x / nums
-        var = ssum_x / nums - torch.square(mean)
-
+    def _compute_mean_var(self, x, nums, total):
+        ratio = (total / nums).type_as(x)
+        mean = torch.mean(x, dim=(0, 1)) * ratio
+        var = torch.mean(torch.square(x), dim=(0, 1)) * ratio - torch.square(mean)
         return mean, var
 
     def _batch_norm_with_padding(self, x, padding_mask, momentum):
         if self.training:
-            x_float = x.float()
             # zero out paddings
             # L x B
-            inverse_mask = 1.0 - padding_mask.transpose(0, 1).float()
-            nums = inverse_mask.sum()
+            total = padding_mask.numel()
+            nums = total - padding_mask.sum()
             # L x B x D
-            x_float = x_float * inverse_mask.unsqueeze(2)
-            mean, var = self._compute_mean_var(x_float, nums)
-            mean = mean.type_as(x)
-            var = var.type_as(x)
-            bias_corr = (nums / (nums - 1)).type_as(x)
+            inverse_mask = 1.0 - padding_mask.transpose(0, 1).type_as(x)
+            x = x * inverse_mask.unsqueeze(2)
+            mean, var = self._compute_mean_var(x, nums, total)
             with torch.no_grad():
                 self.running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
-                self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * bias_corr)  # unbias var estimator for running var
+                self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * nums / (nums - 1))  # unbias var estimator for running var
         else:
             mean, var = self.running_mean, self.running_var
 
