@@ -22,20 +22,19 @@ class MaskedSyncBatchNorm(Function):
             inverse_mask = None
             combined = torch.zeros(2 * num_channels + 1, dtype=input.dtype, device=input.device)
         elif padding_mask is None:
-            mean, invstd = torch.batch_norm_stats(input, eps)
-            inverse_mask = None
-            count = torch.full((1,), input.numel() // input.size(1), dtype=mean.dtype, device=mean.device)
             x = input
+            inverse_mask = None
+            mean, invstd = torch.batch_norm_stats(x, eps)
+            count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
             # C, C, 1 -> (2C + 1)
             combined = torch.cat([mean, invstd, count], dim=0)
         else:
             # B x L
             inverse_mask = 1.0 - padding_mask.type_as(input)
-            count = inverse_mask.sum().view(1)
             # B x D x L
             x = input * inverse_mask.unsqueeze(1)
-
             # D
+            count = inverse_mask.sum().view(1)
             sum_x = torch.sum(x, dim=(0, 2))
             ssum_x = torch.sum(torch.square(x), dim=(0, 2))
 
@@ -68,13 +67,13 @@ class MaskedSyncBatchNorm(Function):
         # calculate global mean & invstd
         mean, invstd = torch.batch_norm_gather_stats_with_counts(
             x,
-            mean_all.float(),
-            invstd_all.float(),
+            mean_all,
+            invstd_all,
             running_mean,
             running_var,
             momentum,
             eps,
-            count_all.view(-1).float()
+            count_all.view(-1)
         )
 
         self.save_for_backward(x, inverse_mask, weight, mean, invstd, count_all.to(torch.int32))

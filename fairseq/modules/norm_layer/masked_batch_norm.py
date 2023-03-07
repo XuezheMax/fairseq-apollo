@@ -102,12 +102,22 @@ class MaskedBatchNorm(nn.Module):
             else:
                 out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
         else:
-            x = x.permute(1, 2, 0)
-            out = sync_batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
-                                                  self.running_mean, self.running_var,
+            x_float = x.permute(1, 2, 0).float()
+            weight = weight.float()
+            bias = self.bias.float()
+            running_mean = self.running_mean.float()
+            running_var = self.running_var.float()
+            out = sync_batch_norm_with_mask.apply(x_float, weight, bias, padding_mask,
+                                                  running_mean, running_var,
                                                   self.eps, exponential_average_factor,
                                                   process_group, world_size)
-            out = out.permute(2, 0, 1)
+            out = out.type_as(x).permute(2, 0, 1)
+            running_mean = running_mean.type_as(self.running_mean)
+            running_var = running_var.type_as(self.running_var)
+            if self.running_mean.data_ptr != running_mean.data_ptr:
+                with torch.no_grad():
+                    self.running_mean.copy_(running_mean)
+                    self.running_var.copy_(running_var)
 
         return out
 
