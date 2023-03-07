@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.modules._functions import SyncBatchNorm as sync_batch_norm
 from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
@@ -94,28 +93,21 @@ class MaskedBatchNorm(nn.Module):
             need_sync = world_size > 1
 
         weight = self.weight + 1.0 if self.affine else None
-        if padding_mask is None:
-            x = x.permute(1, 2, 0)
-            if not need_sync:
+        if not need_sync:
+            if padding_mask is None:
+                x = x.permute(1, 2, 0)
                 out = F.batch_norm(x, self.running_mean, self.running_var, weight, self.bias,
                                    self.training, exponential_average_factor, self.eps)
-            else:
-                out = sync_batch_norm.apply(x, weight, self.bias,
-                                            self.running_mean, self.running_var,
-                                            self.eps, exponential_average_factor,
-                                            process_group, world_size)
-            out = out.permute(2, 0, 1)
-        else:
-            if not need_sync:
-                out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
-            else:
-                x = x.permute(1, 2, 0)
-                out = sync_batch_norm_with_mask.apply(x, weight, self.bias,
-                                                      padding_mask,
-                                                      self.running_mean, self.running_var,
-                                                      self.eps, exponential_average_factor,
-                                                      process_group, world_size)
                 out = out.permute(2, 0, 1)
+            else:
+                out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
+        else:
+            x = x.permute(1, 2, 0)
+            out = sync_batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
+                                                  self.running_mean, self.running_var,
+                                                  self.eps, exponential_average_factor,
+                                                  process_group, world_size)
+            out = out.permute(2, 0, 1)
 
         return out
 

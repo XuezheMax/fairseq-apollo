@@ -12,23 +12,38 @@ class MaskedSyncBatchNorm(Function):
         if weight is not None:
             weight = weight.contiguous()
 
-        # B x L
-        inverse_mask = 1.0 - padding_mask.type_as(input)
-        count = inverse_mask.sum().view(1)
-
-        # B x D x L
-        x = input * inverse_mask.unsqueeze(1)
-
-        # D
-        sum_x = torch.sum(x, dim=(0, 2))
-        ssum_x = torch.sum(torch.square(x), dim=(0, 2))
-
-        mean = sum_x / count
-        invstd = torch.rsqrt(ssum_x / count - torch.square(mean))
-
         num_channels = input.shape[1]
-        # C, C, 1 -> (2C + 1)
-        combined = torch.cat([mean, invstd, count], dim=0)
+        if input.numel() <= 0:
+            # for empty input, set stats and the count to zero. The stats with
+            # zero count will be filtered out later when computing global mean
+            # & invstd, but they still needs to participate the all_gather
+            # collective communication to unblock other peer processes.
+            x = input
+            inverse_mask = None
+            combined = torch.zeros(2 * num_channels + 1, dtype=input.dtype, device=input.device)
+        elif padding_mask is None:
+            mean, invstd = torch.batch_norm_stats(input, eps)
+            inverse_mask = None
+            count = torch.full((1,), input.numel() // input.size(1), dtype=mean.dtype, device=mean.device)
+            x = input
+            # C, C, 1 -> (2C + 1)
+            combined = torch.cat([mean, invstd, count], dim=0)
+        else:
+            # B x L
+            inverse_mask = 1.0 - padding_mask.type_as(input)
+            count = inverse_mask.sum().view(1)
+            # B x D x L
+            x = input * inverse_mask.unsqueeze(1)
+
+            # D
+            sum_x = torch.sum(x, dim=(0, 2))
+            ssum_x = torch.sum(torch.square(x), dim=(0, 2))
+
+            mean = sum_x / count
+            invstd = torch.rsqrt(ssum_x / count - torch.square(mean))
+            # C, C, 1 -> (2C + 1)
+            combined = torch.cat([mean, invstd, count], dim=0)
+
         # Use allgather instead of allreduce because count could be different across
         # ranks, simple all reduce op can not give correct results.
         # batch_norm_gather_stats_with_counts calculates global mean & invstd based on
@@ -52,15 +67,18 @@ class MaskedSyncBatchNorm(Function):
 
         # calculate global mean & invstd
         mean, invstd = torch.batch_norm_gather_stats_with_counts(
-            x,
-            mean_all,
-            invstd_all,
-            running_mean,
-            running_var,
+            x.float(),
+            mean_all.float(),
+            invstd_all.float(),
+            running_mean.float(),
+            running_var.float(),
             momentum,
             eps,
-            count_all.view(-1)
+            count_all.view(-1).float()
         )
+
+        mean = mean.type_as(x)
+        invstd = invstd.type_as(x)
 
         self.save_for_backward(x, inverse_mask, weight, mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
