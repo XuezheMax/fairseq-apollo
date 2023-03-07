@@ -71,7 +71,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x 1 x 1
-        theta = torch.sigmoid(self.theta) * (2 * math.pi / self.ndim)
+        theta = torch.sigmoid(self.theta).float() * (2 * math.pi / self.ndim)
         # 1 x N
         wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
         # D x N x 1
@@ -80,13 +80,13 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
-        alpha = torch.sigmoid(self.alpha)
-        delta = (1.0 + torch.erf(self.delta)) * 0.5
+        alpha = torch.sigmoid(self.alpha.float())
+        delta = (1.0 + torch.erf(self.delta.float())) * 0.5
         # coeffs
         p = alpha
         q = (1.0 - alpha * delta) * c
         # D x N
-        gamma = _r2c(self.gamma) * self.scale
+        gamma = _r2c(self.gamma.float()) * self.scale
         return p, q, gamma
 
     def _compute_kernel(self, length: int):

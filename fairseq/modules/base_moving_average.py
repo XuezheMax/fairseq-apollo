@@ -92,11 +92,10 @@ class BaseMovingLayer(nn.Module):
         if self.complex:
             k = k.real
 
-        k_f = torch.fft.rfft(k.float(), n=2 * length)
-        x_f = torch.fft.rfft(x.float(), n=2 * length)
+        k_f = torch.fft.rfft(k, n=2 * length)
+        x_f = torch.fft.rfft(x, n=2 * length)
         # B x D x L
         out = torch.fft.irfft(x_f * k_f, n=2 * length)[..., 0:length]
-        out = out.type_as(x)
         if ox is not None:
             out = out + ox
 
@@ -153,7 +152,8 @@ class BaseMovingLayer(nn.Module):
                 h = saved_state['prev_state']
             else:
                 h = None
-            out, h = self.step(x, seq_len, hx=h)
+            out, h = self.step(x.float(), seq_len, hx=h)
+            out = out.type_as(x)
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
             # B x D -> 1 x B x D
@@ -171,7 +171,7 @@ class BaseMovingLayer(nn.Module):
                 else:
                     k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
-            k_f = torch.fft.rfft(k.float(), n=fft_len)
+            k_f = torch.fft.rfft(k, n=fft_len)
             x_f = torch.fft.rfft(x.float(), n=fft_len)
             # B x D x L
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]

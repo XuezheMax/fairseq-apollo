@@ -71,12 +71,12 @@ class MultiHeadEMA(BaseMovingLayer):
     def _calc_coeffs(self):
         self._coeffs = None
         # D x N x 1
-        alpha = torch.sigmoid(self.alpha)
-        delta = torch.sigmoid(self.delta)
+        alpha = torch.sigmoid(self.alpha.float())
+        delta = torch.sigmoid(self.delta.float())
         q = 1.0 - alpha * delta
         p = alpha * self.beta
         # D x N
-        gamma = self.gamma * self.scale
+        gamma = self.gamma.float() * self.scale
         return p, q, gamma
 
     def _compute_kernel(self, length: int):
