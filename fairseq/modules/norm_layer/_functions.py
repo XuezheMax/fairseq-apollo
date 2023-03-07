@@ -121,8 +121,10 @@ class MaskedSyncBatchNorm(Function):
                 sum_dy_xmu,
                 count_tensor
             )
-            # B x D x L
-            grad_input = grad_input * inverse_mask.unsqueeze(1)
+
+            if inverse_mask is not None:
+                # B x D x L
+                grad_input = grad_input * inverse_mask.unsqueeze(1)
 
         # synchronizing of grad_weight / grad_bias is not needed as distributed
         # training would handle all reduce.
