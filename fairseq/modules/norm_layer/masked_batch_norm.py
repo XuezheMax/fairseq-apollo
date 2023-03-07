@@ -58,7 +58,7 @@ class MaskedBatchNorm(nn.Module):
             mean, var = self._compute_mean_var(x_float, nums)
             mean = mean.type_as(x)
             var = var.type_as(x)
-            nums = nums.type_as_(x)
+            nums = nums.type_as(x)
             with torch.no_grad():
                 self.running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
                 self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * nums / (nums - 1))  # unbias var estimator for running var
