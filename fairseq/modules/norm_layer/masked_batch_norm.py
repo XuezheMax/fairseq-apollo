@@ -38,39 +38,6 @@ class MaskedBatchNorm(nn.Module):
             nn.init.zeros_(self.weight)
             nn.init.zeros_(self.bias)
 
-    def _compute_mean_var(self, x, padding_mask):
-        if padding_mask is None:
-            var, mean = torch.var_mean(x, dim=(0, 1), unbiased=False)
-            nums = x.numel() / x.size(2)
-        else:
-            total = padding_mask.numel()
-            nums = total - padding_mask.sum()
-            ratio = total / nums
-            var, mean = torch.var_mean(x, dim=(0, 1), unbiased=False)
-            square_mean = var + torch.square(mean)
-            # adjust by ratio
-            mean = mean * ratio
-            var = square_mean * ratio - torch.square(mean)
-        return mean, var, nums
-
-    def _batch_norm_with_padding(self, x, padding_mask, momentum):
-        if self.training:
-            mean, var, nums = self._compute_mean_var(x.float(), padding_mask)
-            with torch.no_grad():
-                self.running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
-                self.running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * nums / (nums - 1))  # unbias var estimator for running var
-        else:
-            mean, var = self.running_mean, self.running_var
-
-        mean = mean.to(x)
-        invstd = torch.rsqrt(var + self.eps).to(x)
-        if self.affine:
-            weight = self.weight + 1.0
-            out = (x - mean) * (weight * invstd) + self.bias
-        else:
-            out = (x - mean) * invstd
-        return out
-
     def forward(self, x, padding_mask=None):
         if self.momentum is None:
             exponential_average_factor = 1.0 / np.sqrt(float(self.num_batches_tracked))

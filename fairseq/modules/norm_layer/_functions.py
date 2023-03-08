@@ -21,7 +21,7 @@ class MaskedBatchNorm(Function):
             # collective communication to unblock other peer processes.
             raise RuntimeError('empty input')
         elif padding_mask is None:
-            var, mean = torch.var_mean(x.float(), dim=(0, 1), unbiased=False)
+            var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
             count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
         else:
             total = padding_mask.numel()
