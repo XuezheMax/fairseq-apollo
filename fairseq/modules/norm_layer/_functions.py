@@ -3,6 +3,87 @@ import torch.distributed as dist
 from torch.autograd.function import Function
 
 
+class MaskedBatchNorm(Function):
+
+    @staticmethod
+    def forward(self, input, weight, bias, padding_mask, running_mean, running_var, eps, momentum):
+        if not input.is_contiguous(memory_format=torch.channels_last):
+            input = input.contiguous()
+        if weight is not None:
+            weight = weight.contiguous()
+
+        num_channels = input.shape[1]
+        x = input
+        if input.numel() <= 0:
+            # for empty input, set stats and the count to zero. The stats with
+            # zero count will be filtered out later when computing global mean
+            # & invstd, but they still needs to participate the all_gather
+            # collective communication to unblock other peer processes.
+            combined = torch.zeros(2 * num_channels + 1, dtype=torch.float32, device=x.device)
+            mean, invstd, count = torch.split(combined, num_channels, dim=1)
+        elif padding_mask is None:
+            mean, invstd = torch.batch_norm_stats(x.float(), eps)
+            count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
+        else:
+            total = padding_mask.numel()
+            count = total - padding_mask.sum()
+            var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
+            square_mean = var + torch.square(mean)
+            # adjust by ratio
+            count = count.to(mean)
+            ratio = total / count
+            mean = mean * ratio
+            var = square_mean * ratio - torch.square(mean)
+            invstd = torch.rsqrt(var + eps)
+
+        self.save_for_backward(x, weight.float(), mean, invstd, count.to(torch.int32).view(1))
+        # apply element-wise normalization
+        out = torch.batch_norm_elemt(x, weight, bias, mean, invstd, eps)
+        return out
+
+    @staticmethod
+    def backward(self, grad_output):
+        if not grad_output.is_contiguous(memory_format=torch.channels_last):
+            grad_output = grad_output.contiguous()
+        saved_input, weight, mean, invstd, count_tensor = self.saved_tensors
+        grad_input = grad_weight = grad_bias = None
+
+        # calculate local stats as well as grad_weight / grad_bias
+        sum_dy, sum_dy_xmu, grad_weight, grad_bias = torch.batch_norm_backward_reduce(
+            grad_output,
+            saved_input,
+            mean,
+            invstd,
+            weight,
+            self.needs_input_grad[0],
+            self.needs_input_grad[1],
+            self.needs_input_grad[2]
+        )
+
+        if self.needs_input_grad[0]:
+            # backward pass for gradient calculation
+            grad_input = torch.batch_norm_backward_elemt(
+                grad_output,
+                saved_input,
+                mean,
+                invstd,
+                weight,
+                sum_dy,
+                sum_dy_xmu,
+                count_tensor
+            )
+
+        # synchronizing of grad_weight / grad_bias is not needed as distributed
+        # training would handle all reduce.
+        if weight is None or not self.needs_input_grad[1]:
+            grad_weight = None
+
+        if weight is None or not self.needs_input_grad[2]:
+            grad_bias = None
+
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None
+
+
 class MaskedSyncBatchNorm(Function):
 
     @staticmethod
@@ -37,7 +118,7 @@ class MaskedSyncBatchNorm(Function):
             var = square_mean * ratio - torch.square(mean)
             invstd = torch.rsqrt(var + eps)
             # C, C, 1 -> (2C + 1)
-            combined = torch.cat([mean, invstd, count], dim=0)
+            combined = torch.cat([mean, invstd, count.view(1)], dim=0)
 
         # Use allgather instead of allreduce because count could be different across
         # ranks, simple all reduce op can not give correct results.

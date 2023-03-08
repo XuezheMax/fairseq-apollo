@@ -5,7 +5,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from ._functions import MaskedBatchNorm as sync_batch_norm
 from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
@@ -96,24 +96,26 @@ class MaskedBatchNorm(nn.Module):
         self.running_mean = self.running_mean.float()
         self.running_var = self.running_var.float()
 
+        # B x D x L
+        x = x.permute(1, 2, 0)
         if padding_mask is not None:
-            # L x B
-            inverse_mask = 1.0 - padding_mask.transpose(0, 1).to(x)
-            # L x B x D
-            x = x * inverse_mask.unsqueeze(2)
-
-        if not need_sync:
-            out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
-        else:
+            # B x L
+            inverse_mask = 1.0 - padding_mask.to(x)
             # B x D x L
-            x = x.permute(1, 2, 0)
-            weight = self.weight + 1.0 if self.affine else None
+            x = x * inverse_mask.unsqueeze(1)
+
+        weight = self.weight + 1.0 if self.affine else None
+        if not need_sync:
+            out = sync_batch_norm.apply(x, weight, self.bias, padding_mask,
+                                        self.running_mean, self.running_var,
+                                        self.eps, exponential_average_factor)
+        else:
             out = sync_batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
                                                   self.running_mean, self.running_var,
                                                   self.eps, exponential_average_factor,
                                                   process_group, world_size)
 
-            out = out.permute(2, 0, 1)
+        out = out.permute(2, 0, 1)
         return out
 
     def extra_repr(self) -> str:
