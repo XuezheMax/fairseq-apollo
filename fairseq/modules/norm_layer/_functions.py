@@ -22,7 +22,9 @@ class MaskedBatchNorm(Function):
             raise RuntimeError('empty input')
         elif padding_mask is None:
             var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
-            count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
+            nums = x.numel() // x.size(1)
+            count = torch.full((1,), nums, dtype=mean.dtype, device=mean.device)
+            bias_corr = nums / (nums - 1.0)
         else:
             total = padding_mask.numel()
             count = total - padding_mask.sum()
@@ -33,10 +35,11 @@ class MaskedBatchNorm(Function):
             ratio = total / count
             mean = mean * ratio
             var = square_mean * ratio - torch.square(mean)
+            bias_corr = count / (count - 1.0)
 
         # update running stats
         running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
-        running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * count / (count - 1))  # unbias var estimator for running var
+        running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * bias_corr)  # unbias var estimator for running var
 
         invstd = torch.rsqrt(var + eps)
         self.save_for_backward(x, weight.float(), mean, invstd, count.to(torch.int32).view(1))
