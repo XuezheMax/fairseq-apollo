@@ -128,16 +128,16 @@ class MovingAverageGatedAttention(nn.Module):
             # B x K x 1
             lengths = slen - padding_mask.sum(dim=-1, keepdim=True)
             # B x K x 1 x 1
-            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).type_as(q).unsqueeze(-1)
+            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).to(q).unsqueeze(-1)
             # B x K x C
-            inverse_mask = 1.0 - padding_mask.type_as(q)
+            inverse_mask = 1.0 - padding_mask.to(q)
         else:
             len_scale = 1.0 / math.sqrt(slen)
             inverse_mask = None
 
         if attn_mask is not None:
             # C x 1
-            len_scale = torch.rsqrt(attn_mask.float().sum(dim=-1, keepdim=True)).type_as(q)
+            len_scale = torch.rsqrt(attn_mask.float().sum(dim=-1, keepdim=True)).to(q)
 
         # C x C
         bias = self.rel_pos_bias(slen)
@@ -153,9 +153,9 @@ class MovingAverageGatedAttention(nn.Module):
             return qk
 
         if self.attention_activation == 'relu2':
-            attn_weights = utils.relu2(qk).type_as(qk)
+            attn_weights = utils.relu2(qk).to(qk)
         elif self.attention_activation == 'laplace':
-            attn_weights = utils.laplace(qk).type_as(qk)
+            attn_weights = utils.laplace(qk).to(qk)
         else:
             raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
 
@@ -190,7 +190,7 @@ class MovingAverageGatedAttention(nn.Module):
         if before_attn_fn:
             return qk
 
-        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).type_as(qk)
+        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).to(qk)
         return attn_weights
 
     def forward(

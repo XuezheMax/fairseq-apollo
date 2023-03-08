@@ -99,7 +99,7 @@ class BaseMovingLayer(nn.Module):
         if ox is not None:
             out = out + ox
 
-        h = torch.einsum('bdl,dnl->bdn', x.type_as(kernel), torch.flip(kernel, dims=[2]))
+        h = torch.einsum('bdl,dnl->bdn', x.to(kernel), torch.flip(kernel, dims=[2]))
         if hh is not None:
             h = h + hh
         # L x B x D, B x D x N
@@ -112,7 +112,7 @@ class BaseMovingLayer(nn.Module):
         if hx is not None:
             h = h + q.squeeze(-1) * hx
         else:
-            h = h.type_as(q)
+            h = h.to(q)
         # B x D
         out = torch.einsum('bdn,dn->bd', h, gamma)
         if self.complex:
@@ -143,7 +143,7 @@ class BaseMovingLayer(nn.Module):
         # L x B x D -> B x D x L
         x = x.permute(1, 2, 0)
         if padding_mask is not None:
-            x = x * (1.0 - padding_mask.unsqueeze(1).type_as(x))
+            x = x * (1.0 - padding_mask.unsqueeze(1).to(x))
 
         assert not self.bidirectional or incremental_state is None, 'Bidirectional EMA does not support incremental state'
         if incremental_state is not None:
@@ -153,7 +153,7 @@ class BaseMovingLayer(nn.Module):
             else:
                 h = None
             out, h = self.step(x.float(), seq_len, hx=h)
-            out = out.type_as(x)
+            out = out.to(x)
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
             # B x D -> 1 x B x D
@@ -175,7 +175,7 @@ class BaseMovingLayer(nn.Module):
             x_f = torch.fft.rfft(x.float(), n=fft_len)
             # B x D x L
             out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
-            out = out.type_as(x)
+            out = out.to(x)
             # B x D x L -> L x B x D
             out = F.silu(out.permute(2, 0, 1) + residual)
 

@@ -13,33 +13,29 @@ class MaskedSyncBatchNorm(Function):
             weight = weight.contiguous()
 
         num_channels = input.shape[1]
+        x = input
         if input.numel() <= 0:
             # for empty input, set stats and the count to zero. The stats with
             # zero count will be filtered out later when computing global mean
             # & invstd, but they still needs to participate the all_gather
             # collective communication to unblock other peer processes.
-            x = input
-            inverse_mask = None
             combined = torch.zeros(2 * num_channels + 1, dtype=input.dtype, device=input.device)
         elif padding_mask is None:
-            x = input
-            inverse_mask = None
-            mean, invstd = torch.batch_norm_stats(x, eps)
+            mean, invstd = torch.batch_norm_stats(x.float(), eps)
             count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
             # C, C, 1 -> (2C + 1)
             combined = torch.cat([mean, invstd, count], dim=0)
         else:
-            # B x L
-            inverse_mask = 1.0 - padding_mask.type_as(input)
-            # B x D x L
-            x = input * inverse_mask.unsqueeze(1)
-            # D
-            count = inverse_mask.sum().view(1)
-            sum_x = torch.sum(x, dim=(0, 2))
-            ssum_x = torch.sum(torch.square(x), dim=(0, 2))
-
-            mean = sum_x / count
-            invstd = torch.rsqrt(ssum_x / count - torch.square(mean))
+            total = padding_mask.numel()
+            count = total - padding_mask.sum()
+            var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
+            square_mean = var + torch.square(mean)
+            # adjust by ratio
+            count = count.to(mean)
+            ratio = total / count
+            mean = mean * ratio
+            var = square_mean * ratio - torch.square(mean)
+            invstd = torch.rsqrt(var + eps)
             # C, C, 1 -> (2C + 1)
             combined = torch.cat([mean, invstd, count], dim=0)
 
@@ -76,7 +72,7 @@ class MaskedSyncBatchNorm(Function):
             count_all.view(-1)
         )
 
-        self.save_for_backward(x, inverse_mask, weight, mean, invstd, count_all.to(torch.int32))
+        self.save_for_backward(x, weight, mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
 
         # apply element-wise normalization
@@ -87,7 +83,7 @@ class MaskedSyncBatchNorm(Function):
     def backward(self, grad_output):
         if not grad_output.is_contiguous(memory_format=torch.channels_last):
             grad_output = grad_output.contiguous()
-        saved_input, inverse_mask, weight, mean, invstd, count_tensor = self.saved_tensors
+        saved_input, weight, mean, invstd, count_tensor = self.saved_tensors
         grad_input = grad_weight = grad_bias = None
         process_group = self.process_group
 
@@ -121,10 +117,6 @@ class MaskedSyncBatchNorm(Function):
                 sum_dy_xmu,
                 count_tensor
             )
-
-            if inverse_mask is not None:
-                # B x D x L
-                grad_input = grad_input * inverse_mask.unsqueeze(1)
 
         # synchronizing of grad_weight / grad_bias is not needed as distributed
         # training would handle all reduce.
