@@ -19,10 +19,9 @@ class MaskedBatchNorm(Function):
             # zero count will be filtered out later when computing global mean
             # & invstd, but they still needs to participate the all_gather
             # collective communication to unblock other peer processes.
-            combined = torch.zeros(2 * num_channels + 1, dtype=torch.float32, device=x.device)
-            mean, invstd, count = torch.split(combined, num_channels, dim=1)
+            raise RuntimeError('empty input')
         elif padding_mask is None:
-            mean, invstd = torch.batch_norm_stats(x.float(), eps)
+            var, mean = torch.var_mean(x.float(), dim=(0, 1), unbiased=False)
             count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)
         else:
             total = padding_mask.numel()
@@ -34,8 +33,12 @@ class MaskedBatchNorm(Function):
             ratio = total / count
             mean = mean * ratio
             var = square_mean * ratio - torch.square(mean)
-            invstd = torch.rsqrt(var + eps)
 
+        # update running stats
+        running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
+        running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * count / (count - 1))  # unbias var estimator for running var
+
+        invstd = torch.rsqrt(var + eps)
         self.save_for_backward(x, weight.float(), mean, invstd, count.to(torch.int32).view(1))
         # apply element-wise normalization
         out = torch.batch_norm_elemt(x, weight, bias, mean, invstd, eps)
@@ -100,7 +103,7 @@ class MaskedSyncBatchNorm(Function):
             # zero count will be filtered out later when computing global mean
             # & invstd, but they still needs to participate the all_gather
             # collective communication to unblock other peer processes.
-            combined = torch.zeros(2 * num_channels + 1, dtype=input.dtype, device=input.device)
+            combined = torch.zeros(2 * num_channels + 1, dtype=torch.float32, device=input.device)
         elif padding_mask is None:
             mean, invstd = torch.batch_norm_stats(x.float(), eps)
             count = torch.full((1,), x.numel() // x.size(1), dtype=mean.dtype, device=mean.device)

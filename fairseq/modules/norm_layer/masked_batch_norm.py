@@ -105,15 +105,19 @@ class MaskedBatchNorm(nn.Module):
             x = x * inverse_mask.unsqueeze(1)
 
         weight = self.weight + 1.0 if self.affine else None
-        if not need_sync:
-            out = sync_batch_norm.apply(x, weight, self.bias, padding_mask,
-                                        self.running_mean, self.running_var,
-                                        self.eps, exponential_average_factor)
-        else:
+        if need_sync:
             out = sync_batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
                                                   self.running_mean, self.running_var,
                                                   self.eps, exponential_average_factor,
                                                   process_group, world_size)
+        elif self.training:
+            out = sync_batch_norm.apply(x, weight, self.bias, padding_mask,
+                                        self.running_mean, self.running_var,
+                                        self.eps, exponential_average_factor)
+        else:
+            mean, var = self.running_mean, self.running_var
+            invstd = torch.rsqrt(var + self.eps)
+            out = torch.batch_norm_elemt(x, weight, self.bias, mean, invstd, self.eps)
 
         out = out.permute(2, 0, 1)
         return out
