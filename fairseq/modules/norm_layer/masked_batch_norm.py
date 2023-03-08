@@ -62,10 +62,13 @@ class MaskedBatchNorm(nn.Module):
         else:
             mean, var = self.running_mean, self.running_var
 
-        invstd = torch.rsqrt(var + self.eps)
-        weight = self.weight + 1.0 if self.affine else None
-        bias = self.bias
-        out = torch.batch_norm_elemt(x, weight, bias, mean, invstd, self.eps)
+        mean = mean.to(x)
+        invstd = torch.rsqrt(var + self.eps).to(x)
+        if self.affine:
+            weight = self.weight + 1.0
+            out = (x - mean) * (weight * invstd) + self.bias
+        else:
+            out = (x - mean) * invstd
         return out
 
     def forward(self, x, padding_mask=None):

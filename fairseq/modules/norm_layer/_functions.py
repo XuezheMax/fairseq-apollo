@@ -72,7 +72,7 @@ class MaskedSyncBatchNorm(Function):
             count_all.view(-1)
         )
 
-        self.save_for_backward(x, weight, mean, invstd, count_all.to(torch.int32))
+        self.save_for_backward(x, weight.float(), mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
 
         # apply element-wise normalization
