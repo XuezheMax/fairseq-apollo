@@ -40,13 +40,13 @@ class MaskedBatchNorm(nn.Module):
 
     def _compute_mean_var(self, x, padding_mask):
         if padding_mask is None:
-            var, mean = torch.var_mean(x, dim=(0, 2), unbiased=False)
-            nums = x.numel() / x.size(1)
+            var, mean = torch.var_mean(x, dim=(0, 1), unbiased=False)
+            nums = x.numel() / x.size(2)
         else:
             total = padding_mask.numel()
             nums = total - padding_mask.sum()
             ratio = total / nums
-            var, mean = torch.var_mean(x, dim=(0, 2), unbiased=False)
+            var, mean = torch.var_mean(x, dim=(0, 1), unbiased=False)
             square_mean = var + torch.square(mean)
             # adjust by ratio
             mean = mean * ratio
@@ -95,22 +95,25 @@ class MaskedBatchNorm(nn.Module):
         # convert running stats to float32
         self.running_mean = self.running_mean.float()
         self.running_var = self.running_var.float()
-        # B x D x L
-        x = x.permute(1, 2, 0)
+
         if padding_mask is not None:
-            inverse_mask = 1.0 - padding_mask.to(x)
-            x = x * inverse_mask.unsqueeze(1)
+            # L x B
+            inverse_mask = 1.0 - padding_mask.transpose(0, 1).to(x)
+            # L x B x D
+            x = x * inverse_mask.unsqueeze(2)
 
         if not need_sync:
             out = self._batch_norm_with_padding(x, padding_mask, exponential_average_factor)
         else:
+            # B x D x L
+            x = x.permute(1, 2, 0)
             weight = self.weight + 1.0 if self.affine else None
             out = sync_batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
                                                   self.running_mean, self.running_var,
                                                   self.eps, exponential_average_factor,
                                                   process_group, world_size)
 
-        out = out.permute(2, 0, 1)
+            out = out.permute(2, 0, 1)
         return out
 
     def extra_repr(self) -> str:
