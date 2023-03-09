@@ -5,7 +5,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from ._functions import MaskedBatchNorm as sync_batch_norm
+import torch.nn.functional as F
+from ._functions import MaskedBatchNorm as batch_norm_with_mask
 from ._functions import MaskedSyncBatchNorm as sync_batch_norm_with_mask
 
 
@@ -77,14 +78,13 @@ class MaskedBatchNorm(nn.Module):
                                                   self.running_mean, self.running_var,
                                                   self.eps, exponential_average_factor,
                                                   process_group, world_size)
-        elif self.training:
-            out = sync_batch_norm.apply(x, weight, self.bias, padding_mask,
-                                        self.running_mean, self.running_var,
-                                        self.eps, exponential_average_factor)
+        elif self.training and padding_mask is not None:
+            out = batch_norm_with_mask.apply(x, weight, self.bias, padding_mask,
+                                             self.running_mean, self.running_var,
+                                             self.eps, exponential_average_factor)
         else:
-            mean, var = self.running_mean, self.running_var
-            invstd = torch.rsqrt(var + self.eps)
-            out = torch.batch_norm_elemt(x, weight, self.bias, mean, invstd, self.eps)
+            out = F.batch_norm(x, self.running_mean, self.running_var, weight, self.bias,
+                               self.training, exponential_average_factor, self.eps)
 
         out = out.permute(2, 0, 1)
         return out
