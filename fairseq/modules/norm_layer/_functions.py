@@ -19,17 +19,22 @@ class MaskedBatchNorm(Function):
             # & invstd, but they still needs to participate the all_gather
             # collective communication to unblock other peer processes.
             raise RuntimeError('empty input')
-
-        total = padding_mask.numel()
-        count = total - padding_mask.sum()
-        var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
-        square_mean = var + torch.square(mean)
-        # adjust by ratio
-        count = count.to(mean)
-        ratio = total / count
-        mean = mean * ratio
-        var = square_mean * ratio - torch.square(mean)
-        bias_corr = count / (count - 1.0)
+        elif padding_mask is None:
+            var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
+            nums = x.numel() // x.size(1)
+            count = torch.full((1,), nums, dtype=mean.dtype, device=mean.device)
+            bias_corr = nums / (nums - 1.0)
+        else:
+            total = padding_mask.numel()
+            count = total - padding_mask.sum()
+            var, mean = torch.var_mean(x.float(), dim=(0, 2), unbiased=False)
+            square_mean = var + torch.square(mean)
+            # adjust by ratio
+            count = count.to(mean)
+            ratio = total / count
+            mean = mean * ratio
+            var = square_mean * ratio - torch.square(mean)
+            bias_corr = count / (count - 1.0)
 
         # update running stats
         running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
