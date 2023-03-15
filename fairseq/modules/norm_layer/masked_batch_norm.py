@@ -24,7 +24,7 @@ class MaskedBatchNorm(nn.Module):
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
 
-        # TODO: avoid running stats to be casted to fp16
+        # TODO: avoid running stats to be destroyed by overflows
         self.register_buffer('running_mean', torch.zeros(num_features))
         self.register_buffer('running_var', torch.ones(num_features))
         self.register_buffer('num_batches_tracked', torch.zeros(1))
@@ -58,10 +58,6 @@ class MaskedBatchNorm(nn.Module):
             else:
                 world_size = torch.distributed.get_world_size(process_group)
             need_sync = world_size > 1
-
-        # convert running stats to float32
-        self.running_mean = self.running_mean.float()
-        self.running_var = self.running_var.float()
 
         # B x D x L
         x = x.permute(1, 2, 0)

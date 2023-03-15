@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from fairseq import utils
 from fairseq.checkpoint_utils import prune_state_dict
 from fairseq.data import Dictionary
+from fairseq.modules import MaskedBatchNorm
 from fairseq.models import FairseqDecoder, FairseqEncoder
 from torch import Tensor
 
@@ -44,6 +45,12 @@ class BaseFairseqModel(nn.Module):
             if hasattr(module, 'moving_parameters'):
                 for name, param in module.moving_parameters():
                     yield param
+
+    def fp32_buffers(self):
+        for module_name, module in self.named_modules():
+            if isinstance(module, MaskedBatchNorm):
+                module.running_mean = module.running_mean.float()
+                module.running_var = module.running_var.float()
 
     def get_targets(self, sample, net_output):
         """Get targets from either the sample or the net's output."""
