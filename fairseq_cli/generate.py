@@ -92,6 +92,7 @@ def _main(args, output_file):
         model.prepare_for_inference_(args)
         if args.fp16:
             model.half()
+            model.fp32_buffers()
         if use_cuda:
             model.cuda()
 
