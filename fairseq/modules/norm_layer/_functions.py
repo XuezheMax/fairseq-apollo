@@ -41,7 +41,7 @@ class MaskedBatchNorm(Function):
         running_var.mul_(1.0 - momentum).add_(var, alpha=momentum * bias_corr)  # unbias var estimator for running var
 
         invstd = torch.rsqrt(var + eps)
-        self.save_for_backward(x, weight.float(), mean, invstd, count.to(torch.int32).view(1))
+        self.save_for_backward(x, weight, mean, invstd, count.to(torch.int32).view(1))
         # apply element-wise normalization
         out = torch.batch_norm_elemt(x, weight, bias, mean, invstd, eps)
         return out
@@ -51,7 +51,9 @@ class MaskedBatchNorm(Function):
         if not grad_output.is_contiguous(memory_format=torch.channels_last):
             grad_output = grad_output.contiguous()
         saved_input, weight, mean, invstd, count_tensor = self.saved_tensors
-        grad_input = grad_weight = grad_bias = None
+        grad_input = None
+        if weight is not None:
+            weight = weight.float()
 
         # calculate local stats as well as grad_weight / grad_bias
         sum_dy, sum_dy_xmu, grad_weight, grad_bias = torch.batch_norm_backward_reduce(
@@ -158,7 +160,7 @@ class MaskedSyncBatchNorm(Function):
             count_all.view(-1)
         )
 
-        self.save_for_backward(x, weight.float(), mean, invstd, count_all.to(torch.int32))
+        self.save_for_backward(x, weight, mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
 
         # apply element-wise normalization
@@ -170,7 +172,10 @@ class MaskedSyncBatchNorm(Function):
         if not grad_output.is_contiguous(memory_format=torch.channels_last):
             grad_output = grad_output.contiguous()
         saved_input, weight, mean, invstd, count_tensor = self.saved_tensors
-        grad_input = grad_weight = grad_bias = None
+        grad_input = None
+        if weight is not None:
+            weight = weight.float()
+
         process_group = self.process_group
 
         # calculate local stats as well as grad_weight / grad_bias
