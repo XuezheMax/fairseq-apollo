@@ -35,6 +35,8 @@ class MaskedBatchNorm(Function):
             mean = mean * ratio
             var = square_mean * ratio - torch.square(mean)
             bias_corr = count / (count - 1.0)
+            # fill padding with mean
+            x = x + mean.to(x).unsqueeze(1) * padding_mask.to(x).unsqueeze(1)
 
         # update running stats
         running_mean.mul_(1.0 - momentum).add_(mean, alpha=momentum)
@@ -159,6 +161,10 @@ class MaskedSyncBatchNorm(Function):
             eps,
             count_all.view(-1)
         )
+
+        if padding_mask is not None:
+            # fill padding with mean
+            x = x + mean.to(x).unsqueeze(1) * padding_mask.to(x).unsqueeze(1)
 
         self.save_for_backward(x, weight, mean, invstd, count_all.to(torch.int32))
         self.process_group = process_group
