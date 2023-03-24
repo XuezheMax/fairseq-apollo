@@ -125,12 +125,12 @@ class MovingAverageGatedAttention(nn.Module):
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
         if padding_mask is not None:
-            # B x K x 1
-            lengths = slen - padding_mask.sum(dim=-1, keepdim=True)
-            # B x K x 1 x 1
-            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).to(q).unsqueeze(-1)
             # B x K x C
             inverse_mask = 1.0 - padding_mask.to(q)
+            # B x K x 1
+            lengths = inverse_mask.sum(dim=-1, keepdim=True)
+            # B x K x 1 x 1
+            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
         else:
             len_scale = 1.0 / math.sqrt(slen)
             inverse_mask = None
