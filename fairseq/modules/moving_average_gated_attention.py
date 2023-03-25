@@ -71,8 +71,11 @@ class MovingAverageGatedAttention(nn.Module):
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
+        self.mx_proj = nn.Linear(embed_dim, hdim + 2 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
+        # parameters for query & key
+        self.z_weight = Parameter(torch.Tensor(2, embed_dim // 2, zdim))
+        self.z_bias = Parameter(torch.Tensor(2, zdim))
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
 
@@ -104,20 +107,24 @@ class MovingAverageGatedAttention(nn.Module):
             nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.z_weight, mean=0.0, std=std)
         elif mode == 'he':
             a = math.sqrt(5.0)
             nn.init.kaiming_normal_(self.v_proj.weight, a=a)
             nn.init.kaiming_normal_(self.mx_proj.weight, a=a)
             nn.init.kaiming_normal_(self.h_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.z_weight, a=math.sqrt(2.0))  # fan-in is d/2
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.v_proj.weight)
             nn.init.xavier_uniform_(self.mx_proj.weight)
             nn.init.xavier_uniform_(self.h_proj.weight)
+            nn.init.xavier_uniform_(self.z_weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
         # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
+        nn.init.constant_(self.z_bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
         nn.init.constant_(self.beta, 0.0)
@@ -238,13 +245,18 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, r, hx = torch.split(base, [self.embed_dim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x S
+
+        # L x B x 2 x D -> L x 2 x B x D/2
+        mx = mx.view(seq_len, bsz, 2, -1).transpose(1, 2)
+        # L x 2 x B x D/2,  2 x D/2 x S -> L x 2 x B x S -> L x B x 2 x S
+        z = torch.matmul(mx, self.z_weight).transpose(1, 2) + self.z_bias
+        # L x B x 2 x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
-        z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
+        # L x B x 2 x S
+        z = z * (self.gamma + 1.0) + self.beta
         # L x B x 2 x S -> L x B x S
         q, k = torch.unbind(z, dim=2)
         # L x B x E
