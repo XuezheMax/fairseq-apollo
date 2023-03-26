@@ -92,10 +92,10 @@ class BaseMovingLayer(nn.Module):
         if self.complex:
             k = k.real
 
-        k_f = torch.fft.rfft(k, n=2 * length)
+        k_f = torch.fft.rfft(k, n=2 * length, norm="forward")
         x_f = torch.fft.rfft(x, n=2 * length)
         # B x D x L
-        out = torch.fft.irfft(x_f * k_f, n=2 * length)[..., 0:length]
+        out = torch.fft.irfft(x_f * k_f, n=2 * length, norm="forward")[..., 0:length]
         if ox is not None:
             out = out + ox
 
@@ -171,10 +171,10 @@ class BaseMovingLayer(nn.Module):
                 else:
                     k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
-            k_f = torch.fft.rfft(k, n=fft_len)
+            k_f = torch.fft.rfft(k, n=fft_len, norm="forward")
             x_f = torch.fft.rfft(x.float(), n=fft_len)
             # B x D x L
-            out = torch.fft.irfft(x_f * k_f, n=fft_len)[..., :seq_len]
+            out = torch.fft.irfft(x_f * k_f, n=fft_len, norm="forward")[..., :seq_len]
             out = out.to(x)
             # B x D x L -> L x B x D
             out = F.silu(out.permute(2, 0, 1) + residual)
