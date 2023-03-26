@@ -70,7 +70,7 @@ class MovingAverageGatedAttention(nn.Module):
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
-        self.mx_proj = nn.Linear(embed_dim, 2 * zdim + hdim + 2 * embed_dim, bias=True)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -124,12 +124,12 @@ class MovingAverageGatedAttention(nn.Module):
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
         if padding_mask is not None:
+            # B x K x 1
+            lengths = slen - padding_mask.sum(dim=-1, keepdim=True)
+            # B x K x 1 x 1
+            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).to(q).unsqueeze(-1)
             # B x K x C
             inverse_mask = 1.0 - padding_mask.to(q)
-            # B x K x 1
-            lengths = inverse_mask.sum(dim=-1, keepdim=True)
-            # B x K x 1 x 1
-            len_scale = torch.rsqrt(lengths.clamp(min=1.0)).unsqueeze(-1)
         else:
             len_scale = 1.0 / math.sqrt(slen)
             inverse_mask = None
@@ -235,16 +235,15 @@ class MovingAverageGatedAttention(nn.Module):
         mx = self.move(x, padding_mask, incremental_state)
         mx = self.hidden_dropout(mx)
 
-        # L x B x D -> L x B x (D+2S+E+D)
+        # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, 2 * self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
-        # L x B x 2 x S
-        z = z.view(seq_len, bsz, 2, self.zdim)
+        # L x B x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x 2 x S
-        z = z * (self.gamma + 1.0) + self.beta
+        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
+        z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
         # L x B x 2 x S -> L x B x S
         q, k = torch.unbind(z, dim=2)
         # L x B x E
