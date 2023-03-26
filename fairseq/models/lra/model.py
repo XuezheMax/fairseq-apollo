@@ -398,7 +398,7 @@ def mega_lra_listop(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
     args.layer_type = getattr(args, 'layer_type', 'mega')
     args.encoder_hidden_dim = getattr(args, 'encoder_hidden_dim', 160)
-    args.z_dim = getattr(args, 'z_dim', 48)
+    args.z_dim = getattr(args, 'z_dim', 64)
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
