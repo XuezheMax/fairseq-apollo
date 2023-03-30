@@ -69,7 +69,7 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
+        self.kv_proj = nn.Linear(embed_dim, zdim + hdim, bias=True)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
         self.gamma = Parameter(torch.Tensor(2, zdim))
@@ -100,22 +100,22 @@ class MovingAverageGatedAttention(nn.Module):
         # weights
         if mode == 'bert':
             std = 0.02
-            nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.kv_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.mx_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         elif mode == 'he':
             a = math.sqrt(5.0)
-            nn.init.kaiming_normal_(self.v_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.kv_proj.weight, a=a)
             nn.init.kaiming_normal_(self.mx_proj.weight, a=a)
             nn.init.kaiming_normal_(self.h_proj.weight, a=a)
         elif mode == 'xavier':
-            nn.init.xavier_uniform_(self.v_proj.weight)
+            nn.init.xavier_uniform_(self.kv_proj.weight)
             nn.init.xavier_uniform_(self.mx_proj.weight)
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
         # bias
-        nn.init.constant_(self.v_proj.bias, 0.0)
+        nn.init.constant_(self.kv_proj.bias, 0.0)
         nn.init.constant_(self.mx_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
@@ -228,8 +228,13 @@ class MovingAverageGatedAttention(nn.Module):
         # batchnorm
         x = self.norm(x, padding_mask)
 
+        gamma = self.gamma + 1.0
+        beta = self.beta
         # L x B x E
-        v = F.silu(self.v_proj(x))
+        kv = self.kv_proj(x)
+        k, v = torch.split(kv, [self.zdim, self.hdim], dim=-1)
+        v = F.silu(v)
+        k = F.normalize(k, p=2, dim=-1, eps=1e-5) * gamma[0] + beta[0]
 
         # L x B x D
         mx = self.move(x, padding_mask, incremental_state)
@@ -237,15 +242,11 @@ class MovingAverageGatedAttention(nn.Module):
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
+        u, q, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
         # L x B x D
         u = torch.sigmoid(u)
         # L x B x S
-        z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
-        z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
-        # L x B x 2 x S -> L x B x S
-        q, k = torch.unbind(z, dim=2)
+        q = F.normalize(q, p=2, dim=-1, eps=1e-5) * gamma[1] + beta[1]
         # L x B x E
         r = F.silu(r)
 
