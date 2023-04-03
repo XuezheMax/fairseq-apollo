@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fairseq.modules import (
-    MaskedBatchNorm,
+    TimeNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -103,7 +103,7 @@ class MegaLRAEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = MaskedBatchNorm(embedding_dim, affine=norm_affine, eps=norm_eps)
+        self.final_norm = TimeNorm(embedding_dim, affine=norm_affine, eps=norm_eps, causal=False)
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm):
         if embedding_type == 'sparse':

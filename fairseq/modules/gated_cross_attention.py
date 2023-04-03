@@ -122,11 +122,11 @@ class GatedCrossAttention(nn.Module):
         slen = q.size(1) if pidx is None else pidx + 1
         if key_padding_mask is not None:
             # B x L1
-            inverse_mask = 1.0 - key_padding_mask.type_as(q)
+            inverse_mask = 1.0 - key_padding_mask.to(q)
             # B
-            lengths = inverse_mask.sum(dim=-1)
+            lengths = slen - key_padding_mask.sum(dim=-1)
             # B x 1 x 1
-            len_scale = torch.rsqrt(lengths).view(bsz, 1, 1)
+            len_scale = torch.rsqrt(lengths).to(q).view(bsz, 1, 1)
         else:
             len_scale = 1.0 / math.sqrt(clen)
             inverse_mask = None
@@ -148,9 +148,9 @@ class GatedCrossAttention(nn.Module):
             return qk
 
         if self.attention_activation == 'relu2':
-            attn_weights = utils.relu2(qk).type_as(qk)
+            attn_weights = utils.relu2(qk).to(qk)
         elif self.attention_activation == 'laplace':
-            attn_weights = utils.laplace(qk).type_as(qk)
+            attn_weights = utils.laplace(qk).to(qk)
         else:
             raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
 
@@ -182,7 +182,7 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return qk
 
-        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).type_as(qk)
+        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).to(qk)
         return attn_weights
 
     def forward(

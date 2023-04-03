@@ -7,11 +7,11 @@ import torch
 import torch.nn as nn
 
 
-class TimeAwareLayerNorm(nn.Module):
+class TimeNorm(nn.Module):
     def __init__(self, num_features: int, eps: float = 1e-5, affine: bool = True, causal: bool = False,
                  device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(TimeAwareLayerNorm, self).__init__()
+        super(TimeNorm, self).__init__()
         self.num_features = num_features
         self.eps = eps
         self.causal = causal
@@ -32,26 +32,32 @@ class TimeAwareLayerNorm(nn.Module):
 
     def _forward_noncausal(self, x, padding_mask):
         if padding_mask is None:
-            # 1 x B x 1
-            var, mean = torch.var_mean(x, dim=(0, 2), keepdim=True, unbiased=False)
+            # 1 x B x D
+            var, mean = torch.var_mean(x.float(), dim=0, keepdim=True, unbiased=False)
         else:
-            slen, bsz, num_feats = x.size()
-            total = slen * num_feats
+            slen = x.size(0)
             # B x 1
-            count = total - padding_mask.sum(dim=1, keepdim=True) * num_feats
-            # 1 x B x 1
-            var, mean = torch.var_mean(x, dim=(0, 2), keepdim=True, unbiased=False)
+            count = slen - padding_mask.sum(dim=1, keepdim=True)
+            # 1 x B x D
+            var, mean = torch.var_mean(x.float(), dim=0, keepdim=True, unbiased=False)
             square_mean = var + torch.square(mean)
             # adjust by ratio
-            count = count.to(mean)
-            ratio = total / count
+            # B x 1
+            ratio = slen / count
+            # 1 x B x D
             mean = mean * ratio
             var = square_mean * ratio - torch.square(mean)
 
-        # 1 x B x 1
-        invstd = torch.rsqrt(var + self.eps)
+        # 1 x B x D
+        mean = mean.to(x)
+        invstd = torch.rsqrt(var + self.eps).to(x)
+
         # L x B x D
-        out = (x - mean) * invstd
+        if self.affine:
+            weight = self.weight + 1.0
+            out = (x - mean) * (weight * invstd) + self.bias
+        else:
+            out = (x - mean) * invstd
         return out
 
     def _forward_causal(self, x, padding_mask):
@@ -65,15 +71,9 @@ class TimeAwareLayerNorm(nn.Module):
             x = x * inverse_mask.unsqueeze(2)
 
         if self.causal:
-            out = self._forward_causal(x.float(), padding_mask)
+            out = self._forward_causal(x, padding_mask)
         else:
-            out = self._forward_noncausal(x.float(), padding_mask)
-
-        # L x B x D
-        out = out.to(x)
-        if self.weight is not None:
-            weight = self.weight + 1.0
-            out = out * weight + self.bias
+            out = self._forward_noncausal(x, padding_mask)
 
         return out
 
