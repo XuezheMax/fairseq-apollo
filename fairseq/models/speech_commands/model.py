@@ -43,7 +43,15 @@ class SCRawModel(FairseqEncoderModel):
         self.sentence_out_dim = args.sentence_class_num
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.sentence_projection_layer = nn.Linear(args.classifier_in_dim, self.sentence_out_dim, bias=False)
+        self.classifier = nn.ModuleList([])
+        assert args.classifier_layers > 0
+        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode))
+        self.classifier.extend([
+            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode)
+            for _ in range(args.classifier_layers - 1)
+        ])
+        self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
+        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
         nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
@@ -75,6 +83,8 @@ class SCRawModel(FairseqEncoderModel):
 
         # misc params
         parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'], help='activation function for attention mechanism')
+        parser.add_argument('--classifier-activation-fn', choices=utils.get_available_activation_fns(),
+                            help='Which activation function to use for classifier layer.')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0, help='LayerDrop probability for encoder')
 
         parser.add_argument('--sen-rep-type', choices=['cls', 'mp'])
@@ -93,7 +103,10 @@ class SCRawModel(FairseqEncoderModel):
         sentence_rep = self.encoder(src_tokens, src_lengths)
         sentence_rep = sentence_rep[1]
 
-        sentence_logits = self.sentence_projection_layer(self.dropout_module(sentence_rep))
+        for layer in self.classifier:
+            sentence_rep = self.dropout_module(self.classifier_activation(layer(sentence_rep)))
+
+        sentence_logits = self.sentence_projection_layer(sentence_rep)
         return {'encoder_out': sentence_logits}
 
     def max_positions(self):
@@ -167,7 +180,10 @@ def base_architecture(args):
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
 
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2 * args.encoder_embed_dim)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
+    args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
     args.sent_loss = getattr(args, 'sent_loss', True)
 

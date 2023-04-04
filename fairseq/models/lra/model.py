@@ -50,7 +50,15 @@ class LRAModel(FairseqEncoderModel):
         self.lm_output_learned_bias = None
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.sentence_projection_layer = nn.Linear(args.classifier_in_dim, self.sentence_out_dim, bias=False)
+        self.classifier = nn.ModuleList([])
+        assert args.classifier_layers > 0
+        self.classifier.append(Linear(args.classifier_in_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode))
+        self.classifier.extend([
+            Linear(args.classifier_out_dim, args.classifier_out_dim, bias=True, init_mode=args.init_mode)
+            for _ in range(args.classifier_layers - 1)
+        ])
+        self.classifier_activation = utils.get_activation_fn(args.classifier_activation_fn)
+        self.sentence_projection_layer = nn.Linear(args.classifier_out_dim, self.sentence_out_dim, bias=False)
         nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
@@ -122,6 +130,9 @@ class LRAModel(FairseqEncoderModel):
                             help='activation function to use')
         parser.add_argument('--attention-activation-fn', choices=['softmax', 'relu2', 'laplace'],
                             help='activation function for attention mechanism')
+        parser.add_argument('--classifier-activation-fn',
+                            choices=utils.get_available_activation_fns(),
+                            help='Which activation function to use for classifier layer.')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
         parser.add_argument('--encoder-layerdrop', type=float, metavar='D', default=0,
@@ -167,7 +178,10 @@ class LRAModel(FairseqEncoderModel):
         else:
             sentence_rep = sentence_rep[1][1].mean(dim=0)
 
-        sentence_logits = self.sentence_projection_layer(self.dropout_module(sentence_rep))
+        for layer in self.classifier:
+            sentence_rep = self.dropout_module(self.classifier_activation(layer(sentence_rep)))
+
+        sentence_logits = self.sentence_projection_layer(sentence_rep)
         return {'encoder_out': sentence_logits}
 
     def max_positions(self):
@@ -336,6 +350,7 @@ def base_architecture(args):
     args.share_encoder_input_output_embed = getattr(args, 'share_encoder_input_output_embed', False)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.no_token_positional_embeddings = getattr(args, 'no_token_positional_embeddings', False)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 2048)
 
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.sent_loss = getattr(args, 'sent_loss', True)
@@ -348,6 +363,8 @@ def base_architecture(args):
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
 
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_activation_fn = getattr(args, 'classifier_activation_fn', 'gelu')
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.normalize_embedding = getattr(args, 'normalize_embedding', False)
     args.embedding_max_norm = getattr(args, 'embedding_max_norm', False)
@@ -385,6 +402,8 @@ def mega_lra_listop(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 80)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 160)
     args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 2002)
@@ -401,6 +420,8 @@ def transformer_lra_imdb_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 256)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 1024)
     base_architecture(args)
 
 
@@ -418,6 +439,8 @@ def flash_lra_imdb(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.max_positions = getattr(args, 'max_positions', 4002)
     base_architecture(args)
 
@@ -431,6 +454,8 @@ def mega_lra_imdb(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 4002)
@@ -447,6 +472,8 @@ def transformer_lra_aan_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 512)
     base_architecture(args)
 
 
@@ -466,6 +493,8 @@ def mega_lra_aan(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.max_positions = getattr(args, 'max_positions', 8003)
@@ -480,6 +509,8 @@ def transformer_lra_cifar10(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 1)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
@@ -500,6 +531,8 @@ def flash_lra_cifar10(args):
     args.z_dim = getattr(args, 'z_dim', 128)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 192)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 512)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
@@ -514,6 +547,8 @@ def mega_lra_cifar10(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 8)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 160)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 320)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.chunk_size = getattr(args, 'chunk_size', 1024)
     args.truncation_length = getattr(args, 'truncation_length', 0)
@@ -529,6 +564,8 @@ def transformer_lra_pf32(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 1)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 4)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.max_positions = getattr(args, 'max_positions', 1026)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
@@ -551,6 +588,8 @@ def flash_lra_pf32(args):
     args.z_dim = getattr(args, 'z_dim', 64)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 384)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.max_positions = getattr(args, 'max_positions', 1024)
     base_architecture(args)
@@ -565,6 +604,8 @@ def mega_lra_pf32(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 256)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 1024)
     args.truncation_length = getattr(args, 'truncation_length', 0)
@@ -589,6 +630,8 @@ def mega_lra_pf128(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 64)
+    args.classifier_layers = getattr(args, 'classifier_layers', 1)
+    args.classifier_out_dim = getattr(args, 'classifier_out_dim', 128)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 128 * 128)
     args.truncation_length = getattr(args, 'truncation_length', 0)
