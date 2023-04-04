@@ -4,9 +4,11 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Optional, Tuple, List, Union
+import math
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from fairseq.modules import (
     TimeNorm,
@@ -115,6 +117,24 @@ class MegaSCRawEncoder(nn.Module):
         ])
 
         self.final_norm = TimeNorm(embedding_dim, affine=norm_affine, eps=norm_eps, causal=False)
+        self.final_proj = nn.Linear(embedding_dim, embedding_dim)
+
+        self.reset_parameters(init_mode)
+
+    def reset_parameters(self, mode):
+        # weights
+        if mode == 'bert':
+            std = 0.02
+            nn.init.normal_(self.final_proj.weight, mean=0.0, std=std)
+        elif mode == 'he':
+            a = math.sqrt(5.0)
+            nn.init.kaiming_normal_(self.final_proj.weight, a=a)
+        elif mode == 'xavier':
+            nn.init.xavier_uniform_(self.final_proj.weight)
+        else:
+            raise ValueError('Unknown init mode: {}'.format(mode))
+        # bias
+        nn.init.constant_(self.final_proj.bias, 0.0)
 
     def forward(
         self,
@@ -144,6 +164,7 @@ class MegaSCRawEncoder(nn.Module):
                 inner_states.append(x)
 
         x = self.final_norm(x)
+        x = F.silu(self.final_proj(x))
 
         if self.sen_rep_type == 'mp':
             sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
