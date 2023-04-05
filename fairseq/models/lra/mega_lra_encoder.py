@@ -183,7 +183,7 @@ class MegaLRAEncoder(nn.Module):
                 inner_states.append(x)
 
         x = self.final_norm(x, padding_mask)
-        x = F.silu(self.final_proj(x))
+        x = F.silu(self.final_proj(x) + x)
 
         if inverse_mask is not None:
             x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
