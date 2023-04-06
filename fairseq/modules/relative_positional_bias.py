@@ -48,45 +48,47 @@ class RotaryRelativePositionalBias(nn.Module):
         super().__init__()
         assert embed_dim % 2 == 0
         self.embed_dim = embed_dim
-        self.scale = 1.0 / math.sqrt(embed_dim)
         self.max_positions = max_positions
-        self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(max_positions, embed_dim)
-        self.alpha = nn.Parameter(torch.Tensor(1, embed_dim))
-        self.beta = nn.Parameter(torch.Tensor(1, embed_dim))
+        self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(max_positions, embed_dim)
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        std = 1.0 / math.sqrt(self.embed_dim)
-        nn.init.normal_(self.alpha, mean=0.0, std=std)
-        nn.init.normal_(self.beta, mean=0.0, std=std)
 
     @staticmethod
-    def get_sinusoid_embeddings(max_positions: int, embedding_dim: int):
+    def get_sinusoid_freqs(max_positions: int, embedding_dim: int):
         half_dim = embedding_dim // 2
-        emb = math.log(10000) / half_dim
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
-        emb = torch.arange(max_positions, dtype=torch.float).unsqueeze(1) * emb.unsqueeze(0)
-        return torch.sin(emb), torch.cos(emb)
+        freqs = math.log(10000) / half_dim
+        freqs = torch.exp(torch.arange(half_dim, dtype=torch.float) * -freqs)
+        # C x D/2
+        freqs = torch.arange(max_positions, dtype=torch.float).unsqueeze(1) * freqs.unsqueeze(0)
+        # C x D
+        freqs = freqs.repeat_interleave(2, dim=-1)
+        return torch.sin(freqs), torch.cos(freqs)
 
-    def rotary(self, x):
-        n, d = x.size()
-        x1, x2 = torch.chunk(x, 2, dim=-1)
-        if self.sine is None or n > self.sine.size(0):
-            self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_embeddings(n, d)
-            self.max_positions = n
+    def rotate_half(self, x):
+        B, N, C, D = x.shape
+        x = x.reshape((B, N, C, D // 2, 2))
+        x1, x2 = x.unbind(dim=-1)
+        x = torch.stack((-x2, x1), dim=-1)
+        B, N, C, D, E = x.shape
+        return x.reshape((B, N, C, D * E))
+
+    def rotary(self, x, sidx):
+        B, N, C, D = x.shape
+        eidx = sidx + C
+        if self.sine is None or eidx > self.sine.size(0):
+            self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(eidx, D)
+            self.max_positions = eidx
+        # C x D
         self.sine = self.sine.to(self._float_tensor)
         self.cosine = self.cosine.to(self._float_tensor)
 
-        sin = self.sine[:n]
-        cos = self.cosine[:n]
-        return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=1)
+        sin = self.sine[sidx:eidx]
+        cos = self.cosine[sidx:eidx]
+        return x * cos + self.rotate_half(x) * sin
 
-    def forward(self, seq_len):
-        a = self.rotary(self.alpha.expand(seq_len, self.embed_dim))
-        b = self.rotary(self.beta.expand(seq_len, self.embed_dim))
-        t = torch.einsum('mk,nk->mn', a, b) * self.scale
-        return t
+    def forward(self, xq, xk, qidx=0):
+        xq = self.rotary(xq, qidx)
+        xk = self.rotary(xk, 0)
+        return xq, xk
 
     def extra_repr(self) -> str:
         return 'dim={}, max positions={}'.format(self.embed_dim, self.max_positions)

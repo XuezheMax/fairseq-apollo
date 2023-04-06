@@ -139,15 +139,26 @@ class MovingAverageGatedAttention(nn.Module):
             # C x 1
             len_scale = torch.rsqrt(attn_mask.float().sum(dim=-1, keepdim=True)).to(q)
 
-        # C x C
-        bias = self.rel_pos_bias(slen)
-        if slen != q.size(2):
-            assert q.size(2) == 1
-            # 1 x C
-            bias = bias[-1:]
-
-        # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
+        if isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
+            # C x C
+            bias = self.rel_pos_bias(slen)
+            if slen != q.size(2):
+                assert q.size(2) == 1
+                # 1 x C
+                bias = bias[-1:]
+            # B x K x C x C
+            qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
+        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+            if slen != q.size(2):
+                assert q.size(2) == 1
+                qidx = slen - 1
+            else:
+                qidx = 0
+            q, k = self.rel_pos_bias(q, k, qidx=qidx)
+            # B x K x C x C
+            qk = torch.matmul(q, k.transpose(2, 3)) * len_scale
+        else:
+            raise ValueError('unknown relative position bias')
 
         if before_attn_fn:
             return qk
@@ -169,15 +180,26 @@ class MovingAverageGatedAttention(nn.Module):
 
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
         slen = k.size(2)
-        # C x C
-        bias = self.rel_pos_bias(slen)
-        if slen != q.size(2):
-            assert q.size(2) == 1
-            # 1 x C
-            bias = bias[-1:]
-
-        # B x K x C x C
-        qk = torch.matmul(q, k.transpose(2, 3)) + bias
+        if isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
+            # C x C
+            bias = self.rel_pos_bias(slen)
+            if slen != q.size(2):
+                assert q.size(2) == 1
+                # 1 x C
+                bias = bias[-1:]
+            # B x K x C x C
+            qk = torch.matmul(q, k.transpose(2, 3)) + bias
+        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+            if slen != q.size(2):
+                assert q.size(2) == 1
+                qidx = slen - 1
+            else:
+                qidx = 0
+            q, k = self.rel_pos_bias(q, k, qidx=qidx)
+            # B x K x C x C
+            qk = torch.matmul(q, k.transpose(2, 3))
+        else:
+            raise ValueError('unknown relative position bias')
 
         if attn_mask is not None:
             qk = qk + attn_mask
