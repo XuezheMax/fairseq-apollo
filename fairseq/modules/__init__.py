@@ -21,7 +21,7 @@ from .kmeans_vector_quantizer import KmeansVectorQuantizer
 from .layer_drop import LayerDropModuleList
 from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm, RMSNorm
 from .norm_layer.masked_batch_norm import MaskedBatchNorm
-from .norm_layer.time_norm import TimeNorm
+from .norm_layer.time_norm import TimeLayerNorm, TimeRMSNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
 from .positional_embedding import PositionalEmbedding
@@ -74,7 +74,8 @@ __all__ = [
     'LayerNorm',
     'RMSNorm',
     'MaskedBatchNorm',
-    'TimeNorm',
+    'TimeLayerNorm',
+    'TimeRMSNorm',
     'LearnedPositionalEmbedding',
     'LightweightConv1dTBC',
     'LightweightConv',

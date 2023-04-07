@@ -21,7 +21,7 @@ from fairseq.models import (
 from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     FairseqDropout,
-    TimeNorm,
+    TimeRMSNorm,
     MegaEncoderLayer,
     MegaDecoderLayer
 )
@@ -249,7 +249,7 @@ class MegaEncoder(FairseqEncoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = TimeNorm(embed_dim, affine=norm_affine, eps=args.norm_eps, causal=False)
+        self.final_norm = TimeRMSNorm(embed_dim, affine=norm_affine, eps=args.norm_eps, causal=False)
 
     def build_encoder_layer(self, args, layer_scale):
         return MegaEncoderLayer(args, layer_scale=layer_scale)
@@ -430,7 +430,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = TimeNorm(embed_dim, affine=norm_affine, eps=args.norm_eps, causal=True)
+        self.final_norm = TimeRMSNorm(embed_dim, affine=norm_affine, eps=args.norm_eps, causal=True)
 
         if args.representation_dim is not None:
             self.num_features = args.representation_dim

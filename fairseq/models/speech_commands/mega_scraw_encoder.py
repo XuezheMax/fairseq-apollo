@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fairseq.modules import (
-    TimeNorm,
+    TimeRMSNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -116,7 +116,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = TimeNorm(embedding_dim, affine=norm_affine, eps=norm_eps, causal=False)
+        self.final_norm = TimeRMSNorm(embedding_dim, affine=norm_affine, eps=norm_eps, causal=False)
         self.final_proj = nn.Linear(embedding_dim, embedding_dim)
 
         self.reset_parameters(init_mode)
