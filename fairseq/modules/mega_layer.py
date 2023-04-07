@@ -135,7 +135,7 @@ class MegaDecoderLayer(nn.Module):
             norm_type=args.norm_type,
             norm_affine=not args.no_affine_norm,
             norm_eps=args.norm_eps,
-            rel_pos_bias=args.rel_pos_bias,
+            rel_pos_bias=None,
             max_positions=max(args.max_target_positions, args.max_source_positions),
             init_mode=args.init_mode,
         )

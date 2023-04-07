@@ -34,7 +34,7 @@ class GatedCrossAttention(nn.Module):
         norm_type='layernorm',
         norm_affine=True,
         norm_eps=1e-5,
-        rel_pos_bias='simple',
+        rel_pos_bias=None,
         max_positions=1024,
         export=False,
         init_mode='bert',
@@ -67,7 +67,9 @@ class GatedCrossAttention(nn.Module):
         self.beta = Parameter(torch.Tensor(2, zdim))
 
         self.max_positions = max_positions
-        if rel_pos_bias == 'simple':
+        if rel_pos_bias is None:
+            self.rel_pos_bias = None
+        elif rel_pos_bias == 'simple':
             self.rel_pos_bias = SimpleRelativePositionalBias(max_positions)
         elif rel_pos_bias == 'rotary':
             self.rel_pos_bias = RotaryRelativePositionalBias(zdim, max_positions)
@@ -131,18 +133,38 @@ class GatedCrossAttention(nn.Module):
             len_scale = 1.0 / math.sqrt(clen)
             inverse_mask = None
 
-        # L x L1
-        bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
-        if pidx is not None:
-            assert q.size(1) == 1
-            # L1
-            bias = bias[pidx]
+        if self.rel_pos_bias is None:
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2)) * len_scale
+        elif isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
+            # L x L1
+            bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
+            if pidx is not None:
+                assert q.size(1) == 1
+                # L1
+                bias = bias[pidx]
+            else:
+                # L2 x L1
+                bias = bias[:slen]
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2)) * len_scale + bias
+        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+            if pidx is not None:
+                assert q.size(1) == 1
+                qidx = pidx
+            else:
+                qidx = 0
+            # B x 1 x L x D
+            q = q.unsqueeze(1)
+            k = k.unsqueeze(1)
+            q, k = self.rel_pos_bias(q, k, qidx=qidx)
+            # B x L x D
+            q = q.squeeze(1)
+            k = k.squeeze(1)
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2)) * len_scale
         else:
-            # L2 x L1
-            bias = bias[:slen]
-
-        # B x L2 x L1
-        qk = torch.bmm(q, k.transpose(1, 2)) * len_scale + bias
+            raise ValueError('unknown relative position bias')
 
         if before_attn_fn:
             return qk
@@ -163,18 +185,38 @@ class GatedCrossAttention(nn.Module):
         bsz, clen, _ = k.size()
         slen = q.size(1) if pidx is None else pidx + 1
 
-        # L x L1
-        bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
-        if pidx is not None:
-            assert q.size(1) == 1
-            # L1
-            bias = bias[pidx]
+        if self.rel_pos_bias is None:
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2))
+        elif isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
+            # L x L1
+            bias = self.rel_pos_bias(max(slen, clen))[:, :clen]
+            if pidx is not None:
+                assert q.size(1) == 1
+                # L1
+                bias = bias[pidx]
+            else:
+                # L2 x L1
+                bias = bias[:slen]
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2)) + bias
+        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+            if pidx is not None:
+                assert q.size(1) == 1
+                qidx = pidx
+            else:
+                qidx = 0
+            # B x 1 x L x D
+            q = q.unsqueeze(1)
+            k = k.unsqueeze(1)
+            q, k = self.rel_pos_bias(q, k, qidx=qidx)
+            # B x L x D
+            q = q.squeeze(1)
+            k = k.squeeze(1)
+            # B x L2 x L1
+            qk = torch.bmm(q, k.transpose(1, 2))
         else:
-            # L2 x L1
-            bias = bias[:slen]
-
-        # B x L2 x L1
-        qk = torch.bmm(q, k.transpose(1, 2)) + bias
+            raise ValueError('unknown relative position bias')
 
         if key_padding_mask is not None:
             qk = qk.masked_fill(key_padding_mask.unsqueeze(1).to(torch.bool), float('-inf'))
