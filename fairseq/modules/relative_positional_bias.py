@@ -17,7 +17,7 @@ class SimpleRelativePositionalBias(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.constant_(self.rel_pos_bias, 0.0)
+        nn.init.normal_(self.rel_pos_bias, mean=0, std=0.02)
 
     def forward(self, seq_len):
         if seq_len > self.max_positions:
