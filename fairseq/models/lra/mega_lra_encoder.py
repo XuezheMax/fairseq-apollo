@@ -68,7 +68,6 @@ class MegaLRAEncoder(nn.Module):
         assert embedding_type in ['sparse', 'linear']
         self.embed_tokens = self.build_embedding(self.embedding_type, self.embedding_dim, self.vocab_size, self.padding_idx, embed_max_norm)
         self.embedding_dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
-        self.embed_scale = math.sqrt(embedding_dim)
 
         if self.layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.layerdrop)
@@ -125,11 +124,8 @@ class MegaLRAEncoder(nn.Module):
 
     def build_embedding(self, embedding_type, embedding_dim, vocab_size, padding_idx, embed_max_norm):
         if embedding_type == 'sparse':
-            max_norm = 1.0 if embed_max_norm else None
+            max_norm = math.sqrt(embedding_dim) if embed_max_norm else None
             embed_tokens = nn.Embedding(vocab_size, embedding_dim, padding_idx, max_norm=max_norm)
-            std = 1.0 / math.sqrt(embedding_dim)
-            nn.init.normal_(embed_tokens.weight, mean=0, std=std)
-            nn.init.constant_(embed_tokens.weight[padding_idx], 0)
             return embed_tokens
         else:
             embed_tokens = RealNumberEmbedding(embedding_dim)
@@ -154,7 +150,7 @@ class MegaLRAEncoder(nn.Module):
             if not self.traceable and not self.tpu and not padding_mask.any():
                 padding_mask = None
             # B x T -> B x T x D
-            x = self.embed_tokens(tokens) * self.embed_scale
+            x = self.embed_tokens(tokens)
         else:
             padding_mask = None
             # B x T -> B x T x D
