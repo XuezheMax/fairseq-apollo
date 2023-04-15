@@ -81,7 +81,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
 
         # D x N x 1
         alpha = torch.sigmoid(self.alpha.float())
-        delta = (1.0 + torch.erf(self.delta.float())) * 0.5
+        delta = torch.sigmoid(self.delta.float())
         # coeffs
         p = alpha
         q = (1.0 - alpha * delta) * c
