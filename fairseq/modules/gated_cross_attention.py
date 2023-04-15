@@ -60,8 +60,8 @@ class GatedCrossAttention(nn.Module):
             raise ValueError('unknown norm type: {}'.format(norm_type))
 
         self.v_proj = nn.Linear(embed_dim, embed_dim, bias=True)
-        self.z_proj = nn.Linear(embed_dim, zdim, bias=True)
-        self.ru_proj = nn.Linear(embed_dim, 2 * embed_dim, bias=True)
+        self.k_proj = nn.Linear(embed_dim, zdim, bias=True)
+        self.qru_proj = nn.Linear(embed_dim, 2 * embed_dim + zdim, bias=True)
         self.h_proj = nn.Linear(embed_dim, embed_dim, bias=True)
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -93,27 +93,27 @@ class GatedCrossAttention(nn.Module):
         if mode == 'bert':
             std = 0.02
             nn.init.normal_(self.v_proj.weight, mean=0.0, std=std)
-            nn.init.normal_(self.z_proj.weight, mean=0.0, std=std)
-            nn.init.normal_(self.ru_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.k_proj.weight, mean=0.0, std=std)
+            nn.init.normal_(self.qru_proj.weight, mean=0.0, std=std)
             nn.init.normal_(self.h_proj.weight, mean=0.0, std=std)
         elif mode == 'he':
             a = math.sqrt(5.0)
             nn.init.kaiming_normal_(self.v_proj.weight, a=a)
-            nn.init.kaiming_normal_(self.z_proj.weight, a=a)
-            nn.init.kaiming_normal_(self.ru_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.k_proj.weight, a=a)
+            nn.init.kaiming_normal_(self.qru_proj.weight, a=a)
             nn.init.kaiming_normal_(self.h_proj.weight, a=a)
         elif mode == 'xavier':
             nn.init.xavier_uniform_(self.v_proj.weight)
-            nn.init.xavier_uniform_(self.z_proj.weight)
-            nn.init.xavier_uniform_(self.ru_proj.weight)
+            nn.init.xavier_uniform_(self.k_proj.weight)
+            nn.init.xavier_uniform_(self.qru_proj.weight)
             nn.init.xavier_uniform_(self.h_proj.weight)
         else:
             raise ValueError('Unknown init mode: {}'.format(mode))
 
         # bias
         nn.init.constant_(self.v_proj.bias, 0.0)
-        nn.init.constant_(self.z_proj.bias, 0.0)
-        nn.init.constant_(self.ru_proj.bias, 0.0)
+        nn.init.constant_(self.k_proj.bias, 0.0)
+        nn.init.constant_(self.qru_proj.bias, 0.0)
         nn.init.constant_(self.h_proj.bias, 0.0)
         # gamma & beta
         nn.init.constant_(self.gamma, 0.0)
@@ -272,15 +272,13 @@ class GatedCrossAttention(nn.Module):
 
         nq = self.norm(query)
 
-        # L2 x B x S
         gamma = self.gamma + 1.0
-        q = self.z_proj(nq)
+        # L2 x B x (2*D+S)
+        base = self.qru_proj(nq)
+        q, u, r = torch.split(base, [self.zdim, self.embed_dim, self.embed_dim], dim=-1)
+        # L2 x B x S
         q = F.normalize(q, p=2, dim=-1, eps=1e-5)
         q = q * gamma[0] + self.beta[0]
-
-        # L2 x B x 2*D
-        ur = self.ru_proj(nq)
-        u, r = torch.split(ur, [self.embed_dim, self.embed_dim], dim=-1)
         # L2 x B x D
         u = torch.sigmoid(u)
         r = F.silu(r)
@@ -290,7 +288,7 @@ class GatedCrossAttention(nn.Module):
             k = v = None
         else:
             # L1 x B x S
-            k = self.z_proj(key)
+            k = self.k_proj(key)
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
             k = k * gamma[1] + self.beta[1]
             # L1 x B x D
