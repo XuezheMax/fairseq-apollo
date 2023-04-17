@@ -40,10 +40,10 @@ class BaseFairseqModel(nn.Module):
         """Build a new model instance."""
         raise NotImplementedError("Model must implement the build_model method")
 
-    def get_moving_parameters(self):
+    def parameters_no_weight_decay(self):
         for module_name, module in self.named_modules():
-            if hasattr(module, 'moving_parameters'):
-                for name, param in module.moving_parameters():
+            if hasattr(module, 'parameters_no_weight_decay'):
+                for name, param in module.parameters_no_weight_decay():
                     yield param
 
     def fp32_buffers(self):

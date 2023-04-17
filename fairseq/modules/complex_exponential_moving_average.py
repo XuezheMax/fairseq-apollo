@@ -40,9 +40,9 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self._kernel = None
         self._coeffs = None
 
-        self.register_moving_parameters('alpha', self.alpha)
-        self.register_moving_parameters('delta', self.delta)
-        self.register_moving_parameters('theta', self.theta)
+        self.register_parameters_no_weight_decay('alpha', self.alpha)
+        self.register_parameters_no_weight_decay('delta', self.delta)
+        self.register_parameters_no_weight_decay('theta', self.theta)
 
         self.reset_parameters()
 

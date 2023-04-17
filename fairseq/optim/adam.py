@@ -54,8 +54,8 @@ class FairseqAdam(FairseqOptimizer):
                             help='epsilon for Adam optimizer')
         parser.add_argument('--weight-decay', '--wd', default=0.0, type=float, metavar='WD',
                             help='weight decay')
-        parser.add_argument('--moving-weight-decay', '--mwd', default=None, type=float, metavar='MWD',
-                            help='weight decay for moving parameters')
+        parser.add_argument('--no-weight-decay-parameters', default=False, action='store_true',
+                            help='no weight decay for specific parameters')
         # Maintain backward compatibility with old checkpoints that have stored
         # optimizer state as fairseq.optim.adam.Adam.
         parser.add_argument(

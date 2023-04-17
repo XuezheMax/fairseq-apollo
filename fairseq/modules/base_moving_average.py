@@ -20,7 +20,7 @@ class BaseMovingLayer(nn.Module):
 
     def __init__(self, bidirectional=False, truncation=None, shift=True):
         super().__init__()
-        self._moving_parameters = OrderedDict()
+        self._parameters_no_weight_decay = OrderedDict()
         self.complex = False
         self.bidirectional = bidirectional
         self.truncation = truncation
@@ -34,11 +34,11 @@ class BaseMovingLayer(nn.Module):
     def prepare_for_tpu_(self, **kwargs):
         self.tpu = True
 
-    def register_moving_parameters(self, name, param):
-        self._moving_parameters[name] = param
+    def register_parameters_no_weight_decay(self, name, param):
+        self._parameters_no_weight_decay[name] = param
 
-    def moving_parameters(self):
-        for name, param in self._moving_parameters.items():
+    def parameters_no_weight_decay(self):
+        for name, param in self._parameters_no_weight_decay.items():
             yield name, param
 
     def _calc_coeffs(self):

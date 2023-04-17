@@ -190,23 +190,23 @@ class Trainer(object):
         return self._lr_scheduler
 
     def _build_optimizer(self):
-        mwd = getattr(self.args, 'moving_weight_decay', None)
-        if mwd is not None:
-            logger.info('using weight decay {} for moving layer parameters'.format(mwd))
-            move_params = list(
+        filter_no_weight_decay = getattr(self.args, 'parameters_no_weight_decay', False)
+        if filter_no_weight_decay:
+            logger.info('no weight decay for specific parameters')
+            filtered_params = list(
                 filter(
                     lambda p: p.requires_grad,
-                    self.model.get_moving_parameters(),
+                    self.model.parameters_no_weight_decay(),
                 )
             )
-            mp = set(move_params)
+            mp = set(filtered_params)
             params = list(
                 filter(
                     lambda p: p.requires_grad and p not in mp,
                     chain(self.model.parameters(), self.criterion.parameters()),
                 )
             )
-            params = [{'params': params}, {'params': move_params, 'weight_decay': mwd}]
+            params = [{'params': params}, {'params': filtered_params, 'weight_decay': 0.0}]
         else:
             params = list(
                 filter(
