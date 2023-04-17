@@ -190,7 +190,7 @@ class Trainer(object):
         return self._lr_scheduler
 
     def _build_optimizer(self):
-        filter_no_weight_decay = getattr(self.args, 'parameters_no_weight_decay', False)
+        filter_no_weight_decay = getattr(self.args, 'no_weight_decay_parameters', False)
         if filter_no_weight_decay:
             logger.info('no weight decay for specific parameters')
             filtered_params = list(
