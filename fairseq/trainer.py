@@ -196,7 +196,7 @@ class Trainer(object):
             filtered_params = list(
                 filter(
                     lambda p: p.requires_grad,
-                    self.model.parameters_no_weight_decay(),
+                    self.model.get_parameters_no_weight_decay(),
                 )
             )
             mp = set(filtered_params)
