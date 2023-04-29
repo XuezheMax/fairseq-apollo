@@ -53,7 +53,7 @@ class LRAModel(FairseqEncoderModel):
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         if args.pre_logits:
             self.pre_logits = nn.Sequential(
-                Linear(args.classifier_in_dim, args.encoder_embed_dim),
+                Linear(args.classifier_in_dim, args.encoder_embed_dim, bias=True),
                 nn.GELU(),
                 FairseqDropout(args.dropout, module_name=self.__class__.__name__)
             )
