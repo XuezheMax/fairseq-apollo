@@ -127,16 +127,17 @@ class LRATextTask(FairseqTask):
             src_ds = PrependTokenDataset(src_ds, self.cls_idx)
 
         src1_ds = make_dataset('src1-bin', self.source_dictionary)
-        if src1_ds is None:
-            src_tokens = src_ds
+        if src1_ds is not None:
+            if self.prepend_cls:
+                src1_ds = PrependTokenDataset(src1_ds, self.cls_idx)
+            src1_tokens = TruncateDataset(src1_ds, self.args.max_positions)
         else:
-            src1_ds = PrependTokenDataset(src1_ds, self.source_dictionary.eos())
-            src_tokens = ConcatSentencesDataset(src_ds, src1_ds)
+            src1_tokens = None
 
         with data_utils.numpy_seed(self.args.seed):
-            shuffle = np.random.permutation(len(src_tokens))
+            shuffle = np.random.permutation(len(src_ds))
 
-        src_tokens = TruncateDataset(src_tokens, self.args.max_positions)
+        src_tokens = TruncateDataset(src_ds, self.args.max_positions)
         dataset = {
             'id': IdDataset(),
             'net_input': {
@@ -149,6 +150,16 @@ class LRATextTask(FairseqTask):
             'nsentences': NumSamplesDataset(),
             'ntokens': NumelDataset(src_tokens, reduce=True),
         }
+        if src1_tokens is not None:
+            dataset.update(
+                net_input1={
+                    'src_tokens': RightPadDataset(
+                        src1_tokens,
+                        pad_idx=self.source_dictionary.pad(),
+                    ),
+                    'src_lengths': NumelDataset(src1_tokens, reduce=False),
+                },
+            )
 
         label_dataset = make_dataset('label-bin', self.label_dictionary)
         if label_dataset is not None:

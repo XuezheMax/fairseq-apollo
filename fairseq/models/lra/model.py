@@ -1,5 +1,6 @@
 import math
 
+import torch
 import torch.nn as nn
 
 from fairseq import utils
@@ -50,7 +51,18 @@ class LRAModel(FairseqEncoderModel):
         self.lm_output_learned_bias = None
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
-        self.sentence_projection_layer = nn.Linear(args.classifier_in_dim, self.sentence_out_dim, bias=False)
+        if args.pre_logits:
+            self.pre_logits = nn.Sequential(
+                Linear(args.classifier_in_dim, args.encoder_embed_dim),
+                nn.GELU(),
+                FairseqDropout(args.dropout, module_name=self.__class__.__name__)
+            )
+            num_features = args.encoder_embed_dim
+        else:
+            self.pre_logits = nn.Identity()
+            num_features = args.classifier_in_dim
+
+        self.sentence_projection_layer = nn.Linear(num_features, self.sentence_out_dim, bias=False)
         nn.init.xavier_uniform_(self.sentence_projection_layer.weight)
 
         self.sen_rep_type = getattr(args, "sen_rep_type", "cls")
@@ -167,7 +179,21 @@ class LRAModel(FairseqEncoderModel):
         else:
             sentence_rep = sentence_rep[1][1].mean(dim=0)
 
-        sentence_logits = self.sentence_projection_layer(self.dropout_module(sentence_rep))
+        if 'net_input1' in sample:
+            src1_tokens = sample['net_input1']['src_tokens']
+            src1_lengths = sample['net_input1']['src_lengths']
+            sentence1_rep = self.encoder(src1_tokens, src1_lengths)
+            if not self.use_p:
+                if self.layer_type in ['transformer', 'lstm', 'flash', 'mega']:
+                    sentence1_rep = sentence1_rep[1]
+                elif self.layer_type == 'luna':
+                    sentence1_rep = sentence1_rep[1][0]
+            else:
+                sentence1_rep = sentence1_rep[1][1].mean(dim=0)
+            concat_rep = [sentence_rep, sentence1_rep, sentence_rep * sentence1_rep, sentence_rep - sentence1_rep]
+            sentence_rep = torch.cat(concat_rep, dim=-1)
+
+        sentence_logits = self.sentence_projection_layer(self.pre_logits(self.dropout_module(sentence_rep)))
         return {'encoder_out': sentence_logits}
 
     def max_positions(self):
@@ -337,6 +363,7 @@ def base_architecture(args):
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.no_token_positional_embeddings = getattr(args, 'no_token_positional_embeddings', False)
 
+    args.pre_logits = getattr(args, 'pre_logits', False)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.sent_loss = getattr(args, 'sent_loss', True)
 
@@ -441,7 +468,7 @@ def mega_lra_imdb(args):
 @register_model_architecture('lra', 'transformer_lra_aan')
 def transformer_lra_aan_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.max_positions = getattr(args, 'max_positions', 8003)
+    args.max_positions = getattr(args, 'max_positions', 4002)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 512)
     args.encoder_layers = getattr(args, 'encoder_layers', 4)
@@ -466,9 +493,11 @@ def mega_lra_aan(args):
     args.n_dim = getattr(args, 'n_dim', 16)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 128)
+    args.classifier_in_dim = getattr(args, 'classifier_in_dim', args.encoder_embed_dim * 4)
+    args.pre_logits = getattr(args, 'pre_logits', True)
     args.chunk_size = getattr(args, 'chunk_size', -1)
     args.truncation_length = getattr(args, 'truncation_length', 0)
-    args.max_positions = getattr(args, 'max_positions', 8003)
+    args.max_positions = getattr(args, 'max_positions', 4002)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
 
