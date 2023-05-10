@@ -69,20 +69,23 @@ class TimeLayerNorm(nn.Module):
         return mean, invstd
 
     def _forward_causal(self, x, padding_mask):
-        # L+2 x B x D
-        x_aug = torch.cat([self.pseudo_embs.unsqueeze(1), x], dim=0).float()
+        # D
+        pseudo_embs = self.pseudo_embs.float()
+        pseudo_sum = pseudo_embs.sum(dim=0)
+        pseudo_ssum = torch.square(pseudo_embs).sum(dim=0)
 
-        slen = x_aug.size(0)
-        # L+2 x 1 x 1
-        positions = torch.arange(1, slen + 1).to(x_aug).view(slen, 1, 1)
-        # L+2 x B x D
-        mean = torch.cumsum(x_aug, dim=0) / positions
-        square_mean = torch.cumsum(torch.square(x_aug), dim=0) / positions
+        slen = x.size(0)
+        x_float = x.float()
+        # L x 1 x 1
+        positions = torch.arange(3, slen + 3).to(x_float).view(slen, 1, 1)
+        # L x B x D
+        mean = (torch.cumsum(x_float, dim=0) + pseudo_sum) / positions
+        square_mean = (torch.cumsum(torch.square(x_float), dim=0) + pseudo_ssum) / positions
         var = square_mean - torch.square(mean)
 
         # L x B x D
-        mean = mean[2:].to(x)
-        invstd = torch.rsqrt(var[2:] + self.eps).to(x)
+        mean = mean.to(x)
+        invstd = torch.rsqrt(var + self.eps).to(x)
 
         return mean, invstd
 
