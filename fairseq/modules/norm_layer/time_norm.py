@@ -2,11 +2,16 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import Union, List
+import math
+from typing import Dict, Optional
 import torch
+from torch import Tensor
 import torch.nn as nn
 
+from fairseq.incremental_decoding_utils import with_incremental_state
 
+
+@with_incremental_state
 class TimeLayerNorm(nn.Module):
     def __init__(self, num_features: int, eps: float = 1e-5, affine: bool = True, causal: bool = False,
                  device=None, dtype=None):
@@ -15,6 +20,11 @@ class TimeLayerNorm(nn.Module):
         self.num_features = num_features
         self.eps = eps
         self.causal = causal
+        if causal:
+            self.pseudo_embs = nn.Parameter(torch.empty(2, self.num_features, **factory_kwargs))
+        else:
+            self.register_parameter('pseudo_embs', None)
+
         self.affine = affine
         if self.affine:
             self.weight = nn.Parameter(torch.empty(self.num_features, **factory_kwargs))
@@ -26,6 +36,10 @@ class TimeLayerNorm(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
+        if self.causal:
+            std = 1.0 / math.sqrt(self.num_features)
+            nn.init.normal_(self.pseudo_embs, mean=0, std=std)
+
         if self.affine:
             nn.init.zeros_(self.weight)
             nn.init.zeros_(self.bias)
@@ -52,16 +66,25 @@ class TimeLayerNorm(nn.Module):
         mean = mean.to(x)
         invstd = torch.rsqrt(var + self.eps).to(x)
 
-        # L x B x D
-        if self.affine:
-            weight = self.weight + 1.0
-            out = (x - mean) * (weight * invstd) + self.bias
-        else:
-            out = (x - mean) * invstd
-        return out
+        return mean, invstd
 
     def _forward_causal(self, x, padding_mask):
-        raise NotImplementedError
+        # L+2 x B x D
+        x_aug = torch.cat([self.pseudo_embs.unsqueeze(1), x], dim=0).float()
+
+        slen = x_aug.size(0)
+        # L+2 x 1 x 1
+        positions = torch.arange(1, slen + 1).to(x_aug).view(slen, 1, 1)
+        # L+2 x B x D
+        mean = torch.cumsum(x_aug, dim=0) / positions
+        square_mean = torch.cumsum(torch.square(x_aug), dim=0) / positions
+        var = square_mean - torch.square(mean)
+
+        # L x B x D
+        mean = mean[2:].to(x)
+        invstd = torch.rsqrt(var[2:] + self.eps).to(x)
+
+        return mean, invstd
 
     def forward(self, x, padding_mask=None):
         if padding_mask is not None:
@@ -71,16 +94,49 @@ class TimeLayerNorm(nn.Module):
             x = x * inverse_mask.unsqueeze(2)
 
         if self.causal:
-            out = self._forward_causal(x, padding_mask)
+            mean, invstd = self._forward_causal(x, padding_mask)
         else:
-            out = self._forward_noncausal(x, padding_mask)
+            mean, invstd = self._forward_noncausal(x, padding_mask)
+
+        # L x B x D
+        if self.affine:
+            weight = self.weight + 1.0
+            out = (x - mean) * (weight * invstd) + self.bias
+        else:
+            out = (x - mean) * invstd
 
         return out
+
+    def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
+        result = self.get_incremental_state(incremental_state, "norm_state")
+        if result is not None:
+            return result
+        else:
+            empty_result: Dict[str, Optional[Tensor]] = {}
+            return empty_result
+
+    def _set_input_buffer(self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], buffer: Dict[str, Optional[Tensor]]):
+        return self.set_incremental_state(incremental_state, "norm_state", buffer)
+
+    @torch.jit.export
+    def reorder_incremental_state(
+            self, incremental_state: Dict[str, Dict[str, Optional[Tensor]]], new_order: Tensor
+    ):
+        """Reorder buffered internal state (for incremental generation)."""
+        input_buffer = self._get_input_buffer(incremental_state)
+        if input_buffer is not None:
+            for k in input_buffer.keys():
+                input_buffer_k = input_buffer[k]
+                if input_buffer_k is not None:
+                    input_buffer[k] = input_buffer_k.index_select(0, new_order)
+            incremental_state = self._set_input_buffer(incremental_state, input_buffer)
+        return incremental_state
 
     def extra_repr(self) -> str:
         return 'num_features={num_features}, eps={eps}, affine={affine}, causal={causal}'.format(**self.__dict__)
 
 
+@with_incremental_state
 class TimeRMSNorm(nn.Module):
     def __init__(self, num_features: int, eps: float = 1e-5, affine: bool = True, causal: bool = False,
                  device=None, dtype=None):
