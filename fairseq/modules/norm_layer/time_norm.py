@@ -68,20 +68,51 @@ class TimeLayerNorm(nn.Module):
 
         return mean, invstd
 
-    def _forward_causal(self, x, padding_mask):
-        # D
-        pseudo_embs = self.pseudo_embs.float()
-        pseudo_sum = pseudo_embs.sum(dim=0)
-        pseudo_ssum = torch.square(pseudo_embs).sum(dim=0)
-
+    def _forward_causal(self, x, padding_mask, incremental_state):
         slen = x.size(0)
+        bsz = x.size(1)
         x_float = x.float()
-        # L x 1 x 1
-        positions = torch.arange(3, slen + 3).to(x_float).view(slen, 1, 1)
+
+        prev_sum = None
+        prev_ssum = None
+        pidx = None
+        if incremental_state is not None:
+            saved_state = self._get_input_buffer(incremental_state)
+            if 'prev_sum' in saved_state:
+                prev_sum = saved_state['prev_sum']
+                assert 'prev_ssum' in saved_state and 'prev_num_steps' in saved_state
+                prev_ssum = saved_state['prev_ssum']
+                pidx = saved_state['prev_num_steps']
+        else:
+            saved_state = None
+
+        if prev_sum is None:
+            # D
+            pseudo_embs = self.pseudo_embs.float()
+            prev_sum = pseudo_embs.sum(dim=0)
+            prev_ssum = torch.square(pseudo_embs).sum(dim=0)
+            # B x 1
+            pidx = torch.full((bsz, 1), 3).to(x_float)
+
+        # 1 x B x 1 + L x 1 x 1 -> L x B x 1
+        positions = pidx.unsqueeze(0) + torch.arange(0, slen).to(x_float).view(slen, 1, 1)
         # L x B x D
-        mean = (torch.cumsum(x_float, dim=0) + pseudo_sum) / positions
-        square_mean = (torch.cumsum(torch.square(x_float), dim=0) + pseudo_ssum) / positions
+        curr_sum = torch.cumsum(x_float, dim=0) + prev_sum
+        mean = curr_sum / positions
+        curr_ssum = torch.cumsum(torch.square(x_float), dim=0) + prev_ssum
+        square_mean = curr_ssum / positions
         var = square_mean - torch.square(mean)
+
+        if incremental_state is not None:
+            if padding_mask is not None:
+                lengths = slen - padding_mask.sum(dim=-1, keepdim=True)
+            else:
+                lengths = slen
+            # B x D
+            saved_state['prev_sum'] = curr_sum[-1]
+            saved_state['prev_ssum'] = curr_ssum[-1]
+            saved_state['prev_num_steps'] = pidx + lengths
+            self._set_input_buffer(incremental_state, saved_state)
 
         # L x B x D
         mean = mean.to(x)
@@ -89,15 +120,26 @@ class TimeLayerNorm(nn.Module):
 
         return mean, invstd
 
-    def forward(self, x, padding_mask=None):
+    def forward(
+        self, x,
+        padding_mask=None,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+    ) -> Tensor:
+        """Input shape: Time x Batch x Channel
+
+        Args:
+            padding_mask (ByteTensor, optional): mask to exclude keys that are pads, of shape `(batch, src_len)`,
+            where padding elements are indicated by 1s.
+        """
         if padding_mask is not None:
             # L x B
             inverse_mask = 1.0 - padding_mask.transpose(0, 1).to(x)
             # L x B x D
             x = x * inverse_mask.unsqueeze(2)
 
+        assert self.causal or incremental_state is None, 'Non-causal TimeNorm does not support incremental state'
         if self.causal:
-            mean, invstd = self._forward_causal(x, padding_mask)
+            mean, invstd = self._forward_causal(x, padding_mask, incremental_state)
         else:
             mean, invstd = self._forward_noncausal(x, padding_mask)
 
