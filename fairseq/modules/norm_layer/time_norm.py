@@ -60,7 +60,7 @@ class TimeLayerNorm(nn.Module):
             ratio = slen / count
             # 1 x B x D
             mean = mean * ratio
-            var = var * ratio + square_mean * (ratio * (1.0 - ratio))
+            var = (var + square_mean * (1.0 - ratio)) * ratio
 
         # 1 x B x D
         mean = mean.to(x)
