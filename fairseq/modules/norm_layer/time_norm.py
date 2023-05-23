@@ -59,7 +59,7 @@ class TimeLayerNorm(nn.Module):
             ratio = slen / count
             # 1 x B x D
             mean = mean * ratio
-            var = var * ratio + mean * (1.0 / ratio - 1.0)
+            var = var * ratio + torch.square(mean) * (1.0 / ratio - 1.0)
 
         # 1 x B x D
         mean = mean.to(x)
