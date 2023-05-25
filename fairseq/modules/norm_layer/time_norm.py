@@ -54,13 +54,13 @@ class TimeLayerNorm(nn.Module):
             count = slen - padding_mask.sum(dim=1, keepdim=True)
             # 1 x B x D
             var, mean = torch.var_mean(x.float(), dim=0, keepdim=True, unbiased=False)
-            square_mean = torch.square(mean)
+            square_mean = var + torch.square(mean)
             # adjust by ratio
             # B x 1
             ratio = slen / count
             # 1 x B x D
             mean = mean * ratio
-            var = var * ratio + square_mean * ratio - torch.square(mean)
+            var = square_mean * ratio - torch.square(mean)
 
         # 1 x B x D
         mean = mean.to(x)
