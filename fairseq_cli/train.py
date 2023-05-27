@@ -435,6 +435,7 @@ def get_valid_stats(args, trainer, stats):
 
 
 def cli_main(modify_parser=None):
+    torch.backends.cuda.matmul.allow_tf32 = True
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
     if args.profile:

@@ -46,12 +46,6 @@ class BaseFairseqModel(nn.Module):
                 for name, param in module.parameters_no_weight_decay():
                     yield param
 
-    def fp32_buffers(self):
-        for module_name, module in self.named_modules():
-            if isinstance(module, MaskedBatchNorm):
-                module.running_mean = module.running_mean.float()
-                module.running_var = module.running_var.float()
-
     def get_targets(self, sample, net_output):
         """Get targets from either the sample or the net's output."""
         return sample["target"]

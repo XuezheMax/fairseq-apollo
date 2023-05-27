@@ -55,7 +55,6 @@ def main(args, override_args=None):
     for model in models:
         if use_fp16:
             model.half()
-            model.fp32_buffers()
         if use_cuda:
             model.cuda()
 
