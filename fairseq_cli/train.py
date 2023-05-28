@@ -59,6 +59,7 @@ def main(args):
 
     np.random.seed(args.seed)
     utils.set_torch_seed(args.seed)
+    torch.backends.cuda.matmul.allow_tf32 = True
 
     if distributed_utils.is_master(args):
         checkpoint_utils.verify_checkpoint_directory(args.save_dir)
@@ -435,7 +436,6 @@ def get_valid_stats(args, trainer, stats):
 
 
 def cli_main(modify_parser=None):
-    torch.backends.cuda.matmul.allow_tf32 = True
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser, modify_parser=modify_parser)
     if args.profile:
