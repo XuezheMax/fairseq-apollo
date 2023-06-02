@@ -42,7 +42,6 @@ class MovingAverageGatedAttention(nn.Module):
         truncation=None,
         norm_affine=True,
         norm_eps=1e-5,
-        causal_norm=False,
         rel_pos_bias='simple',
         max_positions=1024,
         init_mode='bert',
@@ -61,8 +60,9 @@ class MovingAverageGatedAttention(nn.Module):
         # Attention dropout is standard dropout
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
+        self.bidirectional = bidirectional
 
-        if causal_norm:
+        if not bidirectional:
             self.norm = TimestepNorm(embed_dim, eps=norm_eps)
         else:
             self.norm = TimeLayerNorm(embed_dim, affine=norm_affine, eps=norm_eps)
@@ -252,8 +252,11 @@ class MovingAverageGatedAttention(nn.Module):
             saved_state = None
 
         residual = x
-        # batchnorm
-        x = self.norm(x, padding_mask, incremental_state)
+
+        if self.bidirectional:
+            x = self.norm(x, padding_mask)
+        else:
+            x = self.norm(x, padding_mask, incremental_state)
 
         # L x B x E
         v = F.silu(self.v_proj(x))
@@ -432,6 +435,6 @@ class MovingAverageGatedAttention(nn.Module):
         return new_padding_mask
 
     def extra_repr(self) -> str:
-        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, init={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim,
-                                                                                           self.chunk_size, self.attention_activation,
-                                                                                           self.init_mode)
+        return 'edim={}, zdim={}, hdim={}, ndim={}, chunk={}, attn_act={}, bidir={}, init={}'.format(self.embed_dim, self.zdim, self.hdim, self.ndim,
+                                                                                                     self.chunk_size, self.attention_activation,
+                                                                                                     self.bidirectional, self.init_mode)

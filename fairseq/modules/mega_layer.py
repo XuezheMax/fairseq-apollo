@@ -46,7 +46,6 @@ class MegaEncoderLayer(nn.Module):
             attention_activation=args.attention_activation_fn,
             norm_affine=not args.no_affine_norm,
             norm_eps=args.norm_eps,
-            causal_norm=False,
             bidirectional=True,
             init_mode=args.init_mode,
         )
@@ -118,7 +117,6 @@ class MegaDecoderLayer(nn.Module):
             attention_activation=args.attention_activation_fn,
             norm_affine=not args.no_affine_norm,
             norm_eps=args.norm_eps,
-            causal_norm=True,
             bidirectional=False,
             init_mode=args.init_mode,
         )

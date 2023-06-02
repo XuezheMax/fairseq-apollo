@@ -57,7 +57,6 @@ class MegaSentenceEncoderLayer(nn.Module):
             truncation=truncation,
             norm_affine=norm_affine,
             norm_eps=norm_eps,
-            causal_norm=False,
             rel_pos_bias=rel_pos_bias,
             max_positions=max_positions,
             attention_activation=attention_activation,
