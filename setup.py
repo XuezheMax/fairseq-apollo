@@ -22,6 +22,17 @@ if sys.platform == 'darwin':
 else:
     extra_compile_args = ['-std=c++11', '-O3']
 
+CXX_FLAGS = [
+    "-O3",
+    "-std=c++17",
+]
+
+NVCC_FLAGS = [
+    # "-rdc=true",
+    "--expt-relaxed-constexpr",
+    "--expt-extended-lambda",
+]
+
 
 class NumpyExtension(Extension):
     """Source: https://stackoverflow.com/a/54128391"""
@@ -87,6 +98,23 @@ try:
                     'fairseq/clib/libnat_cuda/edit_dist.cu',
                     'fairseq/clib/libnat_cuda/binding.cpp'
                 ],
+            )])
+
+        extensions.extend([
+            cpp_extension.CUDAExtension(
+                'mega2_extension',
+                sources=[
+                    "fairseq/csrc/mega2_extension.cc",
+                    "fairset/csrc/ops/timestep_norm.cc",
+                    "fairseq/csrc/ops/timestep_norm_kernel.cu",
+                ],
+                include_dirs=[
+                    "fairseq/csrc",
+                ],
+                extra_compile_args={
+                    "cxx": CXX_FLAGS,
+                    "nvcc": CXX_FLAGS + NVCC_FLAGS,
+                },
             )])
     cmdclass['build_ext'] = cpp_extension.BuildExtension
 
