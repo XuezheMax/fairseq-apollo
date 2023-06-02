@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.autograd.function import FunctionCtx
 from torch.nn.parameter import Parameter
 
-import mega2_extension.ops as mega2_ops
+import fairseq.mega2_extension.ops as mega2_ops
 
 
 class TimestepNormFunc(torch.autograd.Function):

@@ -102,7 +102,7 @@ try:
 
         extensions.extend([
             cpp_extension.CUDAExtension(
-                'mega2_extension',
+                'fairseq.mega2_extension',
                 sources=[
                     "fairseq/csrc/mega2_extension.cc",
                     "fairset/csrc/ops/timestep_norm.cc",
