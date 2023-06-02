@@ -20,7 +20,7 @@ class TimestepNormFunc(torch.autograd.Function):
         prev_var: torch.Tensor,
         gamma: torch.Tensor,
         beta: torch.Tensor,
-        padding_mask: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
         eps: float = 1e-5
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         y, count, mean, var, cummean, cumvar = mega2_ops.timestep_norm_fwd(
@@ -51,14 +51,11 @@ timestep_norm = TimestepNormFunc.apply
 
 class TimestepNorm(nn.Module):
 
-    def __init__(self,
-                 num_features: int,
-                 prior_count: int = 2,
-                 eps: float = 1e-5) -> None:
+    def __init__(self, num_features: int, prior_count: int = 2, eps: float = 1e-5) -> None:
         super().__init__()
 
         self.num_features = num_features
-        self.register_buffer("prior_count", torch.full((num_features,), prior_count, dtype=torch.int64))
+        self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
         self.register_parameter("prior_mean", Parameter(torch.zeros(num_features, requires_grad=True)))
         self.register_parameter("prior_logv", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
@@ -68,18 +65,22 @@ class TimestepNorm(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        padding_mask: torch.Tensor,
         prev_count: Optional[torch.Tensor] = None,
         prev_mean: Optional[torch.Tensor] = None,
-        prev_var: Optional[torch.Tensor] = None
+        prev_var: Optional[torch.Tensor] = None,
+        padding_mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size = x.size(0)
         if prev_count is None:
-            prev_count = self.prior_count.expand(batch_size, -1).contiguous()
+            prev_count = self.prior_count.expand(batch_size).contiguous()
         if prev_mean is None:
             prev_mean = self.prior_mean.expand(batch_size, -1).contiguous()
         if prev_var is None:
             prev_var = self.prior_logv.exp().expand(batch_size, -1).contiguous()
 
         return timestep_norm(x, prev_count, prev_mean, prev_var,
-                             self.weight + 1.0, self.bias, padding_mask, self.eps)
+                             self.weight + 1.0, self.bias,
+                             padding_mask, self.eps)
+
+    def extra_repr(self) -> str:
+        return 'num_features={num_features}, eps={eps}'.format(**self.__dict__)
