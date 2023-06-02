@@ -90,32 +90,32 @@ try:
         )
     ])
 
-    if 'CUDA_HOME' in os.environ:
-        extensions.extend([
-            cpp_extension.CppExtension(
-                'fairseq.libnat_cuda',
-                sources=[
-                    'fairseq/clib/libnat_cuda/edit_dist.cu',
-                    'fairseq/clib/libnat_cuda/binding.cpp'
-                ],
-            )])
+    # if 'CUDA_HOME' in os.environ:
+    #     extensions.extend([
+    #         cpp_extension.CppExtension(
+    #             'fairseq.libnat_cuda',
+    #             sources=[
+    #                 'fairseq/clib/libnat_cuda/edit_dist.cu',
+    #                 'fairseq/clib/libnat_cuda/binding.cpp'
+    #             ],
+    #         )])
 
-        extensions.extend([
-            cpp_extension.CUDAExtension(
-                'fairseq.mega2_extension',
-                sources=[
-                    "fairseq/csrc/mega2_extension.cc",
-                    "fairset/csrc/ops/timestep_norm.cc",
-                    "fairseq/csrc/ops/timestep_norm_kernel.cu",
-                ],
-                include_dirs=[
-                    "fairseq/csrc",
-                ],
-                extra_compile_args={
-                    "cxx": CXX_FLAGS,
-                    "nvcc": CXX_FLAGS + NVCC_FLAGS,
-                },
-            )])
+    extensions.extend([
+        cpp_extension.CUDAExtension(
+            'fairseq.mega2_extension',
+            sources=[
+                "fairseq/csrc/mega2_extension.cc",
+                "fairset/csrc/ops/timestep_norm.cc",
+                "fairseq/csrc/ops/timestep_norm_kernel.cu",
+            ],
+            include_dirs=[
+                "fairseq/csrc",
+            ],
+            extra_compile_args={
+                "cxx": CXX_FLAGS,
+                "nvcc": CXX_FLAGS + NVCC_FLAGS,
+            },
+        )])
     cmdclass['build_ext'] = cpp_extension.BuildExtension
 
 except ImportError:
