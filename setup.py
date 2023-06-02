@@ -105,7 +105,7 @@ try:
             'fairseq.mega2_extension',
             sources=[
                 "fairseq/csrc/mega2_extension.cc",
-                "fairset/csrc/ops/timestep_norm.cc",
+                "fairseq/csrc/ops/timestep_norm.cc",
                 "fairseq/csrc/ops/timestep_norm_kernel.cu",
             ],
             include_dirs=[
