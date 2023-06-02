@@ -15,6 +15,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.time_norm import TimeLayerNorm
+from fairseq.modules.norm_layer.timestep_norm import TimestepNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 
@@ -61,7 +62,10 @@ class MovingAverageGatedAttention(nn.Module):
         self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
 
-        self.norm = TimeLayerNorm(embed_dim, affine=norm_affine, eps=norm_eps, causal=causal_norm)
+        if causal_norm:
+            self.norm = TimestepNorm(embed_dim, eps=norm_eps)
+        else:
+            self.norm = TimeLayerNorm(embed_dim, affine=norm_affine, eps=norm_eps)
 
         if moving_layer == 'ema':
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
