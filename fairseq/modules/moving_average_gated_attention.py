@@ -256,7 +256,8 @@ class MovingAverageGatedAttention(nn.Module):
         if self.bidirectional:
             x = self.norm(x, padding_mask)
         else:
-            x = self.norm(x, padding_mask, incremental_state)
+            x = self.norm(x, padding_mask=padding_mask,
+                          incremental_state=incremental_state)
 
         # L x B x E
         v = F.silu(self.v_proj(x))

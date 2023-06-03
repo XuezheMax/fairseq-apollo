@@ -594,7 +594,8 @@ class MegaDecoder(FairseqIncrementalDecoder):
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
 
-        x = self.final_norm(x, decoder_padding_mask, incremental_state)
+        x = self.final_norm(x, padding_mask=decoder_padding_mask,
+                            incremental_state=incremental_state)
         x = self.pre_logits(x)
 
         if inverse_mask is not None:

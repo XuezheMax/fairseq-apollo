@@ -368,7 +368,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                                      need_attn=False)
             inner_states.append(x)
 
-        x = self.final_norm(x, decoder_padding_mask, incremental_state)
+        x = self.final_norm(x, padding_mask=decoder_padding_mask,
+                            incremental_state=incremental_state)
         x = self.pre_logits(x)
 
         if inverse_mask is not None:
