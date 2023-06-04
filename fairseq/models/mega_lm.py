@@ -209,6 +209,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
 
         self.embed_tokens = embed_tokens
         self.embed_scale = None if args.no_scale_embedding else math.sqrt(embed_dim)
+        self.embedding_dropout = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
 
         self.layers = nn.ModuleList([])
         depth = args.decoder_layers
@@ -340,6 +341,8 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         decoder_padding_mask = prev_output_tokens.eq(self.padding_idx)
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
+
+        x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if decoder_padding_mask is not None:
