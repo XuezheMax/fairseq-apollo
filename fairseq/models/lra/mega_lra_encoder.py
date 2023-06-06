@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from fairseq.modules import (
-    TimeLayerNorm,
+    SequenceNorm,
     RealNumberEmbedding,
     LayerDropModuleList,
     MegaSentenceEncoderLayer,
@@ -103,7 +103,7 @@ class MegaLRAEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = TimeLayerNorm(embedding_dim, affine=norm_affine, eps=norm_eps)
+        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps)
         self.final_proj = nn.Linear(embedding_dim, embedding_dim)
 
         self.reset_parameters(init_mode)

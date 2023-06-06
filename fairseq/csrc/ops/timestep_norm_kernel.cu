@@ -57,7 +57,7 @@ __global__ void TimestepNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
     const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
     const T_ACC w = static_cast<T_ACC>(gamma[k]);
     const T_ACC b = static_cast<T_ACC>(beta[k]);
-    const bool mask = mask_ptr == nullptr ? false : mask_ptr[j];
+    const bool mask = mask_ptr != nullptr && mask_ptr[j];
     thrust::tie(m0, m1, m2) = cuda_utils::WelfordUpdate(m0, m1, m2, x);
     const T_ACC rstd = c10::cuda::compat::rsqrt(m2 + eps);
     Y_ptr[j * N + k] = mask ? T(0) : static_cast<T>((x - m1) * rstd * w + b);
@@ -115,7 +115,7 @@ __global__ void TimestepNormCUDABwdKernel(
     const T_ACC m1 = static_cast<T_ACC>(m1_ptr[(j + 1) * N + k]);
     const T_ACC m2 = static_cast<T_ACC>(m2_ptr[(j + 1) * N + k]);
     const T_ACC w = static_cast<T_ACC>(gamma[k]);
-    const bool mask = mask_ptr == nullptr ? false : mask_ptr[j];
+    const bool mask = mask_ptr != nullptr && mask_ptr[j];
     const T_ACC coef = T_ACC(1) / static_cast<T_ACC>(m0);
     const T_ACC rstd = c10::cuda::compat::rsqrt(m2 + eps);
     const T_ACC dy_rstd = y_grad * rstd;
@@ -169,8 +169,7 @@ void TimestepNormCUDAFwdImpl(
   const int64_t B = X.size(0);
   const int64_t L = X.size(1);
   const int64_t N = X.size(2);
-  const int64_t M =
-      (N + cuda_utils::kCUDANumThreads - 1) / cuda_utils::kCUDANumThreads;
+  const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
 
   const T* X_data = X.data_ptr<T>();
   const int64_t* prev_count_data = prev_count.data_ptr<int64_t>();
@@ -211,8 +210,7 @@ void TimestepNormCUDABwdImpl(
   const int64_t B = X.size(0);
   const int64_t L = X.size(1);
   const int64_t N = X.size(2);
-  const int64_t M =
-      (N + cuda_utils::kCUDANumThreads - 1) / cuda_utils::kCUDANumThreads;
+  const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
 
   torch::Tensor w_grad = torch::empty(
       {B, N}, gamma.options().dtype(c10::CppTypeToScalarType<T_ACC>::value));

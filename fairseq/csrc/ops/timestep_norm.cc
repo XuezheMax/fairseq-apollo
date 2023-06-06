@@ -12,7 +12,6 @@
 
 #include <cmath>
 #include <cstring>
-#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -79,7 +78,7 @@ void TimestepNormCPUFwdImpl(
       std::memcpy(cm2_ptr, prev_var_data + i * N, N * sizeof(T));
 
       for (int64_t j = 0; j < L; ++j) {
-        const bool mask = mask_ptr == nullptr ? false : mask_ptr[j];
+        const bool mask = mask_ptr != nullptr && mask_ptr[j];
         for (int64_t k = 0; k < N; ++k) {
           const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
           const T_ACC w = static_cast<T_ACC>(gamma_data[k]);
@@ -137,10 +136,10 @@ void TimestepNormCPUBwdImpl(
   T* gamma_grad_data = gamma_grad.data_ptr<T>();
   T* beta_grad_data = beta_grad.data_ptr<T>();
 
-  std::vector<T_ACC> u_grad(B * N, T(0));
-  std::vector<T_ACC> v_grad(B * N, T(0));
-  std::vector<T_ACC> w_grad(B * N, T(0));
-  std::vector<T_ACC> b_grad(B * N, T(0));
+  std::vector<T_ACC> u_grad(B * N, T_ACC(0));
+  std::vector<T_ACC> v_grad(B * N, T_ACC(0));
+  std::vector<T_ACC> w_grad(B * N, T_ACC(0));
+  std::vector<T_ACC> b_grad(B * N, T_ACC(0));
 
   at::parallel_for(0, B, 0, [&](int64_t begin, int64_t end) {
     for (int64_t i = begin; i < end; ++i) {
@@ -169,7 +168,7 @@ void TimestepNormCPUBwdImpl(
       }
 
       for (int64_t j = L - 1; j >= 0; --j) {
-        const bool mask = mask_ptr == nullptr ? false : mask_ptr[j];
+        const bool mask = mask_ptr != nullptr && mask_ptr[j];
         const T_ACC coef = T_ACC(1) / static_cast<T_ACC>(m0);
         for (int64_t k = 0; k < N; ++k) {
           const T_ACC y_grad = static_cast<T_ACC>(Y_grad_ptr[j * N + k]);
@@ -331,10 +330,8 @@ TimestepNormBwd(const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
 }
 
 void DefineTimestepNormOp(py::module& m) {
-  m.def("timestep_norm_fwd", &mega2::ops::TimestepNormFwd,
-        "TimestepNorm forward");
-  m.def("timestep_norm_bwd", &mega2::ops::TimestepNormBwd,
-        "TimestepNorm backward");
+  m.def("timestep_norm_fwd", &TimestepNormFwd, "TimestepNorm forward")
+      .def("timestep_norm_bwd", &TimestepNormBwd, "TimestepNorm backward");
 }
 
 }  // namespace ops

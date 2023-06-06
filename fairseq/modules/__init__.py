@@ -22,6 +22,7 @@ from .layer_drop import LayerDropModuleList
 from .norm_layer.layer_norm import Fp32LayerNorm, LayerNorm, RMSNorm
 from .norm_layer.masked_batch_norm import MaskedBatchNorm
 from .norm_layer.time_norm import TimeLayerNorm
+from .norm_layer.sequence_norm import SequenceNorm
 from .norm_layer.timestep_norm import TimestepNorm
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .real_number_embedding import RealNumberEmbedding
@@ -76,6 +77,7 @@ __all__ = [
     'RMSNorm',
     'MaskedBatchNorm',
     'TimeLayerNorm',
+    'SequenceNorm',
     'TimestepNorm',
     'LearnedPositionalEmbedding',
     'LightweightConv1dTBC',
