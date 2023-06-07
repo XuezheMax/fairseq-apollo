@@ -25,10 +25,9 @@ class TimestepNormFunc(torch.autograd.Function):
         padding_mask: Optional[torch.Tensor] = None,
         eps: float = 1e-5
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        y, count, mean, var, cummean, cumvar = mega2_ops.timestep_norm_fwd(
+        y, count, mean, var, cummean, cumrstd = mega2_ops.timestep_norm_fwd(
             x, prev_count, prev_mean, prev_var, gamma, beta, padding_mask, eps)
-        ctx.save_for_backward(x, count, cummean, cumvar, gamma, padding_mask)
-        ctx.eps = eps  # eps is not a Tensor
+        ctx.save_for_backward(x, prev_mean, count, cummean, cumrstd, gamma, padding_mask)
         return y, count, mean, var
 
     @staticmethod
@@ -38,12 +37,11 @@ class TimestepNormFunc(torch.autograd.Function):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, torch.Tensor,
                torch.Tensor, torch.Tensor, Optional[torch.Tensor],
                Optional[torch.Tensor]]:
-        x, count, cummean, cumvar, gamma, padding_mask = ctx.saved_tensors
-        eps = ctx.eps
+        (x, prev_mean, count, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
         (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
          beta_grad) = mega2_ops.timestep_norm_bwd(y_grad, mean_grad, var_grad,
-                                                  x, count, cummean, cumvar,
-                                                  gamma, padding_mask, eps)
+                                                  x, prev_mean, count, cummean,
+                                                  cumrstd, gamma, padding_mask)
         return (x_grad, None, prev_mean_grad, prev_var_grad, gamma_grad,
                 beta_grad, None, None)
 

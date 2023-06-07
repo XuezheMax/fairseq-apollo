@@ -27,7 +27,7 @@ void TimestepNormCPUFwdImpl(
     const torch::Tensor& gamma, const torch::Tensor& beta,
     const torch::Tensor& padding_mask, double eps, torch::Tensor& Y,
     torch::Tensor& count, torch::Tensor& mean, torch::Tensor& var,
-    torch::Tensor& cummean, torch::Tensor& cumvar) {
+    torch::Tensor& cummean, torch::Tensor& cumrstd) {
   using T_ACC = at::opmath_type<T>;
 
   const int64_t B = X.size(0);
@@ -48,7 +48,7 @@ void TimestepNormCPUFwdImpl(
   T* mean_data = mean.data_ptr<T>();
   T* var_data = var.data_ptr<T>();
   T* cummean_data = cummean.data_ptr<T>();
-  T* cumvar_data = cumvar.data_ptr<T>();
+  T* cumrstd_data = cumrstd.data_ptr<T>();
 
   std::vector<T_ACC> u(B * N, T_ACC(0));
   std::vector<T_ACC> v(B * N, T_ACC(0));
@@ -62,8 +62,8 @@ void TimestepNormCPUFwdImpl(
       T* Y_ptr = Y_data + i * L * N;
       T* m1_ptr = mean_data + i * N;
       T* m2_ptr = var_data + i * N;
-      T* cm1_ptr = cummean_data + i * (L + 1) * N;
-      T* cm2_ptr = cumvar_data + i * (L + 1) * N;
+      T* cu_ptr = cummean_data + i * L * N;
+      T* cr_ptr = cumrstd_data + i * L * N;
 
       T_ACC* u_ptr = u.data() + i * N;
       T_ACC* v_ptr = v.data() + i * N;
@@ -74,8 +74,6 @@ void TimestepNormCPUFwdImpl(
         u_ptr[j] = static_cast<T_ACC>(prev_mean_data[i * N + j]);
         v_ptr[j] = static_cast<T_ACC>(prev_var_data[i * N + j]);
       }
-      std::memcpy(cm1_ptr, prev_mean_data + i * N, N * sizeof(T));
-      std::memcpy(cm2_ptr, prev_var_data + i * N, N * sizeof(T));
 
       for (int64_t j = 0; j < L; ++j) {
         const bool mask = mask_ptr != nullptr && mask_ptr[j];
@@ -90,8 +88,8 @@ void TimestepNormCPUFwdImpl(
               mask ? T(0) : static_cast<T>((x - m1) * rstd * w + b);
           u_ptr[k] = mask ? u_ptr[k] : m1;
           v_ptr[k] = mask ? v_ptr[k] : m2;
-          cm1_ptr[(j + 1) * N + k] = static_cast<T>(m1);
-          cm2_ptr[(j + 1) * N + k] = static_cast<T>(m2);
+          cu_ptr[j * N + k] = static_cast<T>(m1);
+          cr_ptr[j * N + k] = static_cast<T>(rstd);
         }
         ++m0;
         count_data[i] = mask ? count_data[i] : m0;
@@ -108,11 +106,12 @@ template <typename T>
 void TimestepNormCPUBwdImpl(
     const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
     const torch::Tensor& var_grad, const torch::Tensor& X,
-    const torch::Tensor& count, const torch::Tensor& cummean,
-    const torch::Tensor& cumvar, const torch::Tensor& gamma,
-    const torch::Tensor& padding_mask, double eps, torch::Tensor& X_grad,
-    torch::Tensor& prev_mean_grad, torch::Tensor& prev_var_grad,
-    torch::Tensor& gamma_grad, torch::Tensor& beta_grad) {
+    const torch::Tensor& prev_mean, const torch::Tensor& count,
+    const torch::Tensor& cummean, const torch::Tensor& cumrstd,
+    const torch::Tensor& gamma, const torch::Tensor& padding_mask,
+    torch::Tensor& X_grad, torch::Tensor& prev_mean_grad,
+    torch::Tensor& prev_var_grad, torch::Tensor& gamma_grad,
+    torch::Tensor& beta_grad) {
   using T_ACC = at::opmath_type<T>;
 
   const int64_t B = X.size(0);
@@ -123,9 +122,10 @@ void TimestepNormCPUBwdImpl(
   const T* mean_grad_data = mean_grad.data_ptr<T>();
   const T* var_grad_data = var_grad.data_ptr<T>();
   const T* X_data = X.data_ptr<T>();
+  const T* prev_mean_data = prev_mean.data_ptr<T>();
   const int64_t* count_data = count.data_ptr<int64_t>();
   const T* cummean_data = cummean.data_ptr<T>();
-  const T* cumvar_data = cumvar.data_ptr<T>();
+  const T* cumrstd_data = cumrstd.data_ptr<T>();
   const T* gamma_data = gamma.data_ptr<T>();
   const bool* padding_mask_data =
       padding_mask.defined() ? padding_mask.data_ptr<bool>() : nullptr;
@@ -147,8 +147,8 @@ void TimestepNormCPUBwdImpl(
       const T* mean_grad_ptr = mean_grad_data + i * N;
       const T* var_grad_ptr = var_grad_data + i * N;
       const T* X_ptr = X_data + i * L * N;
-      const T* m1_ptr = cummean_data + i * (L + 1) * N;
-      const T* m2_ptr = cumvar_data + i * (L + 1) * N;
+      const T* mean_ptr = cummean_data + i * L * N;
+      const T* rstd_ptr = cumrstd_data + i * L * N;
       const bool* mask_ptr =
           padding_mask_data == nullptr ? nullptr : padding_mask_data + i * L;
 
@@ -168,25 +168,26 @@ void TimestepNormCPUBwdImpl(
       }
 
       for (int64_t j = L - 1; j >= 0; --j) {
+        const T* prev_mean_ptr =
+            j == 0 ? prev_mean_data + i * N : mean_ptr + (j - 1) * N;
         const bool mask = mask_ptr != nullptr && mask_ptr[j];
         const T_ACC coef = T_ACC(1) / static_cast<T_ACC>(m0);
         for (int64_t k = 0; k < N; ++k) {
           const T_ACC y_grad = static_cast<T_ACC>(Y_grad_ptr[j * N + k]);
           const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
-          const T_ACC prev_m1 = static_cast<T_ACC>(m1_ptr[j * N + k]);
-          const T_ACC m1 = static_cast<T_ACC>(m1_ptr[(j + 1) * N + k]);
-          const T_ACC m2 = static_cast<T_ACC>(m2_ptr[(j + 1) * N + k]);
+          const T_ACC prev_u = static_cast<T_ACC>(prev_mean_ptr[k]);
+          const T_ACC u = static_cast<T_ACC>(mean_ptr[j * N + k]);
+          const T_ACC r = static_cast<T_ACC>(rstd_ptr[j * N + k]);
           const T_ACC w = static_cast<T_ACC>(gamma_data[k]);
-          const T_ACC rstd = T_ACC(1) / std::sqrt(m2 + static_cast<T_ACC>(eps));
-          const T_ACC dy_rstd = y_grad * rstd;
-          const T_ACC delta = x - m1;
-          const T_ACC dm2 = v_grad_ptr[k] - (T_ACC(0.5) * y_grad * w * delta *
-                                             utils::Cube(rstd));
+          const T_ACC dy_rstd = y_grad * r;
+          const T_ACC delta = x - u;
+          const T_ACC dm2 = v_grad_ptr[k] -
+                            (T_ACC(0.5) * y_grad * w * delta * utils::Cube(r));
           const T_ACC dm1 =
-              u_grad_ptr[k] - (w * dy_rstd + coef * dm2 * (x - prev_m1));
+              u_grad_ptr[k] - (w * dy_rstd + coef * dm2 * (x - prev_u));
 
           const T_ACC x_grad =
-              w * dy_rstd + dm2 * coef * (delta + x - prev_m1) + coef * dm1;
+              w * dy_rstd + dm2 * coef * (delta + x - prev_u) + coef * dm1;
           X_grad_ptr[j * N + k] = mask ? T(0) : static_cast<T>(x_grad);
           u_grad_ptr[k] = mask ? u_grad_ptr[k]
                                : (T_ACC(1) - coef) * dm1 - coef * delta * dm2;
@@ -243,10 +244,10 @@ TimestepNormCPUFwd(const torch::Tensor& X, const torch::Tensor& prev_count,
   torch::Tensor var = torch::empty_like(
       prev_var, prev_var.options().memory_format(at::MemoryFormat::Contiguous));
   torch::Tensor cummean = torch::empty(
-      {B, L + 1, N},
+      {B, L, N},
       prev_mean.options().memory_format(at::MemoryFormat::Contiguous));
-  torch::Tensor cumvar = torch::empty(
-      {B, L + 1, N},
+  torch::Tensor cumrstd = torch::empty(
+      {B, L, N},
       prev_var.options().memory_format(at::MemoryFormat::Contiguous));
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -256,9 +257,9 @@ TimestepNormCPUFwd(const torch::Tensor& X, const torch::Tensor& prev_count,
             *(prev_mean.expect_contiguous()), *(prev_var.expect_contiguous()),
             *(gamma.expect_contiguous()), *(beta.expect_contiguous()),
             *(padding_mask_maybe_owned->expect_contiguous()), eps, Y, count,
-            mean, var, cummean, cumvar);
+            mean, var, cummean, cumrstd);
       });
-  return std::make_tuple(Y, count, mean, var, cummean, cumvar);
+  return std::make_tuple(Y, count, mean, var, cummean, cumrstd);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
@@ -280,10 +281,10 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
            torch::Tensor>
 TimestepNormCPUBwd(const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
                    const torch::Tensor& var_grad, const torch::Tensor& X,
-                   const torch::Tensor& count, const torch::Tensor& cummean,
-                   const torch::Tensor& cumvar, const torch::Tensor& gamma,
-                   const c10::optional<torch::Tensor>& padding_mask,
-                   double eps) {
+                   const torch::Tensor& prev_mean, const torch::Tensor& count,
+                   const torch::Tensor& cummean, const torch::Tensor& cumrstd,
+                   const torch::Tensor& gamma,
+                   const c10::optional<torch::Tensor>& padding_mask) {
   c10::MaybeOwned<torch::Tensor> padding_mask_maybe_owned =
       at::borrow_from_optional_tensor(padding_mask);
 
@@ -303,10 +304,11 @@ TimestepNormCPUBwd(const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
       at::kHalf, at::kBFloat16, X.scalar_type(), "TimestepNormCPUBwd", [&]() {
         TimestepNormCPUBwdImpl<scalar_t>(
             *(Y_grad.expect_contiguous()), *(mean_grad.expect_contiguous()),
-            *(var_grad.expect_contiguous()), *(X.expect_contiguous()), count,
-            *(cummean.expect_contiguous()), *(cumvar.expect_contiguous()),
+            *(var_grad.expect_contiguous()), *(X.expect_contiguous()),
+            *(prev_mean.expect_contiguous()), *(count.expect_contiguous()),
+            *(cummean.expect_contiguous()), *(cumrstd.expect_contiguous()),
             *(gamma.expect_contiguous()),
-            *(padding_mask_maybe_owned->expect_contiguous()), eps, X_grad,
+            *(padding_mask_maybe_owned->expect_contiguous()), X_grad,
             prev_mean_grad, prev_var_grad, gamma_grad, beta_grad);
       });
   return std::make_tuple(X_grad, prev_mean_grad, prev_var_grad, gamma_grad,
@@ -317,15 +319,16 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
            torch::Tensor>
 TimestepNormBwd(const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
                 const torch::Tensor& var_grad, const torch::Tensor& X,
-                const torch::Tensor& count, const torch::Tensor& mean,
-                const torch::Tensor& var, const torch::Tensor& gamma,
-                const c10::optional<torch::Tensor>& padding_mask, double eps) {
+                const torch::Tensor& prev_mean, const torch::Tensor& count,
+                const torch::Tensor& mean, const torch::Tensor& var,
+                const torch::Tensor& gamma,
+                const c10::optional<torch::Tensor>& padding_mask) {
   if (X.device().type() == torch::kCUDA) {
-    return TimestepNormCUDABwd(Y_grad, mean_grad, var_grad, X, count, mean, var,
-                               gamma, padding_mask, eps);
+    return TimestepNormCUDABwd(Y_grad, mean_grad, var_grad, X, prev_mean, count,
+                               mean, var, gamma, padding_mask);
   } else {
-    return TimestepNormCPUBwd(Y_grad, mean_grad, var_grad, X, count, mean, var,
-                              gamma, padding_mask, eps);
+    return TimestepNormCPUBwd(Y_grad, mean_grad, var_grad, X, prev_mean, count,
+                              mean, var, gamma, padding_mask);
   }
 }
 
