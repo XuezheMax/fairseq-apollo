@@ -142,8 +142,8 @@ __global__ void SequenceNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
   } else {
     for (int64_t k = threadIdx.x; k < N; k += blockDim.x) {
       const T_ACC x = static_cast<T_ACC>(X_ptr[k]);
-      const T_ACC w = rstd_ptr[k] * gamma[k];
-      const T_ACC b = beta[k] - w * mean_ptr[k];
+      const T_ACC w = rstd_ptr[k] * static_cast<T_ACC>(gamma[k]);
+      const T_ACC b = static_cast<T_ACC>(beta[k]) - w * mean_ptr[k];
       Y_ptr[k] = static_cast<T>(w * x + b);
     }
   }
