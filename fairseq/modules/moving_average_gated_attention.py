@@ -15,7 +15,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
 from fairseq.modules.norm_layer.sequence_norm import SequenceNorm
-from fairseq.modules.norm_layer.timestep_norm import TimestepNorm
+from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 
@@ -63,7 +63,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.bidirectional = bidirectional
 
         if not bidirectional:
-            self.norm = TimestepNorm(embed_dim, eps=norm_eps)
+            self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
         else:
             self.norm = SequenceNorm(embed_dim, eps=norm_eps)
 
@@ -256,8 +256,7 @@ class MovingAverageGatedAttention(nn.Module):
         if self.bidirectional:
             x = self.norm(x, padding_mask)
         else:
-            x = self.norm(x, padding_mask=padding_mask,
-                          incremental_state=incremental_state)
+            x = self.norm(x)
 
         # L x B x E
         v = F.silu(self.v_proj(x))

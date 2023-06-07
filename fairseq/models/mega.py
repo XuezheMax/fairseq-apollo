@@ -22,7 +22,7 @@ from fairseq.models.fairseq_encoder import EncoderOut
 from fairseq.modules import (
     FairseqDropout,
     SequenceNorm,
-    TimestepNorm,
+    LayerNorm,
     MegaEncoderLayer,
     MegaDecoderLayer
 )
@@ -431,7 +431,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = TimestepNorm(embed_dim, eps=args.norm_eps)
+        self.final_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=args.norm_eps)
 
         if args.representation_dim is not None:
             self.num_features = args.representation_dim
@@ -594,8 +594,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
             if layer_attn is not None and idx == alignment_layer:
                 attn = layer_attn.float().to(x)
 
-        x = self.final_norm(x, padding_mask=decoder_padding_mask,
-                            incremental_state=incremental_state)
+        x = self.final_norm(x)
         x = self.pre_logits(x)
 
         if inverse_mask is not None:
