@@ -67,7 +67,7 @@ class TimeLayerNorm(nn.Module):
 
         # L x B x D
         if self.affine:
-            weight = self.weight + 1.0
+            weight = torch.sigmoid(self.weight) * 2
             out = (x - mean) * (weight * invstd) + self.bias
         else:
             out = (x - mean) * invstd

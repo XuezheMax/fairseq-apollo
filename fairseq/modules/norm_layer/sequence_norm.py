@@ -50,7 +50,8 @@ class SequenceNorm(nn.Module):
     def forward(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         # L x B x D -> B x L x D
         x = x.transpose(0, 1)
-        out = sequence_norm(x, self.weight + 1.0, self.bias, padding_mask, self.eps)
+        weight = torch.sigmoid(self.weight) * 2
+        out = sequence_norm(x, weight, self.bias, padding_mask, self.eps)
         # B x L x D -> L x B x D
         return out.transpose(0, 1)
 

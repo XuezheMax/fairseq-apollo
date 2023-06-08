@@ -29,7 +29,7 @@ try:
 
         @torch.jit.unused
         def forward(self, input):
-            weight = None if self.weight is None else self.weight + 1.0
+            weight = None if self.weight is None else torch.sigmoid(self.weight) * 2
             if not input.is_cuda:
                 return F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
 
@@ -48,7 +48,7 @@ try:
 
         @torch.jit.unused
         def forward(self, input):
-            weight = None if self.weight is None else self.weight + 1.0
+            weight = None if self.weight is None else torch.sigmoid(self.weight) * 2
             if not input.is_cuda:
                 return manual_rms_norm(input, self.normalized_shape, weight, self.eps)
 
@@ -107,7 +107,7 @@ class FairseqLayerNorm(nn.Module):
             nn.init.zeros_(self.bias)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.layer_norm(input, self.normalized_shape, self.weight + 1.0, self.bias, self.eps)
+        return F.layer_norm(input, self.normalized_shape, torch.sigmoid(self.weight) * 2, self.bias, self.eps)
 
     def extra_repr(self) -> str:
         return '{normalized_shape}, eps={eps}, elementwise_affine={elementwise_affine}'.format(**self.__dict__)
