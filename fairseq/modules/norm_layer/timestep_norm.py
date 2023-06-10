@@ -94,7 +94,7 @@ class TimestepNorm(nn.Module):
             prev_var = self.prior_logv.exp().expand(batch_size, -1).contiguous()
 
         out, prev_count, prev_mean, prev_var = timestep_norm(x, prev_count, prev_mean, prev_var,
-                                                             torch.sigmoid(self.weight) * 2, self.bias,
+                                                             self.weight + 1.0, self.bias,
                                                              padding_mask, self.eps)
 
         if incremental_state is not None:
