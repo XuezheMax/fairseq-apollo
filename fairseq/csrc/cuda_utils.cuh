@@ -9,8 +9,9 @@
 namespace mega2 {
 namespace cuda_utils {
 
-constexpr int64_t kCUDANumThreads = 128;
 constexpr int64_t kWarpSize = 32;
+constexpr int64_t kCUDANumThreads = 128;
+constexpr int64_t kColwiseThreshold = 256;
 
 template <typename T>
 C10_HOST_DEVICE thrust::pair<T, T> Fast2Sum(T a, T b) {

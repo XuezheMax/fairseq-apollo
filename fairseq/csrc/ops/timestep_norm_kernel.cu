@@ -23,13 +23,11 @@ namespace ops {
 namespace {
 
 template <typename T, typename T_ACC>
-__global__ void TimestepNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
-                                          const int64_t* prev_count,
-                                          const T* prev_mean, const T* prev_var,
-                                          const T* gamma, const T* beta,
-                                          const bool* padding_mask, T_ACC eps,
-                                          T* Y, int64_t* count, T* mean, T* var,
-                                          T* cummean, T* cumrstd) {
+__global__ void TimestepNormCUDAFwdSmallKernel(
+    int64_t L, int64_t N, const T* X, const int64_t* prev_count,
+    const T* prev_mean, const T* prev_var, const T* gamma, const T* beta,
+    const bool* padding_mask, T_ACC eps, T* Y, int64_t* count, T* mean, T* var,
+    T* cummean, T* cumrstd) {
   const int64_t i = blockIdx.y;
   const int64_t k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k >= N) {
@@ -46,7 +44,6 @@ __global__ void TimestepNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
   T* cr_ptr = cumrstd + i * L * N;
 
   int64_t m0 = prev_count[i];
-  int64_t m0_out = m0;
   T_ACC m1 = static_cast<T_ACC>(prev_mean[i * N + k]);
   T_ACC m2 = static_cast<T_ACC>(prev_var[i * N + k]);
 
@@ -56,18 +53,131 @@ __global__ void TimestepNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
     const T_ACC w = static_cast<T_ACC>(gamma[k]);
     const T_ACC b = static_cast<T_ACC>(beta[k]);
     const bool mask = mask_ptr != nullptr && mask_ptr[j];
-    thrust::tie(m0, m1, m2) = cuda_utils::WelfordUpdate(m0, m1, m2, x);
+    const auto moments = cuda_utils::WelfordUpdate(m0, m1, m2, x);
+    m0 = mask ? m0 : thrust::get<0>(moments);
+    m1 = mask ? m1 : thrust::get<1>(moments);
+    m2 = mask ? m2 : thrust::get<2>(moments);
     const T_ACC rstd = c10::cuda::compat::rsqrt(m2 + eps);
     Y_ptr[j * N + k] = mask ? T(0) : static_cast<T>((x - m1) * rstd * w + b);
-    m0_out = mask ? m0_out : m0;
-    m1_ptr[k] = mask ? m1_ptr[k] : static_cast<T>(m1);
-    m2_ptr[k] = mask ? m2_ptr[k] : static_cast<T>(m2);
     cu_ptr[j * N + k] = static_cast<T>(m1);
     cr_ptr[j * N + k] = static_cast<T>(rstd);
   }
-
   if (k == 0) {
-    count[i] = m0_out;
+    count[i] = m0;
+  }
+  m1_ptr[k] = static_cast<T>(m1);
+  m2_ptr[k] = static_cast<T>(m2);
+}
+
+template <typename T, typename T_ACC>
+__global__ void TimestepNormCUDAFwdLargeKernel(
+    int64_t L, int64_t N, const int64_t chunk_size, const T* X,
+    const int64_t* prev_count, const T* prev_mean, const T* prev_var,
+    const T* gamma, const T* beta, const bool* padding_mask, T_ACC eps, T* Y,
+    int64_t* count, T* mean, T* var, T* cummean, T* cumrstd) {
+  __shared__ int64_t
+      m0_shared[cuda_utils::kWarpSize][cuda_utils::kWarpSize + 1];
+  __shared__ T_ACC m1_shared[cuda_utils::kWarpSize][cuda_utils::kWarpSize + 1];
+  __shared__ T_ACC m2_shared[cuda_utils::kWarpSize][cuda_utils::kWarpSize + 1];
+
+  const int64_t i = blockIdx.y;
+  const int64_t k = blockIdx.x * blockDim.x + threadIdx.x;
+  const int64_t l = threadIdx.y * chunk_size;
+  const int64_t r = min(l + chunk_size, L);
+  if (k >= N) {
+    return;
+  }
+
+  const T* X_ptr = X + i * L * N;
+  const bool* mask_ptr =
+      padding_mask == nullptr ? nullptr : padding_mask + i * L;
+  T* Y_ptr = Y + i * L * N;
+  T* m1_ptr = mean + i * N;
+  T* m2_ptr = var + i * N;
+  T* cu_ptr = cummean + i * L * N;
+  T* cr_ptr = cumrstd + i * L * N;
+
+  int64_t m0 = 0;
+  T_ACC m1 = T_ACC(0);
+  T_ACC m2 = T_ACC(0);
+  for (int64_t j = l; j < r; ++j) {
+    const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
+    const bool mask = mask_ptr != nullptr && mask_ptr[j];
+    const auto moments = cuda_utils::WelfordUpdate(m0, m1, m2, x);
+    m0 = mask ? m0 : thrust::get<0>(moments);
+    m1 = mask ? m1 : thrust::get<1>(moments);
+    m2 = mask ? m2 : thrust::get<2>(moments);
+  }
+
+  m0_shared[threadIdx.y][threadIdx.x] = m0;
+  m1_shared[threadIdx.y][threadIdx.x] = m1;
+  m2_shared[threadIdx.y][threadIdx.x] = m2;
+  __syncthreads();
+
+  int64_t offset = 1;
+  for (int64_t d = cuda_utils::kWarpSize >> 1; d > 0; d >>= 1) {
+    if (threadIdx.y < d) {
+      const int64_t ai = offset * (2 * threadIdx.y + 1) - 1;
+      const int64_t bi = offset * (2 * threadIdx.y + 2) - 1;
+      thrust::tie(m0_shared[bi][threadIdx.x], m1_shared[bi][threadIdx.x],
+                  m2_shared[bi][threadIdx.x]) =
+          cuda_utils::WelfordCombine(
+              m0_shared[bi][threadIdx.x], m1_shared[bi][threadIdx.x],
+              m2_shared[bi][threadIdx.x], m0_shared[ai][threadIdx.x],
+              m1_shared[ai][threadIdx.x], m2_shared[ai][threadIdx.x]);
+    }
+    offset <<= 1;
+    __syncthreads();
+  }
+  if (threadIdx.y == 0) {
+    m0_shared[cuda_utils::kWarpSize - 1][threadIdx.x] = prev_count[i];
+    m1_shared[cuda_utils::kWarpSize - 1][threadIdx.x] = prev_mean[i * N + k];
+    m2_shared[cuda_utils::kWarpSize - 1][threadIdx.x] = prev_var[i * N + k];
+  }
+  __syncthreads();
+  for (int64_t d = 1; d < cuda_utils::kWarpSize; d <<= 1) {
+    offset >>= 1;
+    if (threadIdx.y < d) {
+      const int64_t ai = offset * (2 * threadIdx.y + 1) - 1;
+      const int64_t bi = offset * (2 * threadIdx.y + 2) - 1;
+      const int64_t am0 = m0_shared[ai][threadIdx.x];
+      const T_ACC am1 = m1_shared[ai][threadIdx.x];
+      const T_ACC am2 = m2_shared[ai][threadIdx.x];
+      m0_shared[ai][threadIdx.x] = m0_shared[bi][threadIdx.x];
+      m1_shared[ai][threadIdx.x] = m1_shared[bi][threadIdx.x];
+      m2_shared[ai][threadIdx.x] = m2_shared[bi][threadIdx.x];
+      thrust::tie(m0_shared[bi][threadIdx.x], m1_shared[bi][threadIdx.x],
+                  m2_shared[bi][threadIdx.x]) =
+          cuda_utils::WelfordCombine(m0_shared[bi][threadIdx.x],
+                                     m1_shared[bi][threadIdx.x],
+                                     m2_shared[bi][threadIdx.x], am0, am1, am2);
+    }
+    __syncthreads();
+  }
+
+  m0 = m0_shared[threadIdx.y][threadIdx.x];
+  m1 = m1_shared[threadIdx.y][threadIdx.x];
+  m2 = m2_shared[threadIdx.y][threadIdx.x];
+  for (int64_t j = l; j < r; ++j) {
+    const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
+    const T_ACC w = static_cast<T_ACC>(gamma[k]);
+    const T_ACC b = static_cast<T_ACC>(beta[k]);
+    const bool mask = mask_ptr != nullptr && mask_ptr[j];
+    const auto moments = cuda_utils::WelfordUpdate(m0, m1, m2, x);
+    m0 = mask ? m0 : thrust::get<0>(moments);
+    m1 = mask ? m1 : thrust::get<1>(moments);
+    m2 = mask ? m2 : thrust::get<2>(moments);
+    const T_ACC rstd = c10::cuda::compat::rsqrt(m2 + eps);
+    Y_ptr[j * N + k] = mask ? T(0) : static_cast<T>((x - m1) * rstd * w + b);
+    cu_ptr[j * N + k] = static_cast<T>(m1);
+    cr_ptr[j * N + k] = static_cast<T>(rstd);
+  }
+  if (threadIdx.y == cuda_utils::kWarpSize - 1) {
+    if (k == 0) {
+      count[i] = m0;
+    }
+    m1_ptr[k] = static_cast<T>(m1);
+    m2_ptr[k] = static_cast<T>(m2);
   }
 }
 
@@ -167,7 +277,6 @@ void TimestepNormCUDAFwdImpl(
   const int64_t B = X.size(0);
   const int64_t L = X.size(1);
   const int64_t N = X.size(2);
-  const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
 
   const T* X_data = X.data_ptr<T>();
   const int64_t* prev_count_data = prev_count.data_ptr<int64_t>();
@@ -186,12 +295,27 @@ void TimestepNormCUDAFwdImpl(
   T* cumrstd_data = cumrstd.data_ptr<T>();
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
-  TimestepNormCUDAFwdKernel<T, T_ACC>
-      <<<dim3(M, B), cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
-          L, N, X_data, prev_count_data, prev_mean_data, prev_var_data,
-          gamma_data, beta_data, padding_mask_data, static_cast<T_ACC>(eps),
-          Y_data, count_data, mean_data, var_data, cummean_data, cumrstd_data);
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  if (L < cuda_utils::kColwiseThreshold) {
+    const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
+    TimestepNormCUDAFwdSmallKernel<T, T_ACC>
+        <<<dim3(M, B), cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
+            L, N, X_data, prev_count_data, prev_mean_data, prev_var_data,
+            gamma_data, beta_data, padding_mask_data, static_cast<T_ACC>(eps),
+            Y_data, count_data, mean_data, var_data, cummean_data,
+            cumrstd_data);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+  } else {
+    const int64_t M = utils::DivUp(N, cuda_utils::kWarpSize);
+    const int64_t chunk_size = utils::DivUp(L, cuda_utils::kWarpSize);
+    TimestepNormCUDAFwdLargeKernel<T, T_ACC>
+        <<<dim3(M, B), dim3(cuda_utils::kWarpSize, cuda_utils::kWarpSize), 0,
+           cuda_stream>>>(L, N, chunk_size, X_data, prev_count_data,
+                          prev_mean_data, prev_var_data, gamma_data, beta_data,
+                          padding_mask_data, static_cast<T_ACC>(eps), Y_data,
+                          count_data, mean_data, var_data, cummean_data,
+                          cumrstd_data);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+  }
 }
 
 template <typename T>

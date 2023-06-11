@@ -23,8 +23,6 @@ namespace ops {
 
 namespace {
 
-constexpr int64_t kColwiseThreshold = 256;
-
 template <typename T, typename T_ACC>
 __global__ void ColwiseMomentsSmallKernel(int64_t L, int64_t N, const T* X,
                                           const bool* padding_mask, T_ACC eps,
@@ -313,7 +311,7 @@ void SequenceNormCUDAFwdImpl(const torch::Tensor& X, const torch::Tensor& gamma,
   T_ACC* rstd_data = rstd.data_ptr<T_ACC>();
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
-  if (L < kColwiseThreshold) {
+  if (L < cuda_utils::kColwiseThreshold) {
     const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
     ColwiseMomentsSmallKernel<T, T_ACC>
         <<<dim3(M, B), cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
@@ -373,7 +371,7 @@ void SequenceNormCUDABwdImpl(const torch::Tensor& Y_grad,
   T_ACC* db_data = db.data_ptr<T_ACC>();
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
-  if (L < kColwiseThreshold) {
+  if (L < cuda_utils::kColwiseThreshold) {
     const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
     ColwiseInternalGradientsSmallKernel<T, T_ACC>
         <<<dim3(M, B), cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
