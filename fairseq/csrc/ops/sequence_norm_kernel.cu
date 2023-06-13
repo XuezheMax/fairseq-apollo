@@ -140,9 +140,9 @@ __global__ void SequenceNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
   } else {
     for (int64_t k = threadIdx.x; k < N; k += blockDim.x) {
       const T_ACC x = static_cast<T_ACC>(X_ptr[k]);
-      const T_ACC w = rstd_ptr[k] * static_cast<T_ACC>(gamma[k]);
-      const T_ACC b = static_cast<T_ACC>(beta[k]) - w * mean_ptr[k];
-      Y_ptr[k] = static_cast<T>(w * x + b);
+      const T_ACC w = static_cast<T_ACC>(gamma[k]);
+      const T_ACC b = static_cast<T_ACC>(beta[k]);
+      Y_ptr[k] = static_cast<T>((x - mean_ptr[k]) * rstd_ptr[k] * w + b);
     }
   }
 }
@@ -150,6 +150,7 @@ __global__ void SequenceNormCUDAFwdKernel(int64_t L, int64_t N, const T* X,
 template <typename T, typename T_ACC>
 __global__ void ColwiseInternalGradientsSmallKernel(int64_t L, int64_t N,
                                                     const T* Y_grad, const T* X,
+                                                    const T_ACC* mean,
                                                     const bool* padding_mask,
                                                     T_ACC* ds, T_ACC* db) {
   const int64_t i = blockIdx.y;
@@ -165,13 +166,14 @@ __global__ void ColwiseInternalGradientsSmallKernel(int64_t L, int64_t N,
   T_ACC* ds_ptr = ds + i * N;
   T_ACC* db_ptr = db + i * N;
 
+  const T_ACC u = mean[i * N + k];
   T_ACC sum1 = T_ACC(0);
   T_ACC sum2 = T_ACC(0);
   for (int64_t j = 0; j < L; ++j) {
     const bool mask = mask_ptr != nullptr && mask_ptr[j];
     const T_ACC dy = static_cast<T_ACC>(Y_grad_ptr[j * N + k]);
     const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
-    sum1 += mask ? T_ACC(0) : dy * x;
+    sum1 += mask ? T_ACC(0) : dy * (x - u);
     sum2 += mask ? T_ACC(0) : dy;
   }
   ds_ptr[k] = sum1;
@@ -181,6 +183,7 @@ __global__ void ColwiseInternalGradientsSmallKernel(int64_t L, int64_t N,
 template <typename T, typename T_ACC>
 __global__ void ColwiseInternalGradientsLargeKernel(int64_t L, int64_t N,
                                                     const T* Y_grad, const T* X,
+                                                    const T_ACC* mean,
                                                     const bool* padding_mask,
                                                     T_ACC* ds, T_ACC* db) {
   __shared__ T_ACC ds_shared[cuda_utils::kWarpSize][cuda_utils::kWarpSize + 1];
@@ -199,13 +202,14 @@ __global__ void ColwiseInternalGradientsLargeKernel(int64_t L, int64_t N,
   T_ACC* ds_ptr = ds + i * N;
   T_ACC* db_ptr = db + i * N;
 
+  const T_ACC u = mean[i * N + k];
   T_ACC sum1 = T_ACC(0);
   T_ACC sum2 = T_ACC(0);
   for (int64_t j = threadIdx.y; j < L; j += blockDim.y) {
     const bool mask = mask_ptr != nullptr && mask_ptr[j];
     const T_ACC dy = static_cast<T_ACC>(Y_grad_ptr[j * N + k]);
     const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
-    sum1 += mask ? T_ACC(0) : dy * x;
+    sum1 += mask ? T_ACC(0) : dy * (x - u);
     sum2 += mask ? T_ACC(0) : dy;
   }
   ds_shared[threadIdx.y][threadIdx.x] = sum1;
@@ -257,8 +261,7 @@ __global__ void SequenceNormCUDABwdKernel(
       const T_ACC u = mean_ptr[k];
       const T_ACC r = rstd_ptr[k];
       const T_ACC w = static_cast<T_ACC>(gamma[k]);
-      const T_ACC dv =
-          T_ACC(0.5) * cuda_utils::Cube(r) * w * (u * db_ptr[k] - ds_ptr[k]);
+      const T_ACC dv = -T_ACC(0.5) * cuda_utils::Cube(r) * w * ds_ptr[k];
       const T_ACC du = -r * w * db_ptr[k];
       const T_ACC dx = r * w * dy + T_ACC(2) * coef * (x - u) * dv + coef * du;
       X_grad_ptr[k] = static_cast<T>(dx);
@@ -267,10 +270,9 @@ __global__ void SequenceNormCUDABwdKernel(
 }
 
 template <typename T, typename T_ACC>
-__global__ void GammaBetaCUDABwdKernel(int64_t B, int64_t N, const T_ACC* mean,
-                                       const T_ACC* rstd, const T_ACC* ds,
-                                       const T_ACC* db, T* gamma_grad,
-                                       T* beta_grad) {
+__global__ void GammaBetaCUDABwdKernel(int64_t B, int64_t N, const T_ACC* rstd,
+                                       const T_ACC* ds, const T_ACC* db,
+                                       T* gamma_grad, T* beta_grad) {
   const int64_t j = blockIdx.x * blockDim.x + threadIdx.x;
   if (j >= N) {
     return;
@@ -278,9 +280,8 @@ __global__ void GammaBetaCUDABwdKernel(int64_t B, int64_t N, const T_ACC* mean,
   T_ACC w_grad = T_ACC(0);
   T_ACC b_grad = T_ACC(0);
   for (int64_t i = 0; i < B; ++i) {
-    const T_ACC u = mean[i * N + j];
     const T_ACC r = rstd[i * N + j];
-    w_grad += r * (ds[i * N + j] - u * db[i * N + j]);
+    w_grad += ds[i * N + j] * r;
     b_grad += db[i * N + j];
   }
   gamma_grad[j] = static_cast<T>(w_grad);
@@ -375,14 +376,15 @@ void SequenceNormCUDABwdImpl(const torch::Tensor& Y_grad,
     const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
     ColwiseInternalGradientsSmallKernel<T, T_ACC>
         <<<dim3(M, B), cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
-            L, N, Y_grad_data, X_data, padding_mask_data, ds_data, db_data);
+            L, N, Y_grad_data, X_data, mean_data, padding_mask_data, ds_data,
+            db_data);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   } else {
     const int64_t M = utils::DivUp(N, cuda_utils::kWarpSize);
     ColwiseInternalGradientsLargeKernel<T, T_ACC>
         <<<dim3(M, B), dim3(cuda_utils::kWarpSize, cuda_utils::kWarpSize), 0,
-           cuda_stream>>>(L, N, Y_grad_data, X_data, padding_mask_data, ds_data,
-                          db_data);
+           cuda_stream>>>(L, N, Y_grad_data, X_data, mean_data,
+                          padding_mask_data, ds_data, db_data);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
   SequenceNormCUDABwdKernel<T, T_ACC>
@@ -394,8 +396,7 @@ void SequenceNormCUDABwdImpl(const torch::Tensor& Y_grad,
   const int64_t M = utils::DivUp(N, cuda_utils::kCUDANumThreads);
   GammaBetaCUDABwdKernel<T, T_ACC>
       <<<M, cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
-          B, N, mean_data, rstd_data, ds_data, db_data, gamma_grad_data,
-          beta_grad_data);
+          B, N, rstd_data, ds_data, db_data, gamma_grad_data, beta_grad_data);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

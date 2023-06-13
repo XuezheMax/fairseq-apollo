@@ -70,8 +70,9 @@ void ColwiseMoments(int64_t row, int64_t col, const T* X,
 
 template <typename T, typename T_ACC>
 void ColwiseInternalGradients(int64_t row, int64_t col, const T* Y_grad,
-                              const T* X, const bool* padding_mask,
-                              T_ACC* ds_stk, T_ACC* db_stk) {
+                              const T* X, const T_ACC* mean,
+                              const bool* padding_mask, T_ACC* ds_stk,
+                              T_ACC* db_stk) {
   const int64_t num_chunks = utils::DivUp(row, utils::kChunkSize);
   const int64_t depth = utils::CeilLog2(num_chunks);
   for (int64_t i = 0; i < num_chunks; ++i) {
@@ -82,7 +83,8 @@ void ColwiseInternalGradients(int64_t row, int64_t col, const T* Y_grad,
       for (int64_t k = 0; k < col; ++k) {
         const T_ACC dy = static_cast<T_ACC>(Y_grad[j * col + k]);
         const T_ACC x = static_cast<T_ACC>(X[j * col + k]);
-        ds_stk[k] += mask ? T_ACC(0) : dy * x;
+        const T_ACC u = mean[k];
+        ds_stk[k] += mask ? T_ACC(0) : dy * (x - u);
         db_stk[k] += mask ? T_ACC(0) : dy;
       }
     }
@@ -134,8 +136,6 @@ void SequenceNormCPUFwdImpl(const torch::Tensor& X, const torch::Tensor& gamma,
   std::vector<int64_t> m0(B * depth, int64_t(0));
   std::vector<T_ACC> m1(B * depth * N, T_ACC(0));
   std::vector<T_ACC> m2(B * depth * N, T_ACC(0));
-  std::vector<T_ACC> w(B * N, T_ACC(0));
-  std::vector<T_ACC> b(B * N, T_ACC(0));
 
   at::parallel_for(0, B, 0, [&](int64_t begin, int64_t end) {
     for (int64_t i = begin; i < end; ++i) {
@@ -148,8 +148,6 @@ void SequenceNormCPUFwdImpl(const torch::Tensor& X, const torch::Tensor& gamma,
       int64_t* m0_ptr = m0.data() + i * depth;
       T_ACC* m1_ptr = m1.data() + i * depth * N;
       T_ACC* m2_ptr = m2.data() + i * depth * N;
-      T_ACC* w_ptr = w.data() + i * N;
-      T_ACC* b_ptr = b.data() + i * N;
 
       ColwiseMoments(L, N, X_ptr, mask_ptr, m0_ptr, m1_ptr, m2_ptr);
       count_data[i] = m0_ptr[0];
@@ -158,16 +156,16 @@ void SequenceNormCPUFwdImpl(const torch::Tensor& X, const torch::Tensor& gamma,
             T_ACC(1) / std::sqrt(m2_ptr[j] + static_cast<T_ACC>(eps));
         mean_ptr[j] = m1_ptr[j];
         rstd_ptr[j] = rstd;
-        const T_ACC coef = rstd * static_cast<T_ACC>(gamma_data[j]);
-        w_ptr[j] = coef;
-        b_ptr[j] = static_cast<T_ACC>(beta_data[j]) - coef * m1_ptr[j];
       }
       for (int64_t j = 0; j < L; ++j) {
         const bool mask = mask_ptr != nullptr && mask_ptr[j];
         for (int64_t k = 0; k < N; ++k) {
           const T_ACC x = static_cast<T_ACC>(X_ptr[j * N + k]);
+          const T_ACC w = static_cast<T_ACC>(gamma_data[k]);
+          const T_ACC b = static_cast<T_ACC>(beta_data[k]);
           Y_ptr[j * N + k] =
-              mask ? T(0) : static_cast<T>(w_ptr[k] * x + b_ptr[k]);
+              mask ? T(0)
+                   : static_cast<T>((x - mean_ptr[k]) * rstd_ptr[k] * w + b);
         }
       }
     }
@@ -220,8 +218,8 @@ void SequenceNormCPUBwdImpl(const torch::Tensor& Y_grad, const torch::Tensor& X,
       T_ACC* ds_ptr = ds.data() + i * depth * N;
       T_ACC* db_ptr = db.data() + i * depth * N;
 
-      ColwiseInternalGradients(L, N, Y_grad_ptr, X_ptr, mask_ptr, ds_ptr,
-                               db_ptr);
+      ColwiseInternalGradients(L, N, Y_grad_ptr, X_ptr, mean_ptr, mask_ptr,
+                               ds_ptr, db_ptr);
       for (int64_t j = 0; j < L; ++j) {
         const bool mask = mask_ptr != nullptr && mask_ptr[j];
         for (int64_t k = 0; k < N; ++k) {
@@ -230,8 +228,7 @@ void SequenceNormCPUBwdImpl(const torch::Tensor& Y_grad, const torch::Tensor& X,
           const T_ACC u = mean_ptr[k];
           const T_ACC r = rstd_ptr[k];
           const T_ACC w = static_cast<T_ACC>(gamma_data[k]);
-          const T_ACC dv =
-              T_ACC(0.5) * utils::Cube(r) * w * (u * db_ptr[k] - ds_ptr[k]);
+          const T_ACC dv = -T_ACC(0.5) * utils::Cube(r) * w * ds_ptr[k];
           const T_ACC du = -r * w * db_ptr[k];
           const T_ACC dx =
               r * w * dy + T_ACC(2) * coef * (x - u) * dv + coef * du;
@@ -242,15 +239,14 @@ void SequenceNormCPUBwdImpl(const torch::Tensor& Y_grad, const torch::Tensor& X,
   });
 
   for (int64_t i = 0; i < N; ++i) {
-    ds[i] = rstd_data[i] * (ds[i] - mean_data[i] * db[i]);
+    ds[i] *= rstd_data[i];
   }
   for (int64_t i = 1; i < B; ++i) {
-    const T_ACC* mean_ptr = mean_data + i * N;
     const T_ACC* rstd_ptr = rstd_data + i * N;
     const T_ACC* ds_ptr = ds.data() + i * depth * N;
     const T_ACC* db_ptr = db.data() + i * depth * N;
     for (int64_t j = 0; j < N; ++j) {
-      ds[j] += rstd_ptr[j] * (ds_ptr[j] - mean_ptr[j] * db_ptr[j]);
+      ds[j] += ds_ptr[j] * rstd_ptr[j];
       db[j] += db_ptr[j];
     }
   }
