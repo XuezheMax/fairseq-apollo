@@ -36,7 +36,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.delta = nn.Parameter(torch.Tensor(kernel_dim, ndim, 1))
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
-        self.omega = nn.Parameter(torch.Tensor(embed_dim))
+        self.omega = nn.Parameter(torch.Tensor(embed_dim, 1))
         self._kernel = None
         self._coeffs = None
 

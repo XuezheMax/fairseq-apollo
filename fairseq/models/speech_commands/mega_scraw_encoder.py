@@ -116,7 +116,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps)
+        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps, lenght_last=True)
         self.final_proj = nn.Linear(embedding_dim, embedding_dim)
 
         self.reset_parameters(init_mode)
@@ -163,7 +163,11 @@ class MegaSCRawEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
+        # L x B x D -> B x D x L -> L x B x D
+        x = x.permute(1, 2, 0)
         x = self.final_norm(x)
+        x = x.permute(2, 0, 1)
+        # final proj
         x = F.silu(self.final_proj(x) + x)
 
         if self.sen_rep_type == 'mp':

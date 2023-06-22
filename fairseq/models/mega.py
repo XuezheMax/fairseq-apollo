@@ -250,7 +250,7 @@ class MegaEncoder(FairseqEncoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = SequenceNorm(embed_dim, eps=args.norm_eps)
+        self.final_norm = SequenceNorm(embed_dim, eps=args.norm_eps, lenght_last=True)
 
     def build_encoder_layer(self, args, layer_scale):
         return MegaEncoderLayer(args, layer_scale=layer_scale)
@@ -314,9 +314,13 @@ class MegaEncoder(FairseqEncoder):
                 assert encoder_states is not None
                 encoder_states.append(x)
 
+        # L x B x D -> B x D x L
+        x = x.permute(1, 2, 0)
         x = self.final_norm(x, encoder_padding_mask)
         if inverse_mask is not None:
-            x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
+            x = x * inverse_mask.unsqueeze(1)
+        # B x D x L -> L x B x D
+        x = x.permute(2, 0, 1)
 
         # remove padding tokens for chunk
         if num_paddings > 0:

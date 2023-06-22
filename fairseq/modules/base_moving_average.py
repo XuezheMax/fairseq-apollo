@@ -134,14 +134,12 @@ class BaseMovingLayer(nn.Module):
                 padding elements are indicated by 1s.
         """
 
-        seq_len, bsz, embed_dim = x.size()
+        bsz, embed_dim, seq_len = x.size()
         assert embed_dim == self.embed_dim
 
-        # L x B x D
+        # B x D x L
         residual = x * self.omega
 
-        # L x B x D -> B x D x L
-        x = x.permute(1, 2, 0)
         if padding_mask is not None:
             x = x * (1.0 - padding_mask.unsqueeze(1).to(x))
 
@@ -176,8 +174,8 @@ class BaseMovingLayer(nn.Module):
             # B x D x L
             out = torch.fft.irfft(x_f * k_f, n=fft_len, norm="forward")[..., :seq_len]
             out = out.to(x)
-            # B x D x L -> L x B x D
-            out = F.silu(out.permute(2, 0, 1) + residual)
+            # B x D x L
+            out = F.silu(out + residual)
 
         return out
 

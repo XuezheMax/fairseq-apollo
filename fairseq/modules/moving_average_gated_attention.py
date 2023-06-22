@@ -62,10 +62,10 @@ class MovingAverageGatedAttention(nn.Module):
         self.chunk_size = chunk_size
         self.bidirectional = bidirectional
 
-        if not bidirectional:
-            self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
+        if bidirectional:
+            self.norm = SequenceNorm(embed_dim, eps=norm_eps, lenght_last=True)
         else:
-            self.norm = SequenceNorm(embed_dim, eps=norm_eps)
+            self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
 
         if moving_layer == 'ema':
             self.move = MultiHeadEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
@@ -251,19 +251,28 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
+        # L x B x D
         residual = x
 
         if self.bidirectional:
+            # L x B x D -> B x D x L
+            x = x.permute(1, 2, 0)
             x = self.norm(x, padding_mask)
+            # L x B x E
+            v = F.silu(self.v_proj(x.permute(2, 0, 1)))
         else:
+            # L x B x D
             x = self.norm(x)
+            # L x B x E
+            v = F.silu(self.v_proj(x))
+            # L x B x D -> B x D x L
+            x = x.permute(1, 2, 0)
 
-        # L x B x E
-        v = F.silu(self.v_proj(x))
-
-        # L x B x D
+        # B x D x L
         mx = self.move(x, padding_mask, incremental_state)
         mx = self.hidden_dropout(mx)
+        # B x D x L -> L x B x D
+        mx = mx.permute(2, 0, 1)
 
         # L x B x D -> L x B x (D+S+E+D)
         base = self.mx_proj(mx)
