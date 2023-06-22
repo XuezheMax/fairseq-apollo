@@ -102,8 +102,8 @@ class BaseMovingLayer(nn.Module):
         h = torch.einsum('bdl,dnl->bdn', x.to(kernel), torch.flip(kernel, dims=[2]))
         if hh is not None:
             h = h + hh
-        # L x B x D, B x D x N
-        return out.permute(2, 0, 1), h
+        # B x D x L, B x D x N
+        return out, h
 
     def one_step(self, x, hx=None):
         p, q, gamma = self.coeffs()
@@ -117,8 +117,8 @@ class BaseMovingLayer(nn.Module):
         out = torch.einsum('bdn,dn->bd', h, gamma)
         if self.complex:
             out = out.real
-        # 1 x B x D, B x D x N
-        return out.unsqueeze(0), h
+        # B x D x 1, B x D x N
+        return out.unsqueeze(-1), h
 
     def forward(
         self,
