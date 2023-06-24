@@ -243,7 +243,7 @@ class MovingAverageGatedAttention(nn.Module):
                 weights and values before the attention softmax.
         """
 
-        seq_len, bsz, embed_dim = x.size()
+        bsz, seq_len, embed_dim = x.size()
         assert embed_dim == self.embed_dim
 
         if incremental_state is not None:
@@ -251,47 +251,42 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             saved_state = None
 
-        # L x B x D
+        # B x L x D
         residual = x
 
         if self.bidirectional:
-            # L x B x D -> B x D x L
-            x = x.permute(1, 2, 0)
+            # B x L x D -> B x D x L
+            x = x.transpose(1, 2)
             x = self.norm(x, padding_mask)
-            # L x B x E
-            v = F.silu(self.v_proj(x.permute(2, 0, 1)))
+            # B x L x E
+            v = F.silu(self.v_proj(x.transpose(1, 2)))
         else:
-            # L x B x D
+            # B x L x D
             x = self.norm(x)
-            # L x B x E
+            # B x L x E
             v = F.silu(self.v_proj(x))
-            # L x B x D -> B x D x L
-            x = x.permute(1, 2, 0)
+            # B x L x D -> B x D x L
+            x = x.transpose(1, 2)
 
         # B x D x L
         mx = self.move(x, padding_mask, incremental_state)
+        # B x D x L -> B x L x D
+        mx = mx.transpose(1, 2)
         mx = self.hidden_dropout(mx)
-        # B x D x L -> L x B x D
-        mx = mx.permute(2, 0, 1)
 
-        # L x B x D -> L x B x (D+S+E+D)
+        # B x L x D -> B x L x (D+S+E+D)
         base = self.mx_proj(mx)
         u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
-        # L x B x D
+        # B x L x D
         u = torch.sigmoid(u)
-        # L x B x S
+        # B x L x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
-        # L x B x S -> L x B x 1 x S -> L x B x 2 x S
+        # B x L x S -> B x L x 1 x S -> B x L x 2 x S
         z = z.unsqueeze(2) * (self.gamma + 1.0) + self.beta
-        # L x B x 2 x S -> L x B x S
+        # B x L x 2 x S -> B x L x S
         q, k = torch.unbind(z, dim=2)
-        # L x B x E
+        # B x L x E
         r = F.silu(r)
-
-        # L x B x D -> B x L x D
-        q = q.transpose(0, 1)
-        k = k.transpose(0, 1)
-        v = v.transpose(0, 1)
 
         if saved_state is not None:
             # assert self.chunk_size < 0 or q.size(1) <= self.chunk_size
@@ -380,14 +375,14 @@ class MovingAverageGatedAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x K x C x E -> B x L x E -> L x B x E
-        attn = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim).transpose(0, 1)
-        # L x B x E
+        # B x K x C x E -> B x L x E
+        attn = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim)
+        # B x L x E
         attn = self.hidden_dropout(attn * r)
-        # L x B x E -> L x B x D
+        # B x L x E -> B x L x D
         h = F.silu(hx + self.h_proj(attn))
         h = self.dropout(h)
-        # L x B x D
+        # B x L x D
         out = torch.addcmul(residual, u, h - residual)
 
         if need_weights:

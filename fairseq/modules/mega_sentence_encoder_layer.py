@@ -86,7 +86,7 @@ class MegaSentenceEncoderLayer(nn.Module):
         x_padding_mask: Optional[torch.Tensor] = None,
     ):
 
-        seq_len = x.size(0)
+        seq_len = x.size(1)
         if self.chunk_size > 0:
             assert seq_len % self.chunk_size == 0, 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
         x, attn = self.mega_layer(x, x_padding_mask)

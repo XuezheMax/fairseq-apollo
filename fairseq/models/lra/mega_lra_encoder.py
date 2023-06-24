@@ -160,18 +160,16 @@ class MegaLRAEncoder(nn.Module):
             # B x T -> B x T x D
             x = self.embed_tokens(tokens)
 
+        # B x T x D
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
         if padding_mask is not None:
-            # B x N
+            # B x T
             inverse_mask = 1.0 - padding_mask.type_as(x)
             x = x * inverse_mask.unsqueeze(-1)
         else:
             inverse_mask = None
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
 
         inner_states = []
         if not last_state_only:
@@ -182,20 +180,20 @@ class MegaLRAEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        # L x B x D -> B x D x L -> L x B x D
-        x = x.permute(1, 2, 0)
+        # B x T x D -> B x D x T -> B x T x D
+        x = x.transpose(1, 2)
         x = self.final_norm(x, padding_mask)
-        x = x.permute(2, 0, 1)
+        x = x.transpose(1, 2)
         # final proj
         x = F.silu(self.final_proj(x) + x)
 
         if inverse_mask is not None:
-            x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
+            x = x * inverse_mask.unsqueeze(-1)
 
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
+            sentence_rep = x.sum(dim=1) / src_lengths.unsqueeze(1)
         else:
-            sentence_rep = x[0, :, :]
+            sentence_rep = x[:, 0, :]
 
         if last_state_only:
             inner_states = [x]

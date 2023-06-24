@@ -151,9 +151,6 @@ class MegaSCRawEncoder(nn.Module):
         x = self.embed_tokens(tokens)
         x = self.embedding_dropout(x)
 
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
-
         inner_states = []
         if not last_state_only:
             inner_states.append(x)
@@ -163,17 +160,17 @@ class MegaSCRawEncoder(nn.Module):
             if not last_state_only:
                 inner_states.append(x)
 
-        # L x B x D -> B x D x L -> L x B x D
-        x = x.permute(1, 2, 0)
-        x = self.final_norm(x)
-        x = x.permute(2, 0, 1)
+        # B x T x D -> B x D x T -> B x T x D
+        x = x.transpose(1, 2)
+        x = self.final_norm(x, padding_mask)
+        x = x.transpose(1, 2)
         # final proj
         x = F.silu(self.final_proj(x) + x)
 
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.sum(dim=0) / src_lengths.unsqueeze(1)
+            sentence_rep = x.sum(dim=1) / src_lengths.unsqueeze(1)
         else:
-            sentence_rep = x[0, :, :]
+            sentence_rep = x[:, 0, :]
 
         if last_state_only:
             inner_states = [x]

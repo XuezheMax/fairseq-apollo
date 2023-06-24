@@ -255,7 +255,7 @@ class GatedCrossAttention(nn.Module):
                 weights and values before the attention softmax.
         """
 
-        seq_len, bsz, embed_dim = query.size()
+        bsz, seq_len, embed_dim = query.size()
         assert embed_dim == self.embed_dim
 
         if incremental_state is not None:
@@ -273,13 +273,13 @@ class GatedCrossAttention(nn.Module):
         nq = self.norm(query)
 
         gamma = self.gamma + 1.0
-        # L2 x B x (2*D+S)
+        # B x L2 x (2*D+S)
         base = self.qru_proj(nq)
         q, u, r = torch.split(base, [self.zdim, self.embed_dim, self.embed_dim], dim=-1)
-        # L2 x B x S
+        # B x L2 x S
         q = F.normalize(q, p=2, dim=-1, eps=1e-5)
         q = q * gamma[0] + self.beta[0]
-        # L2 x B x D
+        # B x L2 x D
         u = torch.sigmoid(u)
         r = F.silu(r)
 
@@ -287,19 +287,12 @@ class GatedCrossAttention(nn.Module):
             assert value is None
             k = v = None
         else:
-            # L1 x B x S
+            # B x L1 x S
             k = self.k_proj(key)
             k = F.normalize(k, p=2, dim=-1, eps=1e-5)
             k = k * gamma[1] + self.beta[1]
-            # L1 x B x D
+            # B x L1 x D
             v = F.silu(self.v_proj(value))
-
-        # L2 x B x S -> B x L2 x S
-        q = q.transpose(0, 1)
-        if k is not None:
-            k = k.transpose(0, 1)
-        if v is not None:
-            v = v.transpose(0, 1)
 
         if saved_state is not None:
             # saved states are stored with shape (bsz, seq_len, dim)
@@ -345,10 +338,10 @@ class GatedCrossAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x L2 x D -> L2 x B x D
-        attn = torch.bmm(kernel, v).transpose(0, 1)
+        # B x L2 x D
+        attn = torch.bmm(kernel, v)
         attn = self.hidden_dropout(attn * r)
-        # L2 x B x D
+        # B x L2 x D
         h = F.silu(self.h_proj(attn))
         h = self.dropout(h)
         out = torch.addcmul(query, u, h - query)

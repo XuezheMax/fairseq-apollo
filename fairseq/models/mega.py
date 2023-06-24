@@ -303,9 +303,6 @@ class MegaEncoder(FairseqEncoder):
         else:
             inverse_mask = None
 
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
-
         encoder_states = [] if return_all_hiddens else None
         # encoder layers
         for layer in self.layers:
@@ -314,26 +311,26 @@ class MegaEncoder(FairseqEncoder):
                 assert encoder_states is not None
                 encoder_states.append(x)
 
-        # L x B x D -> B x D x L
-        x = x.permute(1, 2, 0)
+        # B x T x D -> B x D x T
+        x = x.transpose(1, 2)
         x = self.final_norm(x, encoder_padding_mask)
+        # B x D x T -> B x T x D
+        x = x.transpose(1, 2)
         if inverse_mask is not None:
-            x = x * inverse_mask.unsqueeze(1)
-        # B x D x L -> L x B x D
-        x = x.permute(2, 0, 1)
+            x = x * inverse_mask.unsqueeze(-1)
 
         # remove padding tokens for chunk
         if num_paddings > 0:
-            x = x[:seq_len]
+            x = x[:, :seq_len]
             encoder_embedding = encoder_embedding[:, :seq_len]
             if encoder_padding_mask is not None:
                 encoder_padding_mask = encoder_padding_mask[:, :seq_len]
 
         return EncoderOut(
-            encoder_out=x,  # T x B x C
+            encoder_out=x,  # B x T x C
             encoder_padding_mask=encoder_padding_mask,  # B x T
             encoder_embedding=encoder_embedding,  # B x T x C
-            encoder_states=encoder_states,  # List[T x B x C]
+            encoder_states=encoder_states,  # List[B x T x C]
             src_tokens=None,
             src_lengths=None,
         )
@@ -361,7 +358,7 @@ class MegaEncoder(FairseqEncoder):
         new_encoder_out = (
             encoder_out.encoder_out
             if encoder_out.encoder_out is None
-            else encoder_out.encoder_out.index_select(1, new_order)
+            else encoder_out.encoder_out.index_select(0, new_order)
         )
         new_encoder_padding_mask = (
             encoder_padding_mask
@@ -384,13 +381,13 @@ class MegaEncoder(FairseqEncoder):
         encoder_states = encoder_out.encoder_states
         if encoder_states is not None:
             for idx, state in enumerate(encoder_states):
-                encoder_states[idx] = state.index_select(1, new_order)
+                encoder_states[idx] = state.index_select(0, new_order)
 
         return EncoderOut(
-            encoder_out=new_encoder_out,  # T x B x C
+            encoder_out=new_encoder_out,  # B x T x C
             encoder_padding_mask=new_encoder_padding_mask,  # B x T
             encoder_embedding=new_encoder_embedding,  # B x T x C
-            encoder_states=encoder_states,  # List[T x B x C]
+            encoder_states=encoder_states,  # List[B x T x C]
             src_tokens=src_tokens,  # B x T
             src_lengths=src_lengths,  # B x 1
         )
@@ -569,6 +566,7 @@ class MegaDecoder(FairseqIncrementalDecoder):
         if not decoder_padding_mask.any():
             decoder_padding_mask = None
 
+        # B x T x D
         x = self.embedding_dropout(x)
 
         # account for padding while computing the representation
@@ -578,9 +576,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
             x = x * inverse_mask.unsqueeze(-1)
         else:
             inverse_mask = None
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -602,15 +597,12 @@ class MegaDecoder(FairseqIncrementalDecoder):
         x = self.pre_logits(x)
 
         if inverse_mask is not None:
-            x = x * inverse_mask.transpose(0, 1).unsqueeze(-1)
+            x = x * inverse_mask.unsqueeze(-1)
 
         # remove padding tokens for chunk
         if num_paddings > 0:
-            x = x[:seq_len]
+            x = x[:, :seq_len]
             attn = attn[:, :seq_len]
-
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
 
         return x, {"attn": [attn], "inner_states": inner_states}
 
