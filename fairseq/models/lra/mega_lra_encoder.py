@@ -163,14 +163,6 @@ class MegaLRAEncoder(nn.Module):
         # B x T x D
         x = self.embedding_dropout(x)
 
-        # account for padding while computing the representation
-        if padding_mask is not None:
-            # B x T
-            inverse_mask = 1.0 - padding_mask.type_as(x)
-            x = x * inverse_mask.unsqueeze(-1)
-        else:
-            inverse_mask = None
-
         inner_states = []
         if not last_state_only:
             inner_states.append(x)
@@ -187,7 +179,10 @@ class MegaLRAEncoder(nn.Module):
         # final proj
         x = F.silu(self.final_proj(x) + x)
 
-        if inverse_mask is not None:
+        # account for padding while computing the representation
+        if padding_mask is not None:
+            # B x T
+            inverse_mask = 1.0 - padding_mask.type_as(x)
             x = x * inverse_mask.unsqueeze(-1)
 
         if self.sen_rep_type == 'mp':

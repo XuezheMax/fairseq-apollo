@@ -168,7 +168,7 @@ class MegaSCRawEncoder(nn.Module):
         x = F.silu(self.final_proj(x) + x)
 
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.sum(dim=1) / src_lengths.unsqueeze(1)
+            sentence_rep = x.mean(dim=1)
         else:
             sentence_rep = x[:, 0, :]
 

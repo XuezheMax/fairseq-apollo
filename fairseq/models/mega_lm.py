@@ -345,14 +345,6 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         # B x T x D
         x = self.embedding_dropout(x)
 
-        # account for padding while computing the representation
-        if decoder_padding_mask is not None:
-            # B x T
-            inverse_mask = 1.0 - decoder_padding_mask.type_as(x)
-            x = x * inverse_mask.unsqueeze(-1)
-        else:
-            inverse_mask = None
-
         # decoder layers
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
@@ -369,7 +361,10 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         x = self.final_norm(x)
         x = self.pre_logits(x)
 
-        if inverse_mask is not None:
+        # account for padding while computing the representation
+        if decoder_padding_mask is not None:
+            # B x T
+            inverse_mask = 1.0 - decoder_padding_mask.type_as(x)
             x = x * inverse_mask.unsqueeze(-1)
 
         # remove padding tokens for chunk

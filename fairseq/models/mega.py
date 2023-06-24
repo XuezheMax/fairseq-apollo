@@ -295,14 +295,6 @@ class MegaEncoder(FairseqEncoder):
 
         x = self.embedding_dropout(x)
 
-        # account for padding while computing the representation
-        if encoder_padding_mask is not None:
-            # B x T
-            inverse_mask = 1.0 - encoder_padding_mask.type_as(x)
-            x = x * inverse_mask.unsqueeze(-1)
-        else:
-            inverse_mask = None
-
         encoder_states = [] if return_all_hiddens else None
         # encoder layers
         for layer in self.layers:
@@ -316,7 +308,11 @@ class MegaEncoder(FairseqEncoder):
         x = self.final_norm(x, encoder_padding_mask)
         # B x D x T -> B x T x D
         x = x.transpose(1, 2)
-        if inverse_mask is not None:
+
+        # account for padding while computing the representation
+        if encoder_padding_mask is not None:
+            # B x T
+            inverse_mask = 1.0 - encoder_padding_mask.type_as(x)
             x = x * inverse_mask.unsqueeze(-1)
 
         # remove padding tokens for chunk
@@ -569,14 +565,6 @@ class MegaDecoder(FairseqIncrementalDecoder):
         # B x T x D
         x = self.embedding_dropout(x)
 
-        # account for padding while computing the representation
-        if decoder_padding_mask is not None:
-            # B x T
-            inverse_mask = 1.0 - decoder_padding_mask.type_as(x)
-            x = x * inverse_mask.unsqueeze(-1)
-        else:
-            inverse_mask = None
-
         # decoder layers
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
@@ -596,7 +584,10 @@ class MegaDecoder(FairseqIncrementalDecoder):
         x = self.final_norm(x)
         x = self.pre_logits(x)
 
-        if inverse_mask is not None:
+        # account for padding while computing the representation
+        if decoder_padding_mask is not None:
+            # B x T
+            inverse_mask = 1.0 - decoder_padding_mask.type_as(x)
             x = x * inverse_mask.unsqueeze(-1)
 
         # remove padding tokens for chunk
