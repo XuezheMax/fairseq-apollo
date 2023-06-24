@@ -20,48 +20,6 @@ namespace ops {
 
 namespace {
 
-// TODO: Optimize by using Vec256.
-template <typename T, typename T_ACC>
-std::tuple<int64_t, T_ACC, T_ACC> RowwiseMoments(int64_t N, const T* X,
-                                                 const bool* padding_mask) {
-  const int64_t num_chunks = utils::DivUp(N, utils::kChunkSize);
-  const int64_t depth = utils::CeilLog2(num_chunks);
-
-  std::vector<int64_t> m0_stk(depth, 0);
-  std::vector<T_ACC> m1_stk(depth, T_ACC(0));
-  std::vector<T_ACC> m2_stk(depth, T_ACC(0));
-  for (int64_t i = 0; i < num_chunks; ++i) {
-    const int64_t l = i * utils::kChunkSize;
-    const int64_t r = std::min(l + utils::kChunkSize, N);
-    for (int64_t j = l; j < r; ++j) {
-      const T_ACC x = static_cast<T_ACC>(X[j]);
-      const bool mask = padding_mask != nullptr && padding_mask[j];
-      const auto [_, u, v] =
-          utils::WelfordUpdate(m0_stk[0], m1_stk[0], m2_stk[0], x);
-      m0_stk[0] += mask ? 0 : 1;
-      m1_stk[0] = mask ? m1_stk[0] : u;
-      m2_stk[0] = mask ? m2_stk[0] : v;
-    }
-
-    int64_t cnt = i + 1;
-    for (int64_t j = 1; j < depth && (cnt & 1) == 0; ++j) {
-      std::tie(m0_stk[j], m1_stk[j], m2_stk[j]) =
-          utils::WelfordCombine(m0_stk[j], m1_stk[j], m2_stk[j], m0_stk[j - 1],
-                                m1_stk[j - 1], m2_stk[j - 1]);
-      m0_stk[j - 1] = 0;
-      m1_stk[j - 1] = T_ACC(0);
-      m2_stk[j - 1] = T_ACC(0);
-      cnt >>= 1;
-    }
-  }
-  for (int64_t i = 1; i < depth; ++i) {
-    std::tie(m0_stk[0], m1_stk[0], m2_stk[0]) = utils::WelfordCombine(
-        m0_stk[0], m1_stk[0], m2_stk[0], m0_stk[i], m1_stk[i], m2_stk[i]);
-  }
-
-  return std::make_tuple(m0_stk[0], m1_stk[0], m2_stk[0]);
-}
-
 template <typename T, typename T_ACC>
 void ColwiseMoments(int64_t row, int64_t col, const T* X,
                     const bool* padding_mask, int64_t* m0_stk, T_ACC* m1_stk,
@@ -283,7 +241,8 @@ void SequenceNormCPUFwdBHLImpl(const torch::Tensor& X,
       const bool* mask_ptr =
           padding_mask_data == nullptr ? nullptr : padding_mask_data + b * L;
       T* Y_ptr = Y_data + i * L;
-      const auto [m0, m1, m2] = RowwiseMoments<T, T_ACC>(L, X_ptr, mask_ptr);
+      const auto [m0, m1, m2] =
+          utils::RowwiseMoments<T, T_ACC>(L, X_ptr, mask_ptr);
       const T_ACC rstd = T_ACC(1) / std::sqrt(m2 + static_cast<T_ACC>(eps));
       const T_ACC weight = static_cast<T_ACC>(gamma_data[h]);
       const T_ACC bias = static_cast<T_ACC>(beta_data[h]);

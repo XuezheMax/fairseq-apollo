@@ -498,7 +498,7 @@ void SequenceNormCUDAFwdBHLImpl(const torch::Tensor& X,
   T_ACC* rstd_data = rstd.data_ptr<T_ACC>();
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
-  const int64_t num_threads = (L <= cuda_utils::kCUDABlockReduceNumThreads
+  const int64_t num_threads = (L < cuda_utils::kCUDABlockReduceNumThreads
                                    ? cuda_utils::kWarpSize
                                    : cuda_utils::kCUDABlockReduceNumThreads);
   RowwiseMomentsKernel<T, T_ACC><<<dim3(H, B), num_threads, 0, cuda_stream>>>(
@@ -608,7 +608,7 @@ void SequenceNormCUDABwdBHLImpl(
   T_ACC* db_data = db.data_ptr<T_ACC>();
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
-  const int64_t num_threads = (L <= cuda_utils::kCUDABlockReduceNumThreads
+  const int64_t num_threads = (L < cuda_utils::kCUDABlockReduceNumThreads
                                    ? cuda_utils::kWarpSize
                                    : cuda_utils::kCUDABlockReduceNumThreads);
   RowwiseInternalGradientsKernel<T, T_ACC>

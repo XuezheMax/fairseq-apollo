@@ -62,6 +62,66 @@ TimestepNormCUDABwd(const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
                     const torch::Tensor& gamma,
                     const c10::optional<torch::Tensor>& padding_mask);
 
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor, torch::Tensor, torch::Tensor>
+GroupTimestepNormFwd(const torch::Tensor& X, const torch::Tensor& prev_count,
+                     const torch::Tensor& prev_mean,
+                     const torch::Tensor& prev_var, const torch::Tensor& gamma,
+                     const torch::Tensor& beta,
+                     const c10::optional<torch::Tensor>& padding_mask,
+                     int64_t num_groups, double eps);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor, torch::Tensor, torch::Tensor>
+GroupTimestepNormCPUFwd(const torch::Tensor& X, const torch::Tensor& prev_count,
+                        const torch::Tensor& prev_mean,
+                        const torch::Tensor& prev_var,
+                        const torch::Tensor& gamma, const torch::Tensor& beta,
+                        const c10::optional<torch::Tensor>& padding_mask,
+                        int64_t num_groups, double eps);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor, torch::Tensor, torch::Tensor>
+GroupTimestepNormCUDAFwd(const torch::Tensor& X,
+                         const torch::Tensor& prev_count,
+                         const torch::Tensor& prev_mean,
+                         const torch::Tensor& prev_var,
+                         const torch::Tensor& gamma, const torch::Tensor& beta,
+                         const c10::optional<torch::Tensor>& padding_mask,
+                         int64_t num_groups, double eps);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor>
+GroupTimestepNormBwd(const torch::Tensor& Y_grad,
+                     const torch::Tensor& mean_grad,
+                     const torch::Tensor& var_grad, const torch::Tensor& X,
+                     const torch::Tensor& prev_mean, const torch::Tensor& count,
+                     const torch::Tensor& group_mean,
+                     const torch::Tensor& cummean, const torch::Tensor& cumrstd,
+                     const torch::Tensor& gamma,
+                     const c10::optional<torch::Tensor>& padding_mask,
+                     int64_t num_groups);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor>
+GroupTimestepNormCPUBwd(
+    const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
+    const torch::Tensor& var_grad, const torch::Tensor& X,
+    const torch::Tensor& prev_mean, const torch::Tensor& count,
+    const torch::Tensor& group_mean, const torch::Tensor& cummean,
+    const torch::Tensor& cumrstd, const torch::Tensor& gamma,
+    const c10::optional<torch::Tensor>& padding_mask, int64_t num_groups);
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
+           torch::Tensor>
+GroupTimestepNormCUDABwd(
+    const torch::Tensor& Y_grad, const torch::Tensor& mean_grad,
+    const torch::Tensor& var_grad, const torch::Tensor& X,
+    const torch::Tensor& prev_mean, const torch::Tensor& count,
+    const torch::Tensor& group_mean, const torch::Tensor& cummean,
+    const torch::Tensor& cumrstd, const torch::Tensor& gamma,
+    const c10::optional<torch::Tensor>& padding_mask, int64_t num_groups);
+
 void DefineTimestepNormOp(py::module& m);
 
 }  // namespace ops
