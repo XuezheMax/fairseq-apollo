@@ -42,14 +42,14 @@ sequence_norm = SequenceNormFunc.apply
 
 class SequenceNorm(nn.Module):
 
-    def __init__(self, num_features: int, eps: float = 1e-5, lenght_last: bool = False) -> None:
+    def __init__(self, num_features: int, eps: float = 1e-5, length_last: bool = False) -> None:
         super().__init__()
 
         self.num_features = num_features
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("bias", Parameter(torch.zeros(num_features), requires_grad=True))
         self.eps = eps
-        self.length_last = lenght_last
+        self.length_last = length_last
 
     def forward(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         return sequence_norm(x, self.weight + 1.0, self.bias, padding_mask, self.eps, self.length_last)
