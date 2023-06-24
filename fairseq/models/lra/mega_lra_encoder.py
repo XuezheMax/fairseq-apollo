@@ -186,7 +186,9 @@ class MegaLRAEncoder(nn.Module):
             x = x * inverse_mask.unsqueeze(-1)
 
         if self.sen_rep_type == 'mp':
-            sentence_rep = x.sum(dim=1) / src_lengths.unsqueeze(1)
+            seq_len = x.size(1)
+            ratio = seq_len / src_lengths.unsqueeze(1)
+            sentence_rep = x.mean(dim=1) * ratio
         else:
             sentence_rep = x[:, 0, :]
 
