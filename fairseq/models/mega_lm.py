@@ -386,7 +386,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         return self.max_target_positions
 
     def buffered_future_mask(self, tensor):
-        dim = tensor.size(0)
+        dim = tensor.size(1)
         if 0 < self.chunk_size < dim:
             assert dim % self.chunk_size == 0
             dim = self.chunk_size
