@@ -56,17 +56,23 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.tpu = True
 
     def reset_parameters(self):
+        # delta & alpha
+        nn.init.normal_(self.alpha, mean=0.0, std=0.2)
+        nn.init.normal_(self.delta, mean=0.0, std=0.2)
+        # theta
         with torch.no_grad():
-            # delta & alpha
-            nn.init.normal_(self.alpha, mean=0.0, std=0.2)
-            nn.init.normal_(self.delta, mean=0.0, std=0.2)
-            # theta
-            nn.init.normal_(self.theta, mean=0.0, std=1.0)
-            # gamma
-            nn.init.normal_(self.gamma, mean=0.0, std=1.0)
-            self.gamma[:, :, 1] = 0.
-            # omega
-            nn.init.normal_(self.omega, mean=0.0, std=1.0)
+            freqs = math.log(self.embed_dim) / self.embed_dim
+            freqs = torch.exp(torch.arange(1, self.embed_dim + 1) * -freqs).to(self.theta).view(self.embed_dim, 1, 1)
+            if self.bidirectional:
+                freqs = freqs.repeat(2, 1, 1)
+            freqs = torch.log(freqs / (1.0 - freqs))
+            self.theta.copy_(freqs)
+
+        # gamma
+        nn.init.normal_(self.gamma, mean=0.0, std=1.0)
+        self.gamma[:, :, 1] = 0.
+        # omega
+        nn.init.normal_(self.omega, mean=0.0, std=1.0)
 
     def _calc_coeffs(self):
         self._coeffs = None
