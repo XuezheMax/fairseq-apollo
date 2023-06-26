@@ -66,6 +66,7 @@ def main(parsed_args, **unused_kwargs):
 
     logger.info(parsed_args)
 
+    torch.backends.cuda.matmul.allow_tf32 = True
     use_cuda = torch.cuda.is_available() and not parsed_args.cpu
 
     task = tasks.setup_task(parsed_args)

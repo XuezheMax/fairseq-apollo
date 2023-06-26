@@ -30,6 +30,7 @@ def main(args, override_args=None):
     assert args.max_tokens is not None or args.max_sentences is not None, \
         'Must specify batch size either with --max-tokens or --max-sentences'
 
+    torch.backends.cuda.matmul.allow_tf32 = True
     use_fp16 = args.fp16
     use_cuda = torch.cuda.is_available() and not args.cpu
 

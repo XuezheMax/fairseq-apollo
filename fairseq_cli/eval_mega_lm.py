@@ -68,6 +68,7 @@ def main(parsed_args, **unused_kwargs):
 
     logger.info(parsed_args)
 
+    torch.backends.cuda.matmul.allow_tf32 = True
     use_cuda = torch.cuda.is_available() and not parsed_args.cpu
 
     parsed_args.decoder_chunk_size = parsed_args.test_chunk_size # a hack

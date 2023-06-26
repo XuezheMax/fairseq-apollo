@@ -65,6 +65,7 @@ def _main(args, output_file):
         np.random.seed(args.seed)
         utils.set_torch_seed(args.seed)
 
+    torch.backends.cuda.matmul.allow_tf32 = True
     use_cuda = torch.cuda.is_available() and not args.cpu
 
     # Load dataset splits
