@@ -64,7 +64,7 @@ class SequenceNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return sequence_norm(x, self.weight + 1.0, self.bias, padding_mask, self.num_groups, self.eps, self.length_last)
+        return sequence_norm(x, self.weight + 1.0, self.bias, padding_mask, self.num_groups, self.eps, True)
 
     def extra_repr(self) -> str:
         return 'num_features={num_features}, num_groups={num_groups}, eps={eps}'.format(**self.__dict__)
