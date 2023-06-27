@@ -23,11 +23,18 @@ class TimestepNormFunc(torch.autograd.Function):
         gamma: torch.Tensor,
         beta: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
+        num_groups: Optional[int] = None,
         eps: float = 1e-5
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        y, count, mean, var, cummean, cumrstd = mega2_ops.timestep_norm_fwd(
-            x, prev_count, prev_mean, prev_var, gamma, beta, padding_mask, eps)
-        ctx.save_for_backward(x, prev_mean, count, cummean, cumrstd, gamma, padding_mask)
+        if num_groups is None:
+            y, count, mean, var, cummean, cumrstd = mega2_ops.timestep_norm_fwd(
+                x, prev_count, prev_mean, prev_var, gamma, beta,padding_mask, eps)
+            ctx.save_for_backward(x, prev_mean, count, cummean, cumrstd, gamma, padding_mask)
+        else:
+            y, count, mean, var, group_mean, cummean, cumrstd = mega2_ops.group_timestep_norm_fwd(
+                x, prev_count, prev_mean, prev_var, gamma, beta, padding_mask, num_groups, eps)
+            ctx.save_for_backward(x, prev_mean, count, group_mean, cummean, cumrstd, gamma, padding_mask)
+        ctx.num_groups = num_groups  # num_groups is not a torch.Tensor
         return y, count, mean, var
 
     @staticmethod
@@ -36,14 +43,22 @@ class TimestepNormFunc(torch.autograd.Function):
         var_grad: torch.Tensor
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], torch.Tensor, torch.Tensor,
                torch.Tensor, torch.Tensor, Optional[torch.Tensor],
-               Optional[torch.Tensor]]:
-        (x, prev_mean, count, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
-        (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
-         beta_grad) = mega2_ops.timestep_norm_bwd(y_grad, mean_grad, var_grad,
-                                                  x, prev_mean, count, cummean,
-                                                  cumrstd, gamma, padding_mask)
+               Optional[torch.Tensor], Optional[torch.Tensor]]:
+        num_groups = ctx.num_groups
+        if num_groups is None:
+            (x, prev_mean, count, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
+            (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
+             beta_grad) = mega2_ops.timestep_norm_bwd(y_grad, mean_grad, var_grad,
+                                                      x, prev_mean, count, cummean,
+                                                      cumrstd, gamma, padding_mask)
+        else:
+            (x, prev_mean, count, group_mean, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
+            (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
+             beta_grad) = mega2_ops.group_timestep_norm_bwd(y_grad, mean_grad, var_grad,
+                                                            x, prev_mean, count, group_mean, cummean,
+                                                            cumrstd, gamma, padding_mask, num_groups)
         return (x_grad, None, prev_mean_grad, prev_var_grad, gamma_grad,
-                beta_grad, None, None)
+                beta_grad, None, None, None)
 
 
 timestep_norm = TimestepNormFunc.apply
@@ -52,13 +67,21 @@ timestep_norm = TimestepNormFunc.apply
 @with_incremental_state
 class TimestepNorm(nn.Module):
 
-    def __init__(self, num_features: int, prior_count: int = 2, eps: float = 1e-5) -> None:
+    def __init__(self, num_features: int, num_groups: Optional[int] = None,
+                 prior_count: int = 2, eps: float = 1e-5) -> None:
         super().__init__()
 
         self.num_features = num_features
+        self.num_groups = num_groups
+
+        if self.num_groups is None or num_groups == num_features:
+            assert prior_count > 1
+        else:
+            assert self.num_features % self.num_groups == 0
+
         self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
-        self.register_parameter("prior_mean", Parameter(torch.zeros(num_features, requires_grad=True)))
-        self.register_parameter("prior_logv", Parameter(torch.zeros(num_features), requires_grad=True))
+        self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups, requires_grad=True)))
+        self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=True))
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("bias", Parameter(torch.zeros(num_features), requires_grad=True))
         self.eps = eps
@@ -69,8 +92,7 @@ class TimestepNorm(nn.Module):
         padding_mask: Optional[torch.Tensor] = None,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # L x B x D -> B x L x D
-        x = x.transpose(0, 1)
+        # B x L x D
         batch_size = x.size(0)
 
         prev_mean = None
@@ -95,7 +117,7 @@ class TimestepNorm(nn.Module):
 
         out, prev_count, prev_mean, prev_var = timestep_norm(x, prev_count, prev_mean, prev_var,
                                                              self.weight + 1.0, self.bias,
-                                                             padding_mask, self.eps)
+                                                             padding_mask, self.num_groups, self.eps)
 
         if incremental_state is not None:
             saved_state['prev_mean'] = prev_mean
@@ -132,4 +154,4 @@ class TimestepNorm(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}, eps={eps}'.format(**self.__dict__)
+        return 'num_features={num_features}, num_groups={num_groups}, eps={eps}'.format(**self.__dict__)

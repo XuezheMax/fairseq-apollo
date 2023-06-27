@@ -103,7 +103,7 @@ class MegaLRAEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps, length_last=True)
+        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps)
         self.final_proj = nn.Linear(embedding_dim, embedding_dim)
 
         self.reset_parameters(init_mode)

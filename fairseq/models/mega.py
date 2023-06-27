@@ -250,7 +250,7 @@ class MegaEncoder(FairseqEncoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = SequenceNorm(embed_dim, eps=args.norm_eps, length_last=True)
+        self.final_norm = SequenceNorm(embed_dim, eps=args.norm_eps)
 
     def build_encoder_layer(self, args, layer_scale):
         return MegaEncoderLayer(args, layer_scale=layer_scale)

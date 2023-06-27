@@ -63,7 +63,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.bidirectional = bidirectional
 
         if bidirectional:
-            self.norm = SequenceNorm(embed_dim, eps=norm_eps, length_last=True)
+            self.norm = SequenceNorm(embed_dim, eps=norm_eps)
         else:
             self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
 
