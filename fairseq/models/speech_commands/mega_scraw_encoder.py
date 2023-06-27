@@ -60,6 +60,7 @@ class MegaSCRawEncoder(nn.Module):
         layerdrop: float = 0.0,
         truncation: int = None,
         norm_type='layernorm',
+        norm_num_groups=None,
         norm_affine=True,
         norm_eps=1e-5,
         rel_pos_bias: str = 'simple',
@@ -107,6 +108,7 @@ class MegaSCRawEncoder(nn.Module):
                 max_positions=max_seq_len,
                 attention_activation=attention_activation,
                 norm_type=norm_type,
+                norm_num_groups=norm_num_groups,
                 norm_affine=norm_affine,
                 norm_eps=norm_eps,
                 layer_scale=ls_weights[i],
@@ -116,7 +118,7 @@ class MegaSCRawEncoder(nn.Module):
             for i in range(self.num_layers)
         ])
 
-        self.final_norm = SequenceNorm(embedding_dim, eps=norm_eps)
+        self.final_norm = SequenceNorm(embedding_dim, num_groups=norm_num_groups, eps=norm_eps)
         self.final_proj = nn.Linear(embedding_dim, embedding_dim)
 
         self.reset_parameters(init_mode)

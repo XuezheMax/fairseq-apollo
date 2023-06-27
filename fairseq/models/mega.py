@@ -117,6 +117,7 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
+        parser.add_argument('--norm-num-groups', type=int, default=None, help='normalization eps')
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
@@ -250,7 +251,7 @@ class MegaEncoder(FairseqEncoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = SequenceNorm(embed_dim, eps=args.norm_eps)
+        self.final_norm = SequenceNorm(embed_dim, num_groups=args.norm_num_groups, eps=args.norm_eps)
 
     def build_encoder_layer(self, args, layer_scale):
         return MegaEncoderLayer(args, layer_scale=layer_scale)

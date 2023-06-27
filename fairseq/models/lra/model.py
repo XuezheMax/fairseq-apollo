@@ -149,6 +149,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--layer-type', choices=['transformer', 'luna', 'lstm', 'flash', 'mega'])
         parser.add_argument('--normalize-embedding', action='store_true', help='normalize embedding for Mega.')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
+        parser.add_argument('--norm-num-groups', type=int, default=None, help='normalization eps')
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
         parser.add_argument('--no-affine-norm', action='store_true', default=False,
                             help='no affine parameters in normalization layers.')
@@ -304,6 +305,7 @@ class LRAEncoder(FairseqEncoder):
                 moving_layer=args.moving_layer,
                 truncation=getattr(args, 'truncation_length', None),
                 norm_type=args.norm_type,
+                norm_num_groups=args.norm_num_groups,
                 norm_affine=not args.no_affine_norm,
                 norm_eps=args.norm_eps,
                 rel_pos_bias=args.rel_pos_bias,

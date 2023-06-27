@@ -40,6 +40,7 @@ class MovingAverageGatedAttention(nn.Module):
         chunk_size=-1,
         moving_layer='ema',
         truncation=None,
+        norm_num_groups=None,
         norm_affine=True,
         norm_eps=1e-5,
         rel_pos_bias='simple',
@@ -63,7 +64,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.bidirectional = bidirectional
 
         if bidirectional:
-            self.norm = SequenceNorm(embed_dim, eps=norm_eps)
+            self.norm = SequenceNorm(embed_dim, num_groups=norm_num_groups, eps=norm_eps)
         else:
             self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
 
