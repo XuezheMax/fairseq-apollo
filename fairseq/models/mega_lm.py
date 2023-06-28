@@ -16,7 +16,7 @@ from fairseq.models import (
 from fairseq.modules import (
     FairseqDropout,
     AdaptiveSoftmax,
-    LayerNorm,
+    TimestepNorm,
     AdaptiveInput,
     MegaDecoderLayer
 )
@@ -219,7 +219,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         norm_affine = not args.no_affine_norm
-        self.final_norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=args.norm_eps)
+        self.final_norm = TimestepNorm(embed_dim, num_groups=args.norm_num_groups, eps=args.norm_eps)
 
         if args.representation_dim is not None:
             self.num_features = args.representation_dim
@@ -359,7 +359,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
                                      need_attn=False)
             inner_states.append(x)
 
-        x = self.final_norm(x)
+        x = self.final_norm(x, padding_mask=decoder_padding_mask, incremental_state=incremental_state)
         x = self.pre_logits(x)
 
         # account for padding while computing the representation
