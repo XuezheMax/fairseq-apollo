@@ -126,7 +126,7 @@ class TimestepNorm(nn.Module):
             self._set_input_buffer(incremental_state, saved_state)
 
         # B x L x D -> L x B x D
-        return out.transpose(0, 1)
+        return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
         result = self.get_incremental_state(incremental_state, "norm_state")
