@@ -129,7 +129,6 @@ class TimestepNorm(nn.Module):
             saved_state['prev_count'] = prev_count
             self._set_input_buffer(incremental_state, saved_state)
 
-        # B x L x D -> L x B x D
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
