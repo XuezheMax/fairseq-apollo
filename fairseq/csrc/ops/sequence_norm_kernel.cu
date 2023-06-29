@@ -974,7 +974,7 @@ void GroupSequenceNormCUDAFwdBLHImpl(const torch::Tensor& X,
 
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
   {
-    const int64_t num_threads = (D <= cuda_utils::kCUDABlockReduceNumThreads
+    const int64_t num_threads = (D < cuda_utils::kCUDABlockReduceNumThreads
                                      ? cuda_utils::kWarpSize
                                      : cuda_utils::kCUDABlockReduceNumThreads);
     TransposeRowwiseMomentsKernel<T, T_ACC>
@@ -1100,7 +1100,7 @@ void GroupSequenceNormCUDABwdBLHImpl(
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
 
-  const int64_t num_threads = (D <= cuda_utils::kCUDABlockReduceNumThreads
+  const int64_t num_threads = (D < cuda_utils::kCUDABlockReduceNumThreads
                                    ? cuda_utils::kWarpSize
                                    : cuda_utils::kCUDABlockReduceNumThreads);
   CombineRowwiseInternalGradientsKernel<T, T_ACC>
@@ -1177,7 +1177,7 @@ void GroupSequenceNormCUDABwdBHLImpl(
     C10_CUDA_KERNEL_LAUNCH_CHECK();
   }
   {
-    const int64_t num_threads = (D <= cuda_utils::kCUDABlockReduceNumThreads
+    const int64_t num_threads = (D < cuda_utils::kCUDABlockReduceNumThreads
                                      ? cuda_utils::kWarpSize
                                      : cuda_utils::kCUDABlockReduceNumThreads);
     CombineRowwiseInternalGradientsKernel<T, T_ACC>

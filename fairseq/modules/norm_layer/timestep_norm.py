@@ -28,11 +28,13 @@ class TimestepNormFunc(torch.autograd.Function):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if num_groups is None:
             y, count, mean, var, cummean, cumrstd = mega2_ops.timestep_norm_fwd(
-                x, prev_count, prev_mean, prev_var, gamma, beta,padding_mask, eps)
+                x, prev_count, prev_mean, prev_var, gamma, beta,padding_mask, eps
+            )
             ctx.save_for_backward(x, prev_mean, count, cummean, cumrstd, gamma, padding_mask)
         else:
             y, count, mean, var, group_mean, cummean, cumrstd = mega2_ops.group_timestep_norm_fwd(
-                x, prev_count, prev_mean, prev_var, gamma, beta, padding_mask, num_groups, eps)
+                x, prev_count, prev_mean, prev_var, gamma, beta, padding_mask, num_groups, eps
+            )
             ctx.save_for_backward(x, prev_mean, count, group_mean, cummean, cumrstd, gamma, padding_mask)
         ctx.num_groups = num_groups  # num_groups is not a torch.Tensor
         return y, count, mean, var
@@ -46,19 +48,18 @@ class TimestepNormFunc(torch.autograd.Function):
                Optional[torch.Tensor], Optional[torch.Tensor]]:
         num_groups = ctx.num_groups
         if num_groups is None:
-            (x, prev_mean, count, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
-            (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
-             beta_grad) = mega2_ops.timestep_norm_bwd(y_grad, mean_grad, var_grad,
-                                                      x, prev_mean, count, cummean,
-                                                      cumrstd, gamma, padding_mask)
+            x, prev_mean, count, cummean, cumrstd, gamma, padding_mask = ctx.saved_tensors
+            x_grad, prev_mean_grad, prev_var_grad, gamma_grad, beta_grad = mega2_ops.timestep_norm_bwd(
+                y_grad, mean_grad, var_grad, x, prev_mean, count,
+                cummean, cumrstd, gamma, padding_mask
+            )
         else:
-            (x, prev_mean, count, group_mean, cummean, cumrstd, gamma, padding_mask) = ctx.saved_tensors
-            (x_grad, prev_mean_grad, prev_var_grad, gamma_grad,
-             beta_grad) = mega2_ops.group_timestep_norm_bwd(y_grad, mean_grad, var_grad,
-                                                            x, prev_mean, count, group_mean, cummean,
-                                                            cumrstd, gamma, padding_mask, num_groups)
-        return (x_grad, None, prev_mean_grad, prev_var_grad, gamma_grad,
-                beta_grad, None, None, None)
+            x, prev_mean, count, group_mean, cummean, cumrstd, gamma, padding_mask = ctx.saved_tensors
+            x_grad, prev_mean_grad, prev_var_grad, gamma_grad, beta_grad = mega2_ops.group_timestep_norm_bwd(
+                y_grad, mean_grad, var_grad, x, prev_mean, count, group_mean,
+                cummean, cumrstd, gamma, padding_mask, num_groups
+            )
+        return x_grad, None, prev_mean_grad, prev_var_grad, gamma_grad, beta_grad, None, None, None
 
 
 timestep_norm = TimestepNormFunc.apply
@@ -79,9 +80,12 @@ class TimestepNorm(nn.Module):
         else:
             assert self.num_features % self.num_groups == 0
 
+        if num_groups is None:
+            num_groups = self.num_features
+
         self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
-        self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups, requires_grad=True)))
-        self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=True))
+        self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups, requires_grad=(prior_count > 0))))
+        self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=(prior_count > 0)))
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("bias", Parameter(torch.zeros(num_features), requires_grad=True))
         self.eps = eps
