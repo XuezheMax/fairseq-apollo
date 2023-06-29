@@ -59,6 +59,8 @@ class SequenceNorm(nn.Module):
 
         self.num_features = num_features
         self.num_groups = num_groups
+        assert self.num_groups is None or self.num_features % self.num_groups == 0
+
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("bias", Parameter(torch.zeros(num_features), requires_grad=True))
         self.eps = eps
