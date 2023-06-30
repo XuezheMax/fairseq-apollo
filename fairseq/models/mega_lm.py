@@ -328,7 +328,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         """
 
         bsz, seq_len = prev_output_tokens.size()
-        if 0 < self.chunk_size < seq_len and seq_len % self.chunk_size != 0:
+        if seq_len > self.chunk_size > 0 != seq_len % self.chunk_size:
             num_paddings = math.ceil(seq_len / self.chunk_size) * self.chunk_size - seq_len
             prev_output_tokens = F.pad(prev_output_tokens, (0, num_paddings), value=self.padding_idx)
         else:
