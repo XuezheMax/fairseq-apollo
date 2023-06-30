@@ -69,19 +69,21 @@ timestep_norm = TimestepNormFunc.apply
 class TimestepNorm(nn.Module):
 
     def __init__(self, num_features: int, num_groups: Optional[int] = None,
-                 prior_count: int = 2, eps: float = 1e-5) -> None:
+                 prior_count: int = None, eps: float = 1e-5) -> None:
         super().__init__()
 
         self.num_features = num_features
         self.num_groups = num_groups
+        self._prior_count = prior_count
 
-        if self.num_groups is None or num_groups == num_features:
-            assert prior_count > 1
+        if num_groups is None or num_groups == num_features:
+            num_groups = num_features
         else:
-            assert self.num_features % self.num_groups == 0
+            assert self.num_features % num_groups == 0
 
-        if num_groups is None:
-            num_groups = self.num_features
+        if prior_count is None:
+            prior_count = max(2, num_groups // 8)
+            self._prior_count = prior_count
 
         self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
         self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups), requires_grad=(prior_count > 0)))
@@ -157,4 +159,4 @@ class TimestepNorm(nn.Module):
         return incremental_state
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}, num_groups={num_groups}, eps={eps}'.format(**self.__dict__)
+        return 'num_features={num_features}, num_groups={num_groups}, prior_count={_prior_count}, eps={eps}'.format(**self.__dict__)
