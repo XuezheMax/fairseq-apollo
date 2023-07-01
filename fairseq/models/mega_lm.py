@@ -349,7 +349,7 @@ class MegaDecoderNoCrossAttn(FairseqIncrementalDecoder):
         # decoder layers
         inner_states: List[Optional[Tensor]] = [x]
         for idx, layer in enumerate(self.layers):
-            if x.size(0) > 1:
+            if x.size(1) > 1:
                 attn_mask = self.buffered_future_mask(x)
             else:
                 attn_mask = None
