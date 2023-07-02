@@ -1,4 +1,5 @@
 from typing import Optional, Tuple, Dict
+import math
 
 import torch
 import torch.nn as nn
@@ -82,6 +83,7 @@ class TimestepNorm(nn.Module):
         else:
             assert self.num_features % num_groups == 0
 
+        self.scale = math.sqrt(1.0 / num_groups)
         self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
         self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups), requires_grad=True))
         self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=True))
@@ -116,7 +118,7 @@ class TimestepNorm(nn.Module):
         if prev_mean is None:
             prev_mean = self.prior_mean.expand(batch_size, -1).contiguous()
         if prev_var is None:
-            prev_var = self.prior_logv.exp().expand(batch_size, -1).contiguous()
+            prev_var = torch.exp(self.prior_logv * self.scale).expand(batch_size, -1).contiguous()
 
         out, prev_count, prev_mean, prev_var = timestep_norm(x, prev_count, prev_mean, prev_var,
                                                              self.weight + 1.0, self.bias,
