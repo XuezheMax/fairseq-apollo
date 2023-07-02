@@ -78,6 +78,7 @@ class TimestepNorm(nn.Module):
 
         if num_groups is None or num_groups == num_features:
             num_groups = num_features
+            assert prior_count > 1
         else:
             assert self.num_features % num_groups == 0
 
