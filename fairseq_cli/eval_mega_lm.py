@@ -127,54 +127,8 @@ def main(parsed_args, **unused_kwargs):
 
     logger.info('num. model params: {}'.format(sum(p.numel() for p in models[0].parameters())))
 
-    # check norms
-    # amodel = models[0]
-    # embeddings = amodel.decoder.embed_tokens.embeddings
-    # for emb_seq in embeddings:
-    #     emb, linear = emb_seq[0].weight, emb_seq[1].weight
-    #     norms = torch.linalg.norm(emb, dim=1, ord=2)
-    #     norm_mean, norm_max, norm_min = norms.mean(), norms.max(), norms.min()
-    #     print("embedding size ({}, {}), mean norm = {}, max norm = {}, min norm = {}".format(emb.size(0),
-    #                                                                                          emb.size(1),
-    #                                                                                          norm_mean.item(),
-    #                                                                                          norm_max.item(),
-    #                                                                                          norm_min.item()))
-    #     linear_mean, linear_max, linear_min = linear.mean(), linear.max(), linear.min()
-    #     print("linear, mean = {}, max = {}, min = {}".format(linear_mean.item(),
-    #                                                          linear_max.item(),
-    #                                                          linear_min.item()))
-    #
-    #     emb = torch.mm(emb, linear.t())
-    #     norms = torch.linalg.norm(emb, dim=1, ord=2)
-    #     norm_mean, norm_max, norm_min = norms.mean(), norms.max(), norms.min()
-    #     print("out emb size ({}, {}), mean norm = {}, max norm = {}, min norm = {}".format(emb.size(0),
-    #                                                                                          emb.size(1),
-    #                                                                                          norm_mean.item(),
-    #                                                                                          norm_max.item(),
-    #                                                                                          norm_min.item()))
-    #
-    # for ii, (n, p) in enumerate(models[0].named_parameters()):
-    #     if "norm.norm." in n:
-    #         print("{}: ".format(n))
-    #         nn = n.strip().split('.')[-1]
-    #         w_mean, w_max, w_min = p.mean().item(), p.max().item(), p.min().item()
-    #         print("{} mean = {}, w max = {}, w min = {}".format(nn, w_mean, w_max, w_min))
-
     task = tasks.setup_task(args)
 
-    # itr = task.get_batch_iterator(
-    #     dataset=dataset,
-    #     max_tokens=args.max_tokens or 36000,
-    #     max_sentences=args.max_sentences,
-    #     max_positions=utils.resolve_max_positions(*[
-    #         model.max_positions() for model in models
-    #     ]),
-    #     ignore_invalid_inputs=True,
-    #     num_shards=args.num_shards,
-    #     shard_id=args.shard_id,
-    #     num_workers=args.num_workers,
-    #     sharding=False,
-    # ).next_epoch_itr(shuffle=False)
     itr = task.get_batch_iterator(
         dataset=dataset,
         max_tokens=max(250000, task.chunk_size),
