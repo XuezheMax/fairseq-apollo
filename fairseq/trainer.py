@@ -61,11 +61,9 @@ class Trainer(object):
         if args.fp16:
             self._criterion = self._criterion.half()
             self._model = self._model.half()
-            self._model.fp32_buffers()
         elif args.bf16:
             self._criterion = self._criterion.to(dtype=torch.bfloat16)
             self._model = self._model.to(dtype=torch.bfloat16)
-            self._model.fp32_buffers()
         self._criterion = self._criterion.to(device=self.device)
         self._model = self._model.to(device=self.device)
 

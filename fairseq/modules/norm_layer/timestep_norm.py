@@ -69,7 +69,7 @@ timestep_norm = TimestepNormFunc.apply
 class TimestepNorm(nn.Module):
 
     def __init__(self, num_features: int, num_groups: Optional[int] = None,
-                 prior_count: int = 2, eps: float = 1e-5) -> None:
+                 prior_count: int = 0, eps: float = 1e-5) -> None:
         super().__init__()
 
         self.num_features = num_features
