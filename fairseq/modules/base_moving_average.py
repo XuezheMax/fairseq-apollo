@@ -138,7 +138,7 @@ class BaseMovingLayer(nn.Module):
         assert embed_dim == self.embed_dim
 
         # B x D x L
-        residual = x * self.omega
+        residual = x * torch.tanh(self.omega)
 
         if padding_mask is not None:
             x = x * (1.0 - padding_mask.unsqueeze(1).to(x))
