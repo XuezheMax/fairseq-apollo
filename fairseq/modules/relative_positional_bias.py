@@ -43,18 +43,19 @@ class SimpleRelativePositionalBias(nn.Module):
 
 
 class RotaryRelativePositionalBias(nn.Module):
-    def __init__(self, embed_dim, max_positions):
+    def __init__(self, embed_dim, max_positions, base=None):
         super().__init__()
         assert embed_dim % 2 == 0
         self.embed_dim = embed_dim
         self.max_positions = max_positions
-        self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(max_positions, embed_dim)
+        self.base = max_positions / (math.pi * 2) if base is None else base
+        self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(max_positions, embed_dim, self.base)
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
 
     @staticmethod
-    def get_sinusoid_freqs(max_positions: int, embedding_dim: int):
+    def get_sinusoid_freqs(max_positions: int, embedding_dim: int, base: float):
         half_dim = embedding_dim // 2
-        freqs = math.log(10000) / half_dim
+        freqs = math.log(base) / half_dim
         freqs = torch.exp(torch.arange(half_dim, dtype=torch.float) * -freqs)
         # C x D/2
         freqs = torch.arange(max_positions, dtype=torch.float).unsqueeze(1) * freqs.unsqueeze(0)
@@ -90,4 +91,4 @@ class RotaryRelativePositionalBias(nn.Module):
         return xq, xk
 
     def extra_repr(self) -> str:
-        return 'dim={}, max positions={}'.format(self.embed_dim, self.max_positions)
+        return 'dim={}, max positions={}, base={:.1f}'.format(self.embed_dim, self.max_positions, self.base)
