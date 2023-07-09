@@ -48,7 +48,7 @@ class RotaryRelativePositionalBias(nn.Module):
         assert embed_dim % 2 == 0
         self.embed_dim = embed_dim
         self.max_positions = max_positions
-        self.base = max_positions / (math.pi * 2) if base is None else base
+        self.base = max_positions * math.sqrt(embed_dim / 2) / (math.pi * 2) if base is None else base
         self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(max_positions, embed_dim, self.base)
         self.register_buffer("_float_tensor", torch.FloatTensor(1))
 
