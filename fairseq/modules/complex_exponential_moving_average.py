@@ -6,6 +6,7 @@ import torch
 from torch import nn
 
 from .base_moving_average import BaseMovingLayer
+from .fused_ops.ema_filter import ema_filter
 
 _c2r = torch.view_as_real
 _r2c = torch.view_as_complex
@@ -101,6 +102,9 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self._kernel = None
         # D x N x 1
         p, q, gamma = self._calc_coeffs()
+        if p.is_cuda:
+            return ema_filter(p, q, gamma, length)
+
         # D x N x L
         vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
         # D x N x L

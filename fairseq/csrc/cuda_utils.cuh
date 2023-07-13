@@ -1,6 +1,7 @@
 #pragma once
 
 #include <c10/macros/Macros.h>
+#include <c10/util/complex.h>
 #include <thrust/pair.h>
 #include <thrust/tuple.h>
 
@@ -103,6 +104,38 @@ __inline__ __device__ thrust::tuple<int64_t, T, T> BlockReduceMoments(
     thrust::tie(m0, m1, m2) = WarpReduceMoments(m0, m1, m2);
   }
   return thrust::make_tuple(m0, m1, m2);
+}
+
+template <typename T>
+__inline__ __device__ c10::complex<T> WarpReduceComplexSum(c10::complex<T> x) {
+  T u = x.real();
+  T v = x.imag();
+#pragma unroll
+  for (int64_t offset = (kWarpSize >> 1); offset > 0; offset >>= 1) {
+    u += WARP_SHFL_DOWN(u, offset);
+    v += WARP_SHFL_DOWN(v, offset);
+  }
+  return c10::complex<T>(u, v);
+}
+
+template <typename T>
+__inline__ __device__ c10::complex<T> BlockReduceComplexSum(
+    c10::complex<T> x, c10::complex<T>* shared_mem) {
+  const int64_t tid = threadIdx.x;
+  const int64_t lid = tid % kWarpSize;
+  const int64_t wid = tid / kWarpSize;
+  const int64_t num_warps = blockDim.x / kWarpSize;
+  x = WarpReduceComplexSum(x);
+  __syncthreads();
+  if (lid == 0) {
+    shared_mem[wid] = x;
+  }
+  __syncthreads();
+  x = tid < num_warps ? shared_mem[lid] : c10::complex<T>(0);
+  if (wid == 0) {
+    x = WarpReduceComplexSum(x);
+  }
+  return x;
 }
 
 }  // namespace cuda_utils

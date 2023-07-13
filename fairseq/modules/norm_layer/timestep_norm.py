@@ -82,9 +82,17 @@ class TimestepNorm(nn.Module):
         else:
             assert self.num_features % num_groups == 0
 
+        if num_groups is None:
+            num_groups = self.num_features
+
         self.register_buffer("prior_count", torch.tensor(prior_count, dtype=torch.int64))
-        self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups), requires_grad=True))
-        self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=True))
+        if prior_count > 0:
+            self.register_parameter("prior_mean", Parameter(torch.zeros(num_groups), requires_grad=True))
+            self.register_parameter("prior_logv", Parameter(torch.zeros(num_groups), requires_grad=True))
+        else:
+            self.register_buffer("prior_mean", torch.zeros(num_groups))
+            self.register_buffer("prior_logv", torch.zeros(num_groups))
+
         self.register_parameter("weight", Parameter(torch.zeros(num_features), requires_grad=True))
         self.register_parameter("bias", Parameter(torch.zeros(num_features), requires_grad=True))
         self.eps = eps
