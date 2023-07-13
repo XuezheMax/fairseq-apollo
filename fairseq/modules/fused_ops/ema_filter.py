@@ -32,18 +32,3 @@ class EMAFilterFunc(torch.autograd.Function):
 
 
 ema_filter = EMAFilterFunc.apply
-
-
-class EMAFilter(nn.Module):
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(self, p: torch.Tensor, q: torch.Tensor, gamma: torch.Tensor,
-                length: int) -> torch.Tensor:
-        if p.is_cuda:
-            return ema_filter(p, q, gamma, length)
-
-        vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
-        kernel = p * torch.exp(vander)
-        return torch.einsum('dnl,dn->dl', kernel, gamma).real
