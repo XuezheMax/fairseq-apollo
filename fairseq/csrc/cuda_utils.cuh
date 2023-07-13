@@ -15,6 +15,7 @@ constexpr int64_t kWarpSize = 32;
 constexpr int64_t kCUDANumThreads = 128;
 constexpr int64_t kCUDABlockReduceNumThreads = 512;
 constexpr int64_t kColwiseThreshold = 256;
+constexpr int64_t kMaxStaticSharedMemorySize = 49152;
 
 template <typename T>
 C10_HOST_DEVICE thrust::pair<T, T> Fast2Sum(T a, T b) {
@@ -136,6 +137,17 @@ __inline__ __device__ c10::complex<T> BlockReduceComplexSum(
     x = WarpReduceComplexSum(x);
   }
   return x;
+}
+
+template <class KernelFunc, class... Args>
+void LaunchKernel(KernelFunc kernel, dim3 dg, dim3 db, int64_t shared_mem_size,
+                  cudaStream_t cuda_stream, Args... args) {
+  if (shared_mem_size > cuda_utils::kMaxStaticSharedMemorySize) {
+    AT_CUDA_CHECK(cudaFuncSetAttribute(
+        kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_mem_size));
+  }
+  kernel<<<dg, db, shared_mem_size, cuda_stream>>>(args...);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 }  // namespace cuda_utils

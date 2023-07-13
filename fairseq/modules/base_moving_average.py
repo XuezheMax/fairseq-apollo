@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from fairseq.incremental_decoding_utils import with_incremental_state
+from .fused_ops.fftconv import fftconv
 
 
 @with_incremental_state
@@ -169,11 +170,8 @@ class BaseMovingLayer(nn.Module):
                 else:
                     k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
-            k_f = torch.fft.rfft(k, n=fft_len, norm="forward")
-            x_f = torch.fft.rfft(x.float(), n=fft_len)
             # B x D x L
-            out = torch.fft.irfft(x_f * k_f, n=fft_len, norm="forward")[..., :seq_len]
-            out = out.to(x)
+            out = fftconv(x, k)
             # B x D x L
             out = F.silu(out + residual)
 
