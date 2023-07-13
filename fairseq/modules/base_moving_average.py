@@ -171,7 +171,7 @@ class BaseMovingLayer(nn.Module):
                     k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
 
             # B x D x L
-            out = fftconv(x, k)
+            out = fftconv(x, k, self.bidirectional)
             # B x D x L
             out = F.silu(out + residual)
 
