@@ -13,7 +13,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
+from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryEmbedding
 from fairseq.modules.norm_layer.sequence_norm import SequenceNorm
 from fairseq.modules.norm_layer.layer_norm import LayerNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
@@ -86,7 +86,7 @@ class MovingAverageGatedAttention(nn.Module):
         if rel_pos_bias == 'simple':
             self.rel_pos_bias = SimpleRelativePositionalBias(max_positions)
         elif rel_pos_bias == 'rotary':
-            self.rel_pos_bias = RotaryRelativePositionalBias(zdim, max_positions)
+            self.rel_pos_bias = RotaryEmbedding(zdim, max_positions)
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
@@ -153,7 +153,7 @@ class MovingAverageGatedAttention(nn.Module):
                 bias = bias[-1:]
             # B x K x C x C
             qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
-        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+        elif isinstance(self.rel_pos_bias, RotaryEmbedding):
             if slen != q.size(2):
                 assert q.size(2) == 1
                 qidx = slen - 1
@@ -194,7 +194,7 @@ class MovingAverageGatedAttention(nn.Module):
                 bias = bias[-1:]
             # B x K x C x C
             qk = torch.matmul(q, k.transpose(2, 3)) + bias
-        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+        elif isinstance(self.rel_pos_bias, RotaryEmbedding):
             if slen != q.size(2):
                 assert q.size(2) == 1
                 qidx = slen - 1
