@@ -2,7 +2,9 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import math
+from typing import Optional
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -50,7 +52,7 @@ class RotaryEmbedding(nn.Module):
         self.max_positions = max_positions
         self.base = 10000 if base is None else base
         self.register_buffer("freqs", self._precompute_freqs())
-        self.freqs_cis = self._precompute_until(self.max_positions)
+        self.freqs_cis: Optional[torch.Tensor] = None
 
     def _precompute_freqs(self):
         freqs = [self.base ** (j / self.embed_dim) for j in range(0, self.embed_dim, 2)]
@@ -70,14 +72,16 @@ class RotaryEmbedding(nn.Module):
         return freqs_cis
 
     def get_freqs_cis(self, start: int, end: int) -> torch.Tensor:
+        if self.freqs_cis is None:
+            self.freqs_cis = self._precompute_until(self.max_positions)
         if end > self.freqs_cis.shape[0]:
-            raise RuntimeWarning('Extending rotary range from {} to {}'.format(self.max_positions, end))
+            warnings.warn('Extending rotary range from {} to {}'.format(self.max_positions, end))
             self.freqs_cis = self._precompute_until(end)
         return self.freqs_cis[start:end]  # type: ignore
 
     def rotary(self, x, sidx):
-        B, N, C, D = x.shape
-        freqs_cis = self.get_freqs_cis(sidx, sidx + C)
+        seq_len = x.shape[2]
+        freqs_cis = self.get_freqs_cis(sidx, sidx + seq_len)
         # B x N x C x D/2
         x_ = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
         # B x N x C x D
