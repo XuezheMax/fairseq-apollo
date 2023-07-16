@@ -49,9 +49,14 @@ class RotaryEmbedding(nn.Module):
         self.embed_dim = embed_dim
         self.max_positions = max_positions
         self.base = 10000 if base is None else base
-        freqs = 1.0 / (base ** (torch.arange(0, embed_dim, 2).float() / embed_dim))
-        self.register_buffer("freqs", freqs)
+        self.register_buffer("freqs", self._precompute_freqs())
         self.freqs_cis = self._precompute_until(self.max_positions)
+
+    def _precompute_freqs(self):
+        freqs = [self.base ** (j / self.embed_dim) for j in range(0, self.embed_dim, 2)]
+        freqs = torch.tensor(freqs, dtype=torch.float32)
+        freqs = 1.0 / freqs
+        return freqs
 
     @torch.no_grad()
     def _precompute_until(self, max_positions: int):
