@@ -2,7 +2,9 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import math
+from typing import Optional
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,48 +44,49 @@ class SimpleRelativePositionalBias(nn.Module):
         return 'max positions={}'.format(self.max_positions)
 
 
-class RotaryRelativePositionalBias(nn.Module):
+class RotaryEmbedding(nn.Module):
     def __init__(self, embed_dim, max_positions, base=None):
         super().__init__()
         assert embed_dim % 2 == 0
         self.embed_dim = embed_dim
         self.max_positions = max_positions
         self.base = 10000 if base is None else base
-        self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(max_positions, embed_dim, self.base)
-        self.register_buffer("_float_tensor", torch.FloatTensor(1))
+        self.register_buffer("freqs", self._precompute_freqs())
+        self.freqs_cis: Optional[torch.Tensor] = None
 
-    @staticmethod
-    def get_sinusoid_freqs(max_positions: int, embedding_dim: int, base: float):
-        half_dim = embedding_dim // 2
-        freqs = math.log(base) / half_dim
-        freqs = torch.exp(torch.arange(half_dim, dtype=torch.float) * -freqs)
+    def _precompute_freqs(self):
+        freqs = [self.base ** (j / self.embed_dim) for j in range(0, self.embed_dim, 2)]
+        freqs = torch.tensor(freqs, dtype=torch.float32)
+        freqs = 1.0 / freqs
+        return freqs
+
+    @torch.no_grad()
+    def _precompute_until(self, max_positions: int):
+        assert self.max_positions <= max_positions
+        self.max_positions = max_positions
+        # C
+        t = torch.arange(max_positions, dtype=torch.float, device=self.freqs.device)
         # C x D/2
-        freqs = torch.arange(max_positions, dtype=torch.float).unsqueeze(1) * freqs.unsqueeze(0)
-        # C x D
-        freqs = freqs.repeat_interleave(2, dim=-1)
-        return torch.sin(freqs), torch.cos(freqs)
+        freqs = torch.outer(t, self.freqs.float())
+        freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+        return freqs_cis
 
-    def rotate_half(self, x):
-        B, N, C, D = x.shape
-        x = x.reshape((B, N, C, D // 2, 2))
-        x1, x2 = x.unbind(dim=-1)
-        x = torch.stack((-x2, x1), dim=-1)
-        B, N, C, D, E = x.shape
-        return x.reshape((B, N, C, D * E))
+    def get_freqs_cis(self, start: int, end: int) -> torch.Tensor:
+        if self.freqs_cis is None:
+            self.freqs_cis = self._precompute_until(self.max_positions)
+        if end > self.freqs_cis.shape[0]:
+            warnings.warn('Extending rotary range from {} to {}'.format(self.max_positions, end))
+            self.freqs_cis = self._precompute_until(end)
+        return self.freqs_cis[start:end]  # type: ignore
 
     def rotary(self, x, sidx):
-        B, N, C, D = x.shape
-        eidx = sidx + C
-        if self.sine is None or eidx > self.sine.size(0):
-            self.sine, self.cosine = RotaryRelativePositionalBias.get_sinusoid_freqs(eidx, D)
-            self.max_positions = eidx
-        # C x D
-        self.sine = self.sine.to(self._float_tensor)
-        self.cosine = self.cosine.to(self._float_tensor)
-
-        sin = self.sine[sidx:eidx]
-        cos = self.cosine[sidx:eidx]
-        return x * cos + self.rotate_half(x) * sin
+        seq_len = x.shape[2]
+        freqs_cis = self.get_freqs_cis(sidx, sidx + seq_len)
+        # B x N x C x D/2
+        x_ = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+        # B x N x C x D
+        x_out = torch.view_as_real(x_ * freqs_cis).flatten(3)
+        return x_out
 
     def forward(self, xq, xk, qidx=0):
         xq = self.rotary(xq, qidx)

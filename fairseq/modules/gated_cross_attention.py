@@ -11,7 +11,7 @@ from torch.nn import Parameter
 from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
-from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryRelativePositionalBias
+from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryEmbedding
 from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
 
 
@@ -72,7 +72,7 @@ class GatedCrossAttention(nn.Module):
         elif rel_pos_bias == 'simple':
             self.rel_pos_bias = SimpleRelativePositionalBias(max_positions)
         elif rel_pos_bias == 'rotary':
-            self.rel_pos_bias = RotaryRelativePositionalBias(zdim, max_positions)
+            self.rel_pos_bias = RotaryEmbedding(zdim, max_positions)
         else:
             raise ValueError('unknown relative position bias: {}'.format(rel_pos_bias))
 
@@ -148,7 +148,7 @@ class GatedCrossAttention(nn.Module):
                 bias = bias[:slen]
             # B x L2 x L1
             qk = torch.bmm(q, k.transpose(1, 2)) * len_scale + bias
-        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+        elif isinstance(self.rel_pos_bias, RotaryEmbedding):
             if pidx is not None:
                 assert q.size(1) == 1
                 qidx = pidx
@@ -200,7 +200,7 @@ class GatedCrossAttention(nn.Module):
                 bias = bias[:slen]
             # B x L2 x L1
             qk = torch.bmm(q, k.transpose(1, 2)) + bias
-        elif isinstance(self.rel_pos_bias, RotaryRelativePositionalBias):
+        elif isinstance(self.rel_pos_bias, RotaryEmbedding):
             if pidx is not None:
                 assert q.size(1) == 1
                 qidx = pidx

@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from fairseq.incremental_decoding_utils import with_incremental_state
+from .fused_ops.fftconv import fftconv, bidirectional_fftconv
 
 
 @with_incremental_state
@@ -159,22 +160,11 @@ class BaseMovingLayer(nn.Module):
         else:
             # D x L
             k = self.kernel(seq_len)
-            kernel_size = k.size(1)
-            fft_len = seq_len + kernel_size
+            # B x D x L
             if self.bidirectional:
-                k1, k2 = torch.split(k, [self.embed_dim, self.embed_dim], dim=0)
-                # D x K+L
-                if self.shift:
-                    k = F.pad(k1, (0, seq_len)) + F.pad(k2.flip(-1), (seq_len, 0))
-                else:
-                    k = F.pad(k1, (0, seq_len)) + F.pad(k2[:, :1], (0, fft_len - 1)) + F.pad(k2[:, 1:].flip(-1), (seq_len + 1, 0))
-
-            k_f = torch.fft.rfft(k, n=fft_len, norm="forward")
-            x_f = torch.fft.rfft(x.float(), n=fft_len)
-            # B x D x L
-            out = torch.fft.irfft(x_f * k_f, n=fft_len, norm="forward")[..., :seq_len]
-            out = out.to(x)
-            # B x D x L
+                out = bidirectional_fftconv(x, k, self.shift)
+            else:
+                out = fftconv(x, k)
             out = F.silu(out + residual)
 
         return out

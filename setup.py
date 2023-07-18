@@ -31,6 +31,9 @@ NVCC_FLAGS = [
     # "-rdc=true",
     "--expt-relaxed-constexpr",
     "--expt-extended-lambda",
+    # "--use_fast_math",
+    "--threads",
+    "4",
 ]
 
 
@@ -105,12 +108,14 @@ try:
             'fairseq.mega2_extension',
             sources=[
                 "fairseq/csrc/mega2_extension.cc",
-                "fairseq/csrc/ops/timestep_norm.cc",
-                "fairseq/csrc/ops/timestep_norm_kernel.cu",
-                "fairseq/csrc/ops/sequence_norm.cc",
-                "fairseq/csrc/ops/sequence_norm_kernel.cu",
                 "fairseq/csrc/ops/ema_filter.cc",
                 "fairseq/csrc/ops/ema_filter_kernel.cu",
+                "fairseq/csrc/ops/fftconv.cc",
+                "fairseq/csrc/ops/fftconv_kernel.cu",
+                "fairseq/csrc/ops/sequence_norm.cc",
+                "fairseq/csrc/ops/sequence_norm_kernel.cu",
+                "fairseq/csrc/ops/timestep_norm.cc",
+                "fairseq/csrc/ops/timestep_norm_kernel.cu",
             ],
             include_dirs=[
                 "fairseq/csrc",

@@ -82,18 +82,16 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         # D x 1 x 1
         theta = torch.sigmoid(self.theta.float()) * (2 * math.pi / self.ndim)
         # 1 x N
-        wavelets = torch.arange(1, self.ndim + 1).to(theta).view(1, self.ndim)
+        wavelets = torch.arange(1, self.ndim + 1, dtype=theta.dtype, device=theta.device).view(1, self.ndim)
         # D x N x 1
         theta = wavelets.unsqueeze(2) * theta
-        # D x N x 1
-        c = torch.cos(theta) + 1j * torch.sin(theta)
 
         # D x N x 1
         alpha = torch.sigmoid(self.alpha.float())
         delta = torch.sigmoid(self.delta.float())
         # coeffs
         p = alpha
-        q = (1.0 - alpha * delta) * c
+        q = torch.polar(1.0 - alpha * delta, theta)
         # D x N
         gamma = _r2c(self.gamma.float()) * self.scale
         return p, q, gamma
@@ -106,7 +104,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             return ema_filter(p, q, gamma, length)
 
         # D x N x L
-        vander = torch.arange(length).to(p).view(1, 1, length) * torch.log(q)
+        vander = torch.arange(length, dtype=p.dtype, device=p.device).view(1, 1, length) * torch.log(q)
         # D x N x L
         kernel = p * torch.exp(vander)
         # D x L
