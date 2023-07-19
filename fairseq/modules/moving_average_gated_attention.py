@@ -128,13 +128,13 @@ class MovingAverageGatedAttention(nn.Module):
         nn.init.constant_(self.beta, 0.0)
 
     def element_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
-        slen = k.size(2)
+        slen = k.size(1)
         if padding_mask is not None:
-            # B x K x 1
+            # B*K x 1
             lengths = slen - padding_mask.sum(dim=-1, keepdim=True)
-            # B x K x 1 x 1
+            # B*K x 1 x 1
             len_scale = torch.rsqrt(lengths.clamp(min=1.0)).to(q).unsqueeze(-1)
-            # B x K x C
+            # B*K x C
             inverse_mask = 1.0 - padding_mask.to(q)
         else:
             len_scale = 1.0 / math.sqrt(slen)
@@ -147,21 +147,21 @@ class MovingAverageGatedAttention(nn.Module):
         if isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
             # C x C
             bias = self.rel_pos_bias(slen)
-            if slen != q.size(2):
-                assert q.size(2) == 1
+            if slen != q.size(1):
+                assert q.size(1) == 1
                 # 1 x C
                 bias = bias[-1:]
-            # B x K x C x C
-            qk = torch.matmul(q, k.transpose(2, 3)) * len_scale + bias
+            # B*K x C x C
+            qk = torch.bmm(q, k.transpose(1, 2)) * len_scale + bias
         elif isinstance(self.rel_pos_bias, RotaryEmbedding):
-            if slen != q.size(2):
-                assert q.size(2) == 1
+            if slen != q.size(1):
+                assert q.size(1) == 1
                 qidx = slen - 1
             else:
                 qidx = 0
             q, k = self.rel_pos_bias(q, k, qidx=qidx)
-            # B x K x C x C
-            qk = torch.matmul(q, k.transpose(2, 3)) * len_scale
+            # B*K x C x C
+            qk = torch.bmm(q, k.transpose(1, 2)) * len_scale
         else:
             raise ValueError('unknown relative position bias')
 
@@ -176,7 +176,7 @@ class MovingAverageGatedAttention(nn.Module):
             raise ValueError('Unknown attention activation function: {}'.format(self.attention_activation))
 
         if inverse_mask is not None:
-            attn_weights = attn_weights * inverse_mask.unsqueeze(2)
+            attn_weights = attn_weights * inverse_mask.unsqueeze(1)
 
         if attn_mask is not None:
             attn_weights = attn_weights * attn_mask
@@ -184,25 +184,25 @@ class MovingAverageGatedAttention(nn.Module):
         return attn_weights
 
     def softmax_attention(self, q, k, padding_mask, attn_mask, before_attn_fn):
-        slen = k.size(2)
+        slen = k.size(1)
         if isinstance(self.rel_pos_bias, SimpleRelativePositionalBias):
             # C x C
             bias = self.rel_pos_bias(slen)
-            if slen != q.size(2):
-                assert q.size(2) == 1
+            if slen != q.size(1):
+                assert q.size(1) == 1
                 # 1 x C
                 bias = bias[-1:]
-            # B x K x C x C
-            qk = torch.matmul(q, k.transpose(2, 3)) + bias
+            # B*K x C x C
+            qk = torch.bmm(q, k.transpose(1, 2)) + bias
         elif isinstance(self.rel_pos_bias, RotaryEmbedding):
-            if slen != q.size(2):
-                assert q.size(2) == 1
+            if slen != q.size(1):
+                assert q.size(1) == 1
                 qidx = slen - 1
             else:
                 qidx = 0
             q, k = self.rel_pos_bias(q, k, qidx=qidx)
-            # B x K x C x C
-            qk = torch.matmul(q, k.transpose(2, 3))
+            # B*K x C x C
+            qk = torch.bmm(q, k.transpose(1, 2))
         else:
             raise ValueError('unknown relative position bias')
 
@@ -212,7 +212,7 @@ class MovingAverageGatedAttention(nn.Module):
         if padding_mask is not None:
             padding_mask_all = padding_mask.all(dim=-1, keepdim=True)
             padding_mask = torch.logical_and(padding_mask, ~padding_mask_all)
-            qk = qk.masked_fill(padding_mask.unsqueeze(2).to(torch.bool), float('-inf'))
+            qk = qk.masked_fill(padding_mask.unsqueeze(1).to(torch.bool), float('-inf'))
 
         if before_attn_fn:
             return qk
@@ -331,36 +331,20 @@ class MovingAverageGatedAttention(nn.Module):
             assert incremental_state is not None
             self._set_input_buffer(incremental_state, saved_state)
 
-        ctx_len = k.size(1)
-        if self.chunk_size < 0:
-            # B x L x S -> B x 1 x L x S
-            q = q.unsqueeze(1)
-            k = k.unsqueeze(1)
-            v = v.unsqueeze(1)
-            if padding_mask is not None:
-                # B x L -> B x 1 x L
-                padding_mask = padding_mask.unsqueeze(1)
-        else:
-            if seq_len < self.chunk_size:
-                q = q.unsqueeze(1)
-            else:
-                # B x L x S -> B x K x C x S
-                nc = seq_len // self.chunk_size
-                q = q.reshape(bsz, nc, self.chunk_size, self.zdim)
+        if 1 < self.chunk_size < seq_len:
+            # B x L x S -> B*K x C x S
+            nc = seq_len // self.chunk_size
+            q = q.reshape(bsz * nc, self.chunk_size, self.zdim)
 
-            if ctx_len < self.chunk_size:
-                k = k.unsqueeze(1)
-                v = v.unsqueeze(1)
-                if padding_mask is not None:
-                    padding_mask = padding_mask.unsqueeze(1)
-            else:
-                # B x L x S -> B x K x C x S
-                nc = ctx_len // self.chunk_size
-                k = k.reshape(bsz, nc, self.chunk_size, self.zdim)
-                v = v.reshape(bsz, nc, self.chunk_size, self.hdim)
-                if padding_mask is not None:
-                    # B x L -> B x K x C
-                    padding_mask = padding_mask.view(bsz, nc, self.chunk_size)
+        ctx_len = k.size(1)
+        if 1 < self.chunk_size < ctx_len:
+            # B x L x S -> B*K x C x S
+            nc = ctx_len // self.chunk_size
+            k = k.reshape(bsz * nc, self.chunk_size, self.zdim)
+            v = v.reshape(bsz * nc, self.chunk_size, self.hdim)
+            if padding_mask is not None:
+                # B x L -> B*K x C
+                padding_mask = padding_mask.view(bsz * nc, self.chunk_size)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -376,8 +360,8 @@ class MovingAverageGatedAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B x K x C x E -> B x L x E
-        attn = torch.matmul(kernel, v).view(bsz, seq_len, self.hdim)
+        # B*K x C x E -> B x L x E
+        attn = torch.bmm(kernel, v).view(bsz, seq_len, self.hdim)
         # B x L x E
         attn = self.hidden_dropout(attn * r)
         # B x L x E -> B x L x D
