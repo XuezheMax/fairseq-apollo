@@ -154,13 +154,8 @@ class GatedCrossAttention(nn.Module):
                 qidx = pidx
             else:
                 qidx = 0
-            # B x 1 x L x D
-            q = q.unsqueeze(1)
-            k = k.unsqueeze(1)
-            q, k = self.rel_pos_bias(q, k, qidx=qidx)
             # B x L x D
-            q = q.squeeze(1)
-            k = k.squeeze(1)
+            q, k = self.rel_pos_bias(q, k, qidx=qidx)
             # B x L2 x L1
             qk = torch.bmm(q, k.transpose(1, 2)) * len_scale
         else:
@@ -206,13 +201,7 @@ class GatedCrossAttention(nn.Module):
                 qidx = pidx
             else:
                 qidx = 0
-            # B x 1 x L x D
-            q = q.unsqueeze(1)
-            k = k.unsqueeze(1)
             q, k = self.rel_pos_bias(q, k, qidx=qidx)
-            # B x L x D
-            q = q.squeeze(1)
-            k = k.squeeze(1)
             # B x L2 x L1
             qk = torch.bmm(q, k.transpose(1, 2))
         else:
