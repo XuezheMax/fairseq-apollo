@@ -80,12 +80,12 @@ class RotaryEmbedding(nn.Module):
         return self.freqs_cis[start:end]  # type: ignore
 
     def rotary(self, x, sidx):
-        seq_len = x.shape[2]
+        seq_len = x.shape[1]
         freqs_cis = self.get_freqs_cis(sidx, sidx + seq_len)
         # B x N x C x D/2
         x_ = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
         # B x N x C x D
-        x_out = torch.view_as_real(x_ * freqs_cis).flatten(3)
+        x_out = torch.view_as_real(x_ * freqs_cis).flatten(2)
         return x_out
 
     def forward(self, xq, xk, qidx=0):
