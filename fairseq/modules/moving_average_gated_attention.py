@@ -357,7 +357,7 @@ class MovingAverageGatedAttention(nn.Module):
                 # B*K x 1 x 1
                 r_threshold = r_threshold.clamp(min=1.0).to(q).unsqueeze(-1)
             else:
-                r_threshold =  torch.tensor(clen, dtype=q.dtype, device=q.device)
+                r_threshold = torch.tensor(clen, dtype=q.dtype, device=q.device)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
