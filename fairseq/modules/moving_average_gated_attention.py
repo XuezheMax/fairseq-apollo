@@ -335,7 +335,6 @@ class MovingAverageGatedAttention(nn.Module):
             # B x L x S -> B*K x C x S
             nc = seq_len // self.chunk_size
             q = q.reshape(bsz * nc, self.chunk_size, self.zdim)
-            r = r.reshape(bsz * nc, self.chunk_size, self.hdim)
 
         ctx_len = k.size(1)
         if 1 < self.chunk_size < ctx_len:
@@ -346,18 +345,6 @@ class MovingAverageGatedAttention(nn.Module):
             if padding_mask is not None:
                 # B x L -> B*K x C
                 padding_mask = padding_mask.view(bsz * nc, self.chunk_size)
-
-        if attn_mask is not None:
-            # C x 1
-            r_threshold = attn_mask.float().sum(dim=-1, keepdim=True).to(q)
-        else:
-            clen = k.size(1)
-            if padding_mask is not None:
-                r_threshold = clen - padding_mask.sum(dim=-1, keepdim=True)
-                # B*K x 1 x 1
-                r_threshold = r_threshold.clamp(min=1.0).to(q).unsqueeze(-1)
-            else:
-                r_threshold = torch.tensor(clen, dtype=q.dtype, device=q.device)
 
         # This is part of a workaround to get around fork/join parallelism
         # not supporting Optional types.
@@ -373,11 +360,10 @@ class MovingAverageGatedAttention(nn.Module):
             return attn_weights, v
 
         kernel = self.attention_dropout(attn_weights)
-        # B*K x C x E
-        attn = torch.bmm(kernel, v)
-        r = torch.minimum(r, r_threshold)
         # B*K x C x E -> B x L x E
-        attn = self.hidden_dropout(attn * r).view(bsz, seq_len, self.hdim)
+        attn = torch.bmm(kernel, v).view(bsz, seq_len, self.hdim)
+        # B x L x E
+        attn = self.hidden_dropout(attn * r)
         # B x L x E -> B x L x D
         h = F.silu(hx + self.h_proj(attn))
         h = self.dropout(h)
