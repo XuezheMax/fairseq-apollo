@@ -14,6 +14,7 @@ from fairseq import utils
 from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryEmbedding
+from fairseq.modules.norm_layer.layer_norm import RMSNorm
 from fairseq.modules.norm_layer.sequence_norm import SequenceNorm
 from fairseq.modules.norm_layer.timestep_norm import TimestepNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
@@ -74,6 +75,8 @@ class MovingAverageGatedAttention(nn.Module):
             self.move = MultiHeadComplexEMA(embed_dim, ndim=ndim, bidirectional=bidirectional, truncation=truncation)
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
+
+        self.move_norm = RMSNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
@@ -273,7 +276,7 @@ class MovingAverageGatedAttention(nn.Module):
         mx = self.move(x, padding_mask, incremental_state)
         # B x D x L -> B x L x D
         mx = mx.transpose(1, 2)
-        mx = self.hidden_dropout(mx)
+        mx = self.move_norm(mx)
 
         # B x L x D -> B x L x (D+S+E+D)
         base = self.mx_proj(mx)
