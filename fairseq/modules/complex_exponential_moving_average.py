@@ -75,7 +75,7 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             nn.init.normal_(self.gamma, mean=0.0, std=1.0)
             self.gamma[:, :, 1] = 0.
             # omega
-            nn.init.normal_(self.omega, mean=0.0, std=1.0)
+            nn.init.normal_(self.omega, mean=0.0, std=1.0 / math.sqrt(self.embed_dim))
 
     def _calc_coeffs(self):
         self._coeffs = None
