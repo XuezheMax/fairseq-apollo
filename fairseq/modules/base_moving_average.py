@@ -155,8 +155,6 @@ class BaseMovingLayer(nn.Module):
             out = out.to(x)
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
-            # B x D -> 1 x B x D
-            out = F.silu(out + residual)
         else:
             # D x L
             k = self.kernel(seq_len)
@@ -165,8 +163,8 @@ class BaseMovingLayer(nn.Module):
                 out = bidirectional_fftconv(x, k, self.shift)
             else:
                 out = fftconv(x, k)
-            out = F.silu(out + residual)
 
+        out = out + residual
         return out
 
     def _get_input_buffer(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]) -> Dict[str, Optional[Tensor]]:
