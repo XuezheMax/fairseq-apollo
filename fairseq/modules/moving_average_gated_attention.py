@@ -40,6 +40,7 @@ class MovingAverageGatedAttention(nn.Module):
         bidirectional=False,
         chunk_size=-1,
         moving_layer='ema',
+        moving_act='rmsnorm',
         truncation=None,
         norm_num_groups=None,
         norm_affine=True,
@@ -76,7 +77,11 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError("Unknown moving type: {}".format(moving_layer))
 
-        self.move_norm = RMSNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
+        assert moving_act in ['rmsnorm', 'silu']
+        if moving_act == 'rmsnorm':
+            self.move_act = RMSNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps)
+        else:
+            self.move_act = nn.SiLU()
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
         self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
@@ -276,7 +281,7 @@ class MovingAverageGatedAttention(nn.Module):
         mx = self.move(x, padding_mask, incremental_state)
         # B x D x L -> B x L x D
         mx = mx.transpose(1, 2)
-        mx = self.move_norm(self.dropout(mx) + residual)
+        mx = self.move_act(self.hidden_dropout(mx))
 
         # B x L x D -> B x L x (D+S+E+D)
         base = self.mx_proj(mx)
