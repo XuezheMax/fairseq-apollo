@@ -64,6 +64,8 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             # theta
             freqs = math.log(self.embed_dim) / self.embed_dim
             freqs = torch.exp(torch.arange(1, self.embed_dim + 1) * -freqs)
+            idx = torch.randperm(self.embed_dim)
+            freqs = freqs[idx]
             freqs = freqs.to(self.theta).view(self.embed_dim, 1, 1)
             if self.bidirectional:
                 freqs = freqs.repeat(2, 1, 1)
