@@ -281,7 +281,7 @@ class MovingAverageGatedAttention(nn.Module):
         mx = self.move(x, padding_mask, incremental_state)
         # B x D x L -> B x L x D
         mx = mx.transpose(1, 2)
-        mx = self.move_act(self.hidden_dropout(mx))
+        mx = self.hidden_dropout(self.move_act(mx))
 
         # B x L x D -> B x L x (D+S+E+D)
         base = self.mx_proj(mx)
