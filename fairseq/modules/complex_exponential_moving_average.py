@@ -61,10 +61,13 @@ class MultiHeadComplexEMA(BaseMovingLayer):
             # delta & alpha
             nn.init.normal_(self.alpha, mean=0.0, std=0.2)
             nn.init.normal_(self.delta, mean=0.0, std=0.2)
+            # sync global permuted index
+            idx = torch.randperm(self.embed_dim).cuda()
+            torch.distributed.broadcast(idx, src=0)
+            idx = idx.cpu()
             # theta
             freqs = math.log(self.embed_dim) / self.embed_dim
             freqs = torch.exp(torch.arange(1, self.embed_dim + 1) * -freqs)
-            idx = torch.randperm(self.embed_dim)
             freqs = freqs[idx]
             freqs = freqs.to(self.theta).view(self.embed_dim, 1, 1)
             if self.bidirectional:
