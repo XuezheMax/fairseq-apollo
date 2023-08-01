@@ -375,6 +375,7 @@ def base_architecture(args):
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
+    args.moving_act = getattr(args, 'moving_act', 'rmsnorm')
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
