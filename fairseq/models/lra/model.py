@@ -98,7 +98,8 @@ class LRAModel(FairseqEncoderModel):
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
-        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='ema')
+        parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
+        parser.add_argument('--moving-act', choices=['rmsnorm', 'silu'], default='silu')
 
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
@@ -114,7 +115,7 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--input-type', choices=['text', 'image'])
         parser.add_argument('--max-positions', type=int,
                             help='number of positional embeddings to learn')
-        parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
+        parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='rotary')
 
         # Arguments related to sentence level prediction
         parser.add_argument('--sentence-class-num', type=int, metavar='N',
@@ -303,6 +304,7 @@ class LRAEncoder(FairseqEncoder):
                 hidden_dropout=args.act_dropout,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
+                moving_act=args.moving_act,
                 truncation=getattr(args, 'truncation_length', None),
                 norm_type=args.norm_type,
                 norm_num_groups=args.norm_num_groups,
@@ -372,7 +374,7 @@ def base_architecture(args):
     args.apply_bert_init = getattr(args, 'apply_bert_init', True)
 
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
-    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'relu2')
+    args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
@@ -599,6 +601,7 @@ def mega_lra_pf32(args):
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 1024)
     args.truncation_length = getattr(args, 'truncation_length', 0)
+    args.moving_act = getattr(args, 'moving_act', 'silu')
     args.max_positions = getattr(args, 'max_positions', 1024)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
@@ -623,6 +626,7 @@ def mega_lra_pf128(args):
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
     args.chunk_size = getattr(args, 'chunk_size', 128 * 128)
     args.truncation_length = getattr(args, 'truncation_length', 0)
+    args.moving_act = getattr(args, 'moving_act', 'silu')
     args.max_positions = getattr(args, 'max_positions', 128 * 128)
     args.sen_rep_type = getattr(args, 'sen_rep_type', 'mp')
     base_architecture(args)
