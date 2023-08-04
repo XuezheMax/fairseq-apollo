@@ -4,11 +4,13 @@
 #include <c10/util/complex.h>
 #include <thrust/swap.h>
 
+#include <ATen/cuda/DeviceUtils.cuh>
 #include <cmath>
 #include <cstdint>
 #include <type_traits>
 
 #include "cuda_utils.cuh"
+#include "twiddle_factor.cuh"
 
 namespace mega2 {
 namespace fft {
@@ -64,33 +66,6 @@ constexpr __device__ int Log2(int x) {
       return 0;
     }
   }
-}
-
-template <typename T>
-__inline__ __device__ c10::complex<T> PolarPi(T k) {
-  constexpr T kPi = T(M_PI);
-  T s;
-  T c;
-  c10::cuda::compat::sincos(k * kPi, &s, &c);
-  return c10::complex<T>(c, s);
-}
-
-template <>
-__inline__ __device__ c10::complex<float> PolarPi(float k) {
-  constexpr float kPi = float(M_PI);
-  float s;
-  float c;
-  // sincospif(k, &s, &c);
-  __sincosf(k * kPi, &s, &c);
-  return c10::complex<float>(c, s);
-}
-
-template <>
-__inline__ __device__ c10::complex<double> PolarPi(double k) {
-  double s;
-  double c;
-  sincospi(k, &s, &c);
-  return c10::complex<double>(c, s);
 }
 
 template <typename T>
@@ -287,22 +262,41 @@ __inline__ __device__ void DumpFlippedComplex1(
   __syncthreads();
 }
 
+template <typename T, bool kIFFT = false>
+__inline__ __device__ c10::complex<T> WarpFFTImpl(c10::complex<T> x) {
+#pragma unroll
+  for (int offset = 1; offset < cuda_utils::kWarpSize; offset <<= 1) {
+    const int r = (threadIdx.x & (offset - 1));
+    const c10::complex<T> w = cuda_utils::TwiddleFactor<T>(offset, r);
+    const T u = WARP_SHFL_XOR(x.real(), offset);
+    const T v = WARP_SHFL_XOR(x.imag(), offset);
+    const c10::complex<T> y(u, v);
+    x = (threadIdx.x & offset) ? (y - x * (kIFFT ? w : std::conj(w)))
+                               : (x + y * (kIFFT ? w : std::conj(w)));
+  }
+  return x;
+}
+
 template <typename T, int N, bool kIFFT = false>
 __inline__ __device__ void BlockFFTImpl(c10::complex<T>* shared_mem) {
+  constexpr int D = Log2(cuda_utils::kWarpSize);
   constexpr int K = Log2(N);
-  // constexpr T kPi = T(M_PI);
+
+  for (int i = threadIdx.x; i < N; i += blockDim.x) {
+    shared_mem[i] = WarpFFTImpl<T, kIFFT>(shared_mem[i]);
+  }
+  __syncthreads();
 
 #pragma unroll
-  for (int i = 0; i < K; ++i) {
+  for (int i = D; i < K; ++i) {
     const int m = (1 << i);
     for (int j = threadIdx.x; j < N / 2; j += blockDim.x) {
       const int r = (j & (m - 1));
       const int p = ((j >> i) << (i + 1)) + r;
       const int q = p + m;
-      const T k = static_cast<T>(r) / static_cast<T>(m);
-      const c10::complex<T> w = PolarPi(kIFFT ? k : -k);
+      const c10::complex<T> w = cuda_utils::TwiddleFactor<T>(m, r);
       const c10::complex<T> u = shared_mem[p];
-      const c10::complex<T> v = shared_mem[q] * w;
+      const c10::complex<T> v = shared_mem[q] * (kIFFT ? w : std::conj(w));
       shared_mem[p] = u + v;
       shared_mem[q] = u - v;
     }
@@ -315,7 +309,6 @@ __inline__ __device__ void BlockRFFT(const T* X, int N, bool flip,
                                      c10::complex<T_ACC>* Y,
                                      c10::complex<T_ACC>* shared_mem) {
   constexpr int kElementsPerThread = kFFTSize / kNumThreads;
-  // constexpr T_ACC kPi = T_ACC(M_PI);
 
   if (flip) {
     if (N & 1) {
@@ -338,7 +331,7 @@ __inline__ __device__ void BlockRFFT(const T* X, int N, bool flip,
     const int idx = i * blockDim.x + threadIdx.x;
     const int rev = idx == 0 ? 0 : kFFTSize - idx;
     const c10::complex<T_ACC> w =
-        PolarPi(-static_cast<T_ACC>(idx) / static_cast<T_ACC>(kFFTSize));
+        std::conj(cuda_utils::TwiddleFactor<T_ACC>(kFFTSize, idx));
     const c10::complex<T_ACC> z1 = shared_mem[idx];
     const c10::complex<T_ACC> z2 = std::conj(shared_mem[rev]);
     const c10::complex<T_ACC> zx = (z1 + z2) * T_ACC(0.5);
@@ -360,14 +353,13 @@ __inline__ __device__ void BlockIRFFT(const c10::complex<T_ACC>* X, int N,
                                       c10::complex<T_ACC>* shared_mem) {
   constexpr int kElementsPerThread = kFFTSize / kNumThreads;
   constexpr int kNumBits = Log2(kFFTSize);
-  // constexpr T_ACC kPi = T_ACC(M_PI);
 
 #pragma unroll
   for (int i = 0; i < kElementsPerThread; ++i) {
     const int idx = i * blockDim.x + threadIdx.x;
     const int rev = (__brev(idx) >> (32 - kNumBits));
     const c10::complex<T_ACC> w =
-        PolarPi(static_cast<T_ACC>(idx) / static_cast<T_ACC>(kFFTSize));
+        cuda_utils::TwiddleFactor<T_ACC>(kFFTSize, idx);
     const c10::complex<T_ACC> z1 = X[idx];
     const c10::complex<T_ACC> z2 = std::conj(X[kFFTSize - idx]);
     // const c10::complex<T_ACC> z1 =

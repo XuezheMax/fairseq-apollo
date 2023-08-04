@@ -177,7 +177,7 @@ void RFFTCUDAImpl(const torch::Tensor& X, bool flip, torch::Tensor& Y) {
   const int64_t shared_size = fft_size * sizeof(c10::complex<T_ACC>);
 
   if (fft_size == 32) {
-    cuda_utils::LaunchKernel(RFFTCUDAKernel<T, T_ACC, 32, 16>, B, 16,
+    cuda_utils::LaunchKernel(RFFTCUDAKernel<T, T_ACC, 32, 32>, B, 32,
                              shared_size, cuda_stream, X_data, N, flip, Y_data);
   } else if (fft_size == 64) {
     cuda_utils::LaunchKernel(RFFTCUDAKernel<T, T_ACC, 64, 32>, B, 32,
@@ -226,8 +226,8 @@ void FFTConvCUDAFwdImpl(const torch::Tensor& X, const torch::Tensor& K_f,
   const int64_t shared_size = (fft_size * 2) * sizeof(c10::complex<T_ACC>);
 
   if (fft_size == 32) {
-    cuda_utils::LaunchKernel(FFTConvCUDAFwdKernel<T, T_ACC, 32, 16>, dim3(H, B),
-                             16, shared_size, cuda_stream, H, L, X_data,
+    cuda_utils::LaunchKernel(FFTConvCUDAFwdKernel<T, T_ACC, 32, 32>, dim3(H, B),
+                             32, shared_size, cuda_stream, H, L, X_data,
                              K_f_data, Y_data, X_f_data);
   } else if (fft_size == 64) {
     cuda_utils::LaunchKernel(FFTConvCUDAFwdKernel<T, T_ACC, 64, 32>, dim3(H, B),
@@ -287,17 +287,17 @@ void FFTConvCUDABwdImpl(const torch::Tensor& Y_grad, const torch::Tensor& X_f,
   const int64_t shared_size = (fft_size * 2) * sizeof(c10::complex<T_ACC>);
 
   if (fft_size == 32) {
-    cuda_utils::LaunchKernel(FFTConvCUDABwdKernel<T, T_ACC, 32, 16>, dim3(H, B),
-                             16, shared_size, cuda_stream, H, L, Y_grad_data,
+    cuda_utils::LaunchKernel(FFTConvCUDABwdKernel<T, T_ACC, 32, 32>, dim3(H, B),
+                             32, shared_size, cuda_stream, H, L, Y_grad_data,
                              X_f_data, K_f_data, X_grad_data, K_grad_f_data);
 
     if (K_dtype == Y_grad.scalar_type()) {
-      cuda_utils::LaunchKernel(FFTConvKernelCUDABwdKernel<T, T_ACC, 32, 16>, H,
-                               dim3(16), shared_size, cuda_stream, B, H, L,
+      cuda_utils::LaunchKernel(FFTConvKernelCUDABwdKernel<T, T_ACC, 32, 32>, H,
+                               32, shared_size, cuda_stream, B, H, L,
                                K_grad_f_data, K_grad.data_ptr<T>());
     } else {
-      cuda_utils::LaunchKernel(FFTConvKernelCUDABwdKernel<T_ACC, T_ACC, 32, 16>,
-                               H, 16, shared_size, cuda_stream, B, H, L,
+      cuda_utils::LaunchKernel(FFTConvKernelCUDABwdKernel<T_ACC, T_ACC, 32, 32>,
+                               H, 32, shared_size, cuda_stream, B, H, L,
                                K_grad_f_data, K_grad.data_ptr<T_ACC>());
     }
   } else if (fft_size == 64) {
