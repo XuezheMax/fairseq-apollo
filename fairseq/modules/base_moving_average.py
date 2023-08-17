@@ -12,6 +12,7 @@ from torch import Tensor, nn
 
 from fairseq.incremental_decoding_utils import with_incremental_state
 from .fused_ops.fftconv import fftconv, bidirectional_fftconv
+from .fused_ops.ema_hidden import ema_hidden
 
 
 @with_incremental_state
@@ -45,7 +46,7 @@ class BaseMovingLayer(nn.Module):
     def _calc_coeffs(self):
         raise NotImplementedError
 
-    def _compute_kernel(self, length: int):
+    def _compute_kernel(self, length: int, hx: Tensor):
         raise NotImplementedError
 
     def coeffs(self):
@@ -56,14 +57,9 @@ class BaseMovingLayer(nn.Module):
                 self._coeffs = self._calc_coeffs()
             return self._coeffs
 
-    def kernel(self, length: int):
+    def kernel(self, length: int, hx: Optional[Tensor]):
         kernel_size = length if self.truncation is None or self.truncation < 1 else min(self.truncation, length)
-        if self.training:
-            return self._compute_kernel(kernel_size)
-        else:
-            if self._kernel is None or self._kernel.size(-1) < kernel_size:
-                self._kernel = self._compute_kernel(kernel_size)
-            return self._kernel[..., :kernel_size]
+        return self._compute_kernel(kernel_size, hx)
 
     def step(self, x, length, hx=None):
         if length == 1:
@@ -151,13 +147,21 @@ class BaseMovingLayer(nn.Module):
                 h = saved_state['prev_state']
             else:
                 h = None
-            out, h = self.step(x.float(), seq_len, hx=h)
-            out = out.to(x)
+            # out, h = self.step(x.float(), seq_len, hx=h)
+            # out = out.to(x)
+            # D x N x 1
+            p, q, _ = self.coeffs()
+            k, b = self.kernel(seq_len, hx=h)
+            out = fftconv(x, k)
+            if b is not None:
+                out = out + b
+            h = ema_hidden(x, p, q, h)
             saved_state['prev_state'] = h
             self._set_input_buffer(incremental_state, saved_state)
         else:
             # D x L
-            k = self.kernel(seq_len)
+            k, b = self.kernel(seq_len, None)
+            assert b is None
             # B x D x L
             if self.bidirectional:
                 out = bidirectional_fftconv(x, k, self.shift)

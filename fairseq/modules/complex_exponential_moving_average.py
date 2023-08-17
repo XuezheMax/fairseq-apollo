@@ -38,7 +38,6 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         self.theta = nn.Parameter(torch.Tensor(kernel_dim, 1, 1))
         self.gamma = nn.Parameter(torch.Tensor(kernel_dim, ndim, 2))
         self.omega = nn.Parameter(torch.Tensor(embed_dim, 1))
-        self._kernel = None
         self._coeffs = None
 
         self.register_parameters_no_weight_decay('alpha', self.alpha)
@@ -96,19 +95,18 @@ class MultiHeadComplexEMA(BaseMovingLayer):
         gamma = _r2c(self.gamma.float()) * self.scale
         return p, q, gamma
 
-    def _compute_kernel(self, length: int):
-        self._kernel = None
+    def _compute_kernel(self, length: int, hx: torch.Tensor):
         # D x N x 1
         p, q, gamma = self._calc_coeffs()
         if p.is_cuda:
-            return ema_filter(p, q, gamma, length)
+            return ema_parameters(p, q, gamma, hx, length)
 
         # D x N x L
         vander = torch.arange(length, dtype=p.dtype, device=p.device).view(1, 1, length) * torch.log(q)
         # D x N x L
         kernel = p * torch.exp(vander)
         # D x L
-        return torch.einsum('dnl,dn->dl', kernel, gamma).real
+        return torch.einsum('dnl,dn->dl', kernel, gamma).real, None
 
     def extra_repr(self) -> str:
         return 'edim={}, ndim={}, bidirectional={}, trunction={}, shift={}'.format(self.embed_dim, self.ndim, self.bidirectional,
