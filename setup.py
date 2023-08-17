@@ -108,8 +108,10 @@ try:
             'fairseq.mega2_extension',
             sources=[
                 "fairseq/csrc/mega2_extension.cc",
-                "fairseq/csrc/ops/ema_filter.cc",
-                "fairseq/csrc/ops/ema_filter_kernel.cu",
+                "fairseq/csrc/ops/ema_parameters.cc",
+                "fairseq/csrc/ops/ema_parameters_kernel.cu",
+                "fairseq/csrc/ops/ema_hidden.cc",
+                "fairseq/csrc/ops/ema_hidden_kernel.cu",
                 "fairseq/csrc/ops/fftconv.cc",
                 "fairseq/csrc/ops/fftconv_kernel.cu",
                 "fairseq/csrc/ops/sequence_norm.cc",

@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from .base_moving_average import BaseMovingLayer
-from .fused_ops.ema_filter import ema_filter
+from .fused_ops.ema_parameters import ema_parameters
 
 _c2r = torch.view_as_real
 _r2c = torch.view_as_complex
