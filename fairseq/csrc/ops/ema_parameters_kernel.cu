@@ -123,6 +123,50 @@ __global__ void EMAParametersBatchSize1CUDAFwdKernel(
   }
 }
 
+template <typename T, int64_t B>
+__global__ void EMABiasCUDAFwdKernel(int64_t D, int64_t N, int64_t L,
+                                     const c10::complex<T>* __restrict__ log_q,
+                                     const c10::complex<T>* __restrict__ gamma,
+                                     const c10::complex<T>* __restrict__ h,
+                                     T* __restrict__ b) {
+  __shared__ T q_shared[cuda_utils::kWarpSize * 2];
+  __shared__ T c_shared[B * cuda_utils::kWarpSize * 2];  // gamma * h
+  c10::complex<T>* q_ptr = reinterpret_cast<c10::complex<T>*>(q_shared);
+  c10::complex<T>* c_ptr = reinterpret_cast<c10::complex<T>*>(c_shared);
+
+  const int64_t i = blockIdx.x;
+
+  for (int64_t j = threadIdx.x; j < B * N; j += blockDim.x) {
+    const int64_t batch = j / N;
+    const int64_t n = j % N;
+    if (batch == 0) {
+      q_ptr[n] = log_q[i * N + n];
+    }
+    c_ptr[j] = gamma[i * N + n] * h[(batch * D + i) * N + n];
+  }
+  __syncthreads();
+
+  T sum[B];
+  for (int64_t j = threadIdx.x; j < L; j += blockDim.x) {
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      sum[batch] = T(0);
+    }
+    for (int64_t k = 0; k < N; ++k) {
+      const c10::complex<T> qw =
+          c10_complex_math::exp(q_ptr[k] * static_cast<T>(j + 1));
+#pragma unroll
+      for (int64_t batch = 0; batch < B; ++batch) {
+        sum[batch] += (qw * c_ptr[batch * N + k]).real();
+      }
+    }
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      b[(batch * D + i) * L + j] = sum[batch];
+    }
+  }
+}
+
 template <typename T>
 __global__ void EMAWeightCUDABwdKernel(
     int64_t N, int64_t L, const T* __restrict__ w_grad, const T* __restrict__ p,
@@ -240,7 +284,7 @@ __global__ void EMAParametersBatchSize1CUDABwdKernel(
   }
 }
 
-template <typename T>
+template <typename T, int64_t B>
 __global__ void EMABiasCUDABwdKernel(int64_t D, int64_t N, int64_t L,
                                      const T* __restrict__ b_grad,
                                      const c10::complex<T>* __restrict__ log_q,
@@ -249,66 +293,63 @@ __global__ void EMABiasCUDABwdKernel(int64_t D, int64_t N, int64_t L,
                                      c10::complex<T>* __restrict__ q_grad,
                                      c10::complex<T>* __restrict__ gamma_grad,
                                      c10::complex<T>* h_grad) {
-  __shared__ T sum1_shared[cuda_utils::kWarpSize * 2];
-  __shared__ T sum2_shared[cuda_utils::kWarpSize * 2];
-  c10::complex<T>* sum1_shared_ptr =
-      reinterpret_cast<c10::complex<T>*>(sum1_shared);
-  c10::complex<T>* sum2_shared_ptr =
-      reinterpret_cast<c10::complex<T>*>(sum2_shared);
+  __shared__ T sum1_shared[B][cuda_utils::kWarpSize * 2];
+  __shared__ T sum2_shared[B][cuda_utils::kWarpSize * 2];
 
-  const int64_t batch = blockIdx.y;
   const int64_t i = blockIdx.x;
-  const int64_t j = blockIdx.z;
-  const T* b_grad_ptr = b_grad + (batch * D + i) * L;
+  const int64_t j = blockIdx.y;
   const c10::complex<T> log_q_v = log_q[i * N + j];
   const c10::complex<T> gamma_v = gamma[i * N + j];
   const c10::complex<T> q_v = c10_complex_math::exp(log_q_v);
-  const c10::complex<T> h_v = h[(batch * D + i) * N + j];
 
-  c10::complex<T> sum1(T(0));
-  c10::complex<T> sum2(T(0));
+  c10::complex<T> sum1[B];
+  c10::complex<T> sum2[B];
+#pragma unroll
+  for (int64_t batch = 0; batch < B; ++batch) {
+    sum1[batch] = c10::complex<T>(0);
+    sum2[batch] = c10::complex<T>(0);
+  }
+
   for (int64_t k = threadIdx.x; k < L; k += blockDim.x) {
-    const T db = b_grad_ptr[k];
     const c10::complex<T> qw1 =
         c10_complex_math::exp(log_q_v * static_cast<T>(k));
     const c10::complex<T> qw2 = qw1 * q_v;
-    sum1 += db * qw1 * static_cast<T>(k + 1);
-    sum2 += db * qw2;
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      const T db = b_grad[(batch * D + i) * L + k];
+      sum1[batch] += db * qw1 * static_cast<T>(k + 1);
+      sum2[batch] += db * qw2;
+    }
   }
   if (blockDim.x <= cuda_utils::kWarpSize) {
-    sum1 = cuda_utils::WarpReduceComplexSum<T>(sum1);
-    sum2 = cuda_utils::WarpReduceComplexSum<T>(sum2);
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      sum1[batch] = cuda_utils::WarpReduceComplexSum<T>(sum1[batch]);
+      sum2[batch] = cuda_utils::WarpReduceComplexSum<T>(sum2[batch]);
+    }
   } else {
-    sum1 = cuda_utils::BlockReduceComplexSum<T>(sum1, sum1_shared_ptr);
-    sum2 = cuda_utils::BlockReduceComplexSum<T>(sum2, sum2_shared_ptr);
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      sum1[batch] = cuda_utils::BlockReduceComplexSum<T>(
+          sum1[batch], reinterpret_cast<c10::complex<T>*>(sum1_shared[batch]));
+      sum2[batch] = cuda_utils::BlockReduceComplexSum<T>(
+          sum2[batch], reinterpret_cast<c10::complex<T>*>(sum2_shared[batch]));
+    }
   }
 
   if (threadIdx.x == 0) {
-    q_grad[(batch * D + i) * N + j] = std::conj(sum1 * gamma_v * h_v);
-    gamma_grad[(batch * D + i) * N + j] = std::conj(sum2 * h_v);
-    h_grad[(batch * D + i) * N + j] = std::conj(sum2 * gamma_v);
+    c10::complex<T> dq(T(0));
+    c10::complex<T> dgamma(T(0));
+#pragma unroll
+    for (int64_t batch = 0; batch < B; ++batch) {
+      const c10::complex<T> h_v = h[(batch * D + i) * N + j];
+      dq += sum1[batch] * h_v;
+      dgamma += sum2[batch] * h_v;
+      h_grad[(batch * D + i) * N + j] = std::conj(sum2[batch] * gamma_v);
+    }
+    q_grad[i * N + j] += std::conj(dq * gamma_v);
+    gamma_grad[i * N + j] += std::conj(dgamma);
   }
-}
-
-template <typename T>
-__global__ void EMABiasCUDABwdReduceKernel(
-    int64_t B, int64_t D, int64_t N,
-    const c10::complex<T>* __restrict__ q_grad_src,
-    const c10::complex<T>* __restrict__ gamma_grad_src,
-    c10::complex<T>* __restrict__ q_grad,
-    c10::complex<T>* __restrict__ gamma_grad) {
-  const int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index >= D * N) {
-    return;
-  }
-  c10::complex<T> sum1(T(0));
-  c10::complex<T> sum2(T(0));
-  for (int64_t i = 0; i < B; ++i) {
-    sum1 += q_grad_src[i * D * N + index];
-    sum2 += gamma_grad_src[i * D * N + index];
-  }
-  q_grad[index] += sum1;
-  gamma_grad[index] += sum2;
 }
 
 template <typename T>
@@ -357,6 +398,48 @@ __global__ void EMAVandermondeCUDABwdKernel(
   }
 }
 
+#define DISPATCH_BATCH_CUDA_KERNEL(KernelFunc, T, B, dg, db,             \
+                                   shared_memory_size, cuda_stream, ...) \
+  do {                                                                   \
+    switch (B) {                                                         \
+      case 2: {                                                          \
+        KernelFunc<T, 2>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 3: {                                                          \
+        KernelFunc<T, 3>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 4: {                                                          \
+        KernelFunc<T, 4>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 5: {                                                          \
+        KernelFunc<T, 5>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 6: {                                                          \
+        KernelFunc<T, 6>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 7: {                                                          \
+        KernelFunc<T, 7>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+      case 8: {                                                          \
+        KernelFunc<T, 8>                                                 \
+            <<<dg, db, shared_memory_size, cuda_stream>>>(__VA_ARGS__);  \
+        break;                                                           \
+      }                                                                  \
+    }                                                                    \
+  } while (0)
+
 template <typename T>
 void EMAParametersCUDAFwdImpl(const torch::Tensor& p,
                               const torch::Tensor& log_q,
@@ -393,6 +476,19 @@ void EMAParametersCUDAFwdImpl(const torch::Tensor& p,
     T* b_data = b->data_ptr<T>();
     EMAParametersBatchSize1CUDAFwdKernel<T><<<D, num_threads, 0, cuda_stream>>>(
         N, L, p_data, log_q_data, gamma_data, h_data, w_data, b_data);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return;
+  }
+
+  if (B <= 8) {
+    b = c10::make_optional(torch::empty({B, D, L}, p.options()));
+    T* b_data = b->data_ptr<T>();
+    EMAWeightCUDAFwdKernel<T><<<D, num_threads, 0, cuda_stream>>>(
+        N, L, p_data, log_q_data, gamma_data, w_data);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    DISPATCH_BATCH_CUDA_KERNEL(EMABiasCUDAFwdKernel, T, B, D, num_threads, 0,
+                               cuda_stream, D, N, L, log_q_data, gamma_data,
+                               h_data, b_data);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return;
   }
@@ -484,26 +580,16 @@ void EMAParametersCUDABwdImpl(
     return;
   }
 
-  if (B <= 4) {
-    torch::Tensor dq = torch::empty({B, D, N}, log_q.options());
-    torch::Tensor dg = torch::empty({B, D, N}, gamma.options());
-    c10::complex<T>* dq_data = dq.data_ptr<c10::complex<T>>();
-    c10::complex<T>* dg_data = dg.data_ptr<c10::complex<T>>();
+  EMAWeightCUDABwdKernel<T><<<dim3(D, N), num_threads, 0, cuda_stream>>>(
+      N, L, w_grad_data, p_data, log_q_data, gamma_data, p_grad_data,
+      q_grad_data, gamma_grad_data);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 
-    EMAWeightCUDABwdKernel<T><<<dim3(D, N), num_threads, 0, cuda_stream>>>(
-        N, L, w_grad_data, p_data, log_q_data, gamma_data, p_grad_data,
-        q_grad_data, gamma_grad_data);
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-
-    EMABiasCUDABwdKernel<T><<<dim3(D, B, N), num_threads, 0, cuda_stream>>>(
-        D, N, L, b_grad_data, log_q_data, gamma_data, h_data, dq_data, dg_data,
-        h_grad_data);
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-
-    const int64_t M = utils::DivUp(D * N, cuda_utils::kCUDANumThreads);
-    EMABiasCUDABwdReduceKernel<T>
-        <<<M, cuda_utils::kCUDANumThreads, 0, cuda_stream>>>(
-            B, D, N, dq_data, dg_data, q_grad_data, gamma_grad_data);
+  if (B <= 8) {
+    DISPATCH_BATCH_CUDA_KERNEL(EMABiasCUDABwdKernel, T, B, dim3(D, N),
+                               num_threads, 0, cuda_stream, D, N, L,
+                               b_grad_data, log_q_data, gamma_data, h_data,
+                               q_grad_data, gamma_grad_data, h_grad_data);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return;
   }
@@ -517,11 +603,6 @@ void EMAParametersCUDABwdImpl(
       b_grad_complex.data_ptr<c10::complex<T>>();
   const c10::complex<T>* v_data = v.data_ptr<c10::complex<T>>();
   c10::complex<T>* v_grad_data = v_grad.data_ptr<c10::complex<T>>();
-
-  EMAWeightCUDABwdKernel<T><<<dim3(D, N), num_threads, 0, cuda_stream>>>(
-      N, L, w_grad_data, p_data, log_q_data, gamma_data, p_grad_data,
-      q_grad_data, gamma_grad_data);
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
 
   torch::globalContext().alertCuBLASConfigNotDeterministic();
   cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
@@ -565,6 +646,8 @@ void EMAParametersCUDABwdImpl(
       N, L, log_q_data, gamma_data, v_grad_data, q_grad_data, gamma_grad_data);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
+
+#undef DISPATCH_BATCH_CUDA_KERNEL
 
 }  // namespace
 
