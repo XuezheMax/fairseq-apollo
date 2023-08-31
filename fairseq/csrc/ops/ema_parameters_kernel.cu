@@ -671,7 +671,8 @@ EMAParametersCUDAFwd(const torch::Tensor& p, const torch::Tensor& log_q,
         w, b, v);
   });
 
-  return std::make_tuple<torch::Tensor, c10::optional<torch::Tensor>>(
+  return std::make_tuple<torch::Tensor, c10::optional<torch::Tensor>,
+                         c10::optional<torch::Tensor>>(
       std::move(w), std::move(b), std::move(v));
 }
 
