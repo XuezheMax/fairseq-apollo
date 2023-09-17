@@ -204,7 +204,6 @@ void RFFTCUDAImpl(const torch::Tensor& X, bool flip, torch::Tensor& Y) {
     cuda_utils::LaunchKernel(RFFTCUDAKernel<T, T_ACC, 8192, 1024>, B, 1024,
                              shared_size, cuda_stream, X_data, N, flip, Y_data);
   }
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 template <typename T>

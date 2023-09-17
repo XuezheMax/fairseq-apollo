@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ATen/cuda/Exceptions.h>
+#include <c10/cuda/CUDAMathCompat.h>
 #include <c10/macros/Macros.h>
 #include <c10/util/complex.h>
 #include <thrust/pair.h>
@@ -7,6 +9,7 @@
 
 #include <ATen/cuda/DeviceUtils.cuh>
 #include <cstdint>
+#include <limits>
 
 namespace mega2 {
 namespace cuda_utils {
@@ -62,6 +65,34 @@ C10_HOST_DEVICE thrust::tuple<int64_t, T, T> WelfordCombine(int64_t a_m0,
   const T m1 = c1 * a_m1 + c2 * b_m1;
   const T m2 = c1 * a_m2 + c2 * b_m2 + (c1 * delta) * (c2 * delta);
   return thrust::make_tuple(m0, m1, m2);
+}
+
+template <typename T>
+__inline__ __device__ T WarpReduceMax(T x) {
+#pragma unroll
+  for (int64_t offset = (kWarpSize >> 1); offset > 0; offset >>= 1) {
+    x = c10::cuda::compat::max(x, WARP_SHFL_DOWN(x, offset));
+  }
+  return x;
+}
+
+template <typename T>
+__inline__ __device__ T BlockReduceMax(T x, T* shm) {
+  const int64_t tid = threadIdx.x;
+  const int64_t lid = tid % kWarpSize;
+  const int64_t wid = tid / kWarpSize;
+  const int64_t num_warps = blockDim.x / kWarpSize;
+  x = WarpReduceMax<T>(x);
+  __syncthreads();
+  if (lid == 0) {
+    shm[wid] = x;
+  }
+  __syncthreads();
+  x = tid < num_warps ? shm[lid] : -std::numeric_limits<T>::infinity();
+  if (wid == 0) {
+    x = WarpReduceMax<T>(x);
+  }
+  return x;
 }
 
 template <typename T>

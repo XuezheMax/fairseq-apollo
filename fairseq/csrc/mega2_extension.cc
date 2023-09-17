@@ -1,5 +1,6 @@
 #include <torch/torch.h>
 
+#include "ops/attention_softmax.h"
 #include "ops/ema_hidden.h"
 #include "ops/ema_parameters.h"
 #include "ops/fftconv.h"
@@ -12,6 +13,7 @@ namespace mega2 {
 PYBIND11_MODULE(mega2_extension, m) {
   m.doc() = "Mega2 Cpp Extensions.";
   py::module m_ops = m.def_submodule("ops", "Submodule for custom ops.");
+  ops::DefineAttentionSoftmaxOp(m_ops);
   ops::DefineEMAHiddenOp(m_ops);
   ops::DefineEMAParametersOp(m_ops);
   ops::DefineFFTConvOp(m_ops);
