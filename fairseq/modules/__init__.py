@@ -39,6 +39,7 @@ from .complex_exponential_moving_average import MultiHeadComplexEMA
 from .moving_average_gated_attention import MovingAverageGatedAttention
 from .gated_attention_unit import GatedAttentionUnit
 from .gated_cross_attention import GatedCrossAttention
+from .attention_softmax import AttentionSoftmax
 from .flash_sentence_encoder_layer import FlashSentenceEncoderLayer
 from .mega_sentence_encoder_layer import MegaSentenceEncoderLayer
 from .same_pad import SamePad
@@ -56,6 +57,7 @@ from .vggblock import VGGBlock
 __all__ = [
     'AdaptiveInput',
     'AdaptiveSoftmax',
+    'AttentionSoftmax',
     'BeamableMM',
     'CharacterTokenEmbedder',
     'ConvTBC',

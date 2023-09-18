@@ -13,6 +13,7 @@ from fairseq.incremental_decoding_utils import with_incremental_state
 from fairseq.modules.fairseq_dropout import FairseqDropout
 from fairseq.modules.relative_positional_bias import SimpleRelativePositionalBias, RotaryEmbedding
 from fairseq.modules.norm_layer.layer_norm import LayerNorm, RMSNorm
+from fairseq.modules.attention_softmax import AttentionSoftmax
 
 
 @with_incremental_state
@@ -50,7 +51,12 @@ class GatedCrossAttention(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
-        self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
+        if attention_activation == 'softmax':
+            self.attn_softmax = AttentionSoftmax(causal_mask=False, dropout=attention_dropout)
+            self.attention_dropout = None
+        else:
+            self.attn_softmax = None
+            self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
 
         if norm_type == 'layernorm':
             self.norm = LayerNorm(embed_dim, elementwise_affine=norm_affine, eps=norm_eps, export=export)
@@ -174,6 +180,7 @@ class GatedCrossAttention(nn.Module):
         if inverse_mask is not None:
             attn_weights = attn_weights * inverse_mask.unsqueeze(1)
 
+        self.attention_dropout(attn_weights)
         return attn_weights
 
     def softmax_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
@@ -213,7 +220,7 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return qk
 
-        attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).to(qk)
+        attn_weights = self.attn_softmax(qk)
         return attn_weights
 
     def forward(
@@ -326,9 +333,8 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return attn_weights, v
 
-        kernel = self.attention_dropout(attn_weights)
         # B x L2 x D
-        attn = torch.bmm(kernel, v)
+        attn = torch.bmm(attn_weights, v)
         attn = self.hidden_dropout(attn * r)
         # B x L2 x D
         h = F.silu(self.h_proj(attn))
