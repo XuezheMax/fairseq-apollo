@@ -59,3 +59,6 @@ class AttentionSoftmax(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return attention_softmax(x, self._causal_mask, self._dropout,
                                  self._inverted_dropout, self.training)
+
+    def extra_repr(self) -> str:
+        return 'causal mask={}, dropout={}'.format(self._causal_mask, self._dropout)
