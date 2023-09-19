@@ -21,21 +21,6 @@ constexpr int64_t kColwiseThreshold = 256;
 constexpr int64_t kMaxStaticSharedMemorySize = 49152;
 
 template <typename T>
-C10_HOST_DEVICE T FMA(T x, T y, T z) {
-  return x * y + z;
-}
-
-template <>
-C10_HOST_DEVICE float FMA<float>(float x, float y, float z) {
-  return fmaf(x, y, z);
-}
-
-template <>
-C10_HOST_DEVICE double FMA<double>(double x, double y, double z) {
-  return fma(x, y, z);
-}
-
-template <typename T>
 C10_HOST_DEVICE thrust::pair<T, T> Fast2Sum(T a, T b) {
   const T s = a + b;
   const T z = s - a;
