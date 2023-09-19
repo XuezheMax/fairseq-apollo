@@ -9,7 +9,7 @@
 
 #include "cuda_utils.cuh"
 #include "ops/attention_softmax.h"
-#include "softmax_utils.cuh"
+#include "softmax.cuh"
 #include "utils.h"
 
 namespace mega2 {

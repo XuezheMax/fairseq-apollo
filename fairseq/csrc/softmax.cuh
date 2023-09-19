@@ -198,8 +198,8 @@ __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
   constexpr int kElementsPerThread = kCapacity / kNumThreads;
 
   __shared__ T_ACC shm[cuda_utils::kWarpSize];
-  T_ACC g_acc[kElementsPerThread];
-  T_ACC y_acc[kElementsPerThread];
+  T_ACC p_acc[kElementsPerThread];
+  T_ACC o_acc[kElementsPerThread];
 
   const int64_t i = blockIdx.y * outer_size + blockIdx.x;
   const int32_t r = blockIdx.x;
@@ -213,10 +213,10 @@ __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
         idx < n ? static_cast<T_ACC>(y_grad[i * inner_size + idx]) : T_ACC(0);
     const T_ACC p =
         idx < n ? static_cast<T_ACC>(y[i * inner_size + idx]) : T_ACC(0);
-    g_acc[j] = g;
-    y_acc[j] = p;
-    sum += p * g;
-    // sum = cuda_utils::FMA<T_ACC>(g, p, sum);
+    const T_ACC o = p * g;
+    p_acc[j] = p;
+    o_acc[j] = o;
+    sum += o;
   }
   if constexpr (kNumThreads <= cuda_utils::kWarpSize) {
     sum = at::native::cuda_utils::WarpReduceSum<T_ACC>(sum);
@@ -236,7 +236,7 @@ __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
       // x_grad[i * inner_size + idx] = static_cast<T>(o_acc[j] - y_acc[j] *
       // sum);
       x_grad[i * inner_size + idx] =
-          static_cast<T>(y_acc[j] * (g_acc[j] - sum) * scale);
+          static_cast<T>((o_acc[j] - p_acc[j] * sum) * scale);
     }
   }
 }
