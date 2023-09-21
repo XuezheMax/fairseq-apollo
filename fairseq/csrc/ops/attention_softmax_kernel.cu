@@ -1,7 +1,9 @@
 #include <ATen/AccumulateType.h>
+#include <ATen/DeviceGuard.h>
 #include <ATen/core/Generator.h>
 #include <ATen/core/TensorBase.h>
 #include <ATen/cuda/CUDAGeneratorImpl.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 
 #include <mutex>
@@ -19,8 +21,7 @@ namespace {
 
 template <typename T>
 void AttentionSoftmaxCUDAFwdImpl(const torch::Tensor& x, bool causal_mask,
-                                 double dropout, bool inverted_dropout,
-                                 torch::Tensor& y) {
+                                 double dropout, torch::Tensor& y) {
   using T_ACC = at::acc_type<T, /*is_cuda=*/true>;
 
   TORCH_CHECK(x.dim() >= 2);
@@ -34,6 +35,7 @@ void AttentionSoftmaxCUDAFwdImpl(const torch::Tensor& x, bool causal_mask,
   T* y_data = y.data_ptr<T>();
 
   constexpr int64_t kShmSize = 0;
+  at::cuda::OptionalCUDAGuard guard(at::device_of(x));
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
 
   if (dropout == 0.0) {
@@ -58,14 +60,14 @@ void AttentionSoftmaxCUDAFwdImpl(const torch::Tensor& x, bool causal_mask,
         softmax::AttentionDropKeySoftmaxFwdKernel, T, T_ACC,
         dim3(outer_size, batch_size), inner_size, kShmSize, cuda_stream,
         rng_engine_inputs, outer_size, inner_size, causal_mask,
-        static_cast<T_ACC>(dropout), inverted_dropout, x_data, y_data);
+        static_cast<T_ACC>(dropout), x_data, y_data);
   }
 }
 
 template <typename T>
 void AttentionSoftmaxCUDABwdImpl(const torch::Tensor& y_grad,
                                  const torch::Tensor& y, bool causal_mask,
-                                 double scale, torch::Tensor& x_grad) {
+                                 torch::Tensor& x_grad) {
   using T_ACC = at::acc_type<T, /*is_cuda=*/true>;
 
   TORCH_CHECK(y.dim() >= 2);
@@ -79,33 +81,33 @@ void AttentionSoftmaxCUDABwdImpl(const torch::Tensor& y_grad,
   T* x_grad_data = x_grad.data_ptr<T>();
 
   constexpr int64_t kShmSize = 0;
+  at::cuda::OptionalCUDAGuard guard(at::device_of(y));
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
   DISPATCH_ATTENTION_SOFTMAX_CUDA_KERNEL(
       softmax::AttentionSoftmaxBwdKernel, T, T_ACC,
       dim3(outer_size, batch_size), inner_size, kShmSize, cuda_stream,
-      outer_size, inner_size, causal_mask, static_cast<T_ACC>(scale),
-      y_grad_data, y_data, x_grad_data);
+      outer_size, inner_size, causal_mask, y_grad_data, y_data, x_grad_data);
 }
 
 }  // namespace
 
 torch::Tensor AttentionSoftmaxCUDAFwd(const torch::Tensor& x, bool causal_mask,
-                                      double dropout, bool inverted_dropout) {
+                                      double dropout) {
   torch::Tensor y = torch::empty_like(
       x, x.options().memory_format(at::MemoryFormat::Contiguous));
   AT_DISPATCH_FLOATING_TYPES_AND2(at::kHalf, at::kBFloat16, x.scalar_type(),
                                   "AttentionSoftmaxCUDAFwd", [&]() {
                                     AttentionSoftmaxCUDAFwdImpl<scalar_t>(
                                         *(x.expect_contiguous()), causal_mask,
-                                        dropout, inverted_dropout, y);
+                                        dropout, y);
                                   });
 
   return y;
 }
 
 torch::Tensor AttentionSoftmaxCUDABwd(const torch::Tensor& y_grad,
-                                      const torch::Tensor& y, bool causal_mask,
-                                      double scale) {
+                                      const torch::Tensor& y,
+                                      bool causal_mask) {
   torch::Tensor x_grad = torch::empty_like(
       y, y.options().memory_format(at::MemoryFormat::Contiguous));
   AT_DISPATCH_FLOATING_TYPES_AND2(at::kHalf, at::kBFloat16, y.scalar_type(),
@@ -113,7 +115,7 @@ torch::Tensor AttentionSoftmaxCUDABwd(const torch::Tensor& y_grad,
                                     AttentionSoftmaxCUDABwdImpl<scalar_t>(
                                         *(y_grad.expect_contiguous()),
                                         *(y.expect_contiguous()), causal_mask,
-                                        scale, x_grad);
+                                        x_grad);
                                   });
 
   return x_grad;

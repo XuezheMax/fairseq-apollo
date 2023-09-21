@@ -32,7 +32,7 @@ __global__ void AttentionSoftmaxFwdKernel(int64_t outer_size,
   T_ACC x_acc[kElementsPerThread];
 
   const int64_t i = blockIdx.y * outer_size + blockIdx.x;
-  const int32_t r = blockIdx.x;
+  const int64_t r = blockIdx.x;
   const int64_t n = causal_mask ? inner_size - outer_size + r + 1 : inner_size;
   T_ACC d = T_ACC(0);
   T_ACC m = -kInf;  // attn mask is -inf.
@@ -97,8 +97,7 @@ __global__ void AttentionSoftmaxFwdKernel(int64_t outer_size,
 template <typename T, typename T_ACC, int64_t kCapacity, int64_t kNumThreads>
 __global__ void AttentionDropKeySoftmaxFwdKernel(
     at::PhiloxCudaState philox_args, int64_t outer_size, int64_t inner_size,
-    bool causal_mask, T_ACC dropout, bool inverted_dropout,
-    const T* __restrict x, T* __restrict__ y) {
+    bool causal_mask, T_ACC dropout, const T* x, T* y) {
   constexpr int64_t kElementsPerThread = kCapacity / kNumThreads;
   constexpr int64_t kCapacityPerThread = std::max(kElementsPerThread, kUnroll);
   constexpr T_ACC kInf = std::numeric_limits<T_ACC>::infinity();
@@ -107,7 +106,7 @@ __global__ void AttentionDropKeySoftmaxFwdKernel(
   T_ACC x_acc[kCapacityPerThread];
 
   const int64_t i = blockIdx.y * outer_size + blockIdx.x;
-  const int32_t r = blockIdx.x;
+  const int64_t r = blockIdx.x;
   const int64_t n = causal_mask ? inner_size - outer_size + r + 1 : inner_size;
 
   const auto [seed, offset] = at::cuda::philox::unpack(philox_args);
@@ -123,20 +122,15 @@ __global__ void AttentionDropKeySoftmaxFwdKernel(
     x_acc[j + 3] = randv.w < dropout ? -kInf : T_ACC(0);
   }
 
-  const T_ACC scale =
-      inverted_dropout ? T_ACC(1) / (T_ACC(1) - dropout) : T_ACC(1);
   T_ACC d = T_ACC(0);
   T_ACC m = -kInf;  // attn mask is -inf.
 
 #pragma unroll
   for (int64_t j = 0; j < kElementsPerThread; ++j) {
     const int64_t idx = j * blockDim.x + threadIdx.x;
-    // const T_ACC v = idx < n
-    //                     ? static_cast<T_ACC>(x[i * inner_size + idx]) +
-    //                     x_acc[j] : -kInf;
-    const T_ACC v =
-        idx < n ? static_cast<T_ACC>(x[i * inner_size + idx]) * scale + x_acc[j]
-                : -kInf;
+    const T_ACC v = idx < n
+                        ? static_cast<T_ACC>(x[i * inner_size + idx]) + x_acc[j]
+                        : -kInf;
     x_acc[j] = v;
     m = c10::cuda::compat::max(m, v);
   }
@@ -193,7 +187,7 @@ __global__ void AttentionDropKeySoftmaxFwdKernel(
 template <typename T, typename T_ACC, int64_t kCapacity, int64_t kNumThreads>
 __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
                                           int64_t inner_size, bool causal_mask,
-                                          T_ACC scale, const T* y_grad,
+                                          const T* y_grad,
                                           const T* __restrict__ y, T* x_grad) {
   constexpr int kElementsPerThread = kCapacity / kNumThreads;
 
@@ -202,7 +196,7 @@ __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
   T_ACC o_acc[kElementsPerThread];
 
   const int64_t i = blockIdx.y * outer_size + blockIdx.x;
-  const int32_t r = blockIdx.x;
+  const int64_t r = blockIdx.x;
   const int64_t n = causal_mask ? inner_size - outer_size + r + 1 : inner_size;
 
   T_ACC sum = T_ACC(0);
@@ -233,10 +227,8 @@ __global__ void AttentionSoftmaxBwdKernel(int64_t outer_size,
   for (int64_t j = 0; j < kElementsPerThread; ++j) {
     const int64_t idx = j * blockDim.x + threadIdx.x;
     if (idx < inner_size) {
-      // x_grad[i * inner_size + idx] = static_cast<T>(o_acc[j] - y_acc[j] *
-      // sum);
       x_grad[i * inner_size + idx] =
-          static_cast<T>((o_acc[j] - p_acc[j] * sum) * scale);
+          static_cast<T>((o_acc[j] - p_acc[j] * sum));
     }
   }
 }
