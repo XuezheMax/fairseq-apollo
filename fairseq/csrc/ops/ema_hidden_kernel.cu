@@ -1,12 +1,15 @@
 #include <ATen/AccumulateType.h>
+#include <ATen/DeviceGuard.h>
 #include <ATen/cuda/CUDABlas.h>
 #include <c10/core/ScalarType.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/util/MaybeOwned.h>
 #include <c10/util/complex.h>
 
 #include <type_traits>
 
+#include "blas.h"
 #include "cuda_utils.cuh"
 #include "ops/ema_hidden.h"
 #include "utils.h"
@@ -484,10 +487,12 @@ void EMAHiddenCUDAFwdImpl(const torch::Tensor& x, const torch::Tensor& p,
       h.defined() ? h.data_ptr<c10::complex<T_ACC>>() : nullptr;
   c10::complex<T_ACC>* y_data = y.data_ptr<c10::complex<T_ACC>>();
 
+  at::cuda::OptionalCUDAGuard guard(at::device_of(x));
+  cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
+
   const int64_t num_threads = L < cuda_utils::kCUDABlockReduceNumThreads
                                   ? cuda_utils::kWarpSize
                                   : cuda_utils::kCUDABlockReduceNumThreads;
-  cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
 
   if (B == 1) {
     EMAHiddenBatchSize1CUDAFwdKernel<T, T_ACC>
@@ -517,24 +522,9 @@ void EMAHiddenCUDAFwdImpl(const torch::Tensor& x, const torch::Tensor& p,
   EMAHiddenWeightCUDAFwdKernel<T_ACC>
       <<<D * N, num_threads, 0, cuda_stream>>>(L, p_data, log_q_data, v_data);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
-
-  if constexpr (std::is_same<T_ACC, float>::value) {
-    TORCH_CUDABLAS_CHECK(cublasCgemm3mStridedBatched(
-        handle, CUBLAS_OP_T, CUBLAS_OP_N, N, B, L,
-        reinterpret_cast<const cuComplex*>(&kAlpha),
-        reinterpret_cast<const cuComplex*>(v_data), L, N * L,
-        reinterpret_cast<const cuComplex*>(x_c_data), D * L, L,
-        reinterpret_cast<const cuComplex*>(&kBeta),
-        reinterpret_cast<cuComplex*>(y_data), D * N, N, D));
-  } else {
-    TORCH_CUDABLAS_CHECK(cublasZgemmStridedBatched(
-        handle, CUBLAS_OP_T, CUBLAS_OP_N, N, B, L,
-        reinterpret_cast<const cuDoubleComplex*>(&kAlpha),
-        reinterpret_cast<const cuDoubleComplex*>(v_data), L, N * L,
-        reinterpret_cast<const cuDoubleComplex*>(x_c_data), D * L, L,
-        reinterpret_cast<const cuDoubleComplex*>(&kBeta),
-        reinterpret_cast<cuDoubleComplex*>(y_data), D * N, N, D));
-  }
+  blas::GemmStridedBatchedCUDA<c10::complex<T_ACC>>(
+      handle, blas::TransposeOp::kN, blas::TransposeOp::kT, D, B, N, L, kAlpha,
+      x_c_data, D * L, L, v_data, L, N * L, kBeta, y_data, D * N, N);
 
   if (h_data != nullptr) {
     const int64_t M = utils::DivUp(D * N, cuda_utils::kCUDANumThreads);
@@ -577,10 +567,12 @@ void EMAHiddenCUDABwdImpl(const torch::Tensor& y_grad, const torch::Tensor& x,
     h_grad_data = h_grad->data_ptr<c10::complex<T_ACC>>();
   }
 
+  at::cuda::OptionalCUDAGuard guard(at::device_of(x));
+  cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
+
   const int64_t num_threads = L < cuda_utils::kCUDABlockReduceNumThreads
                                   ? cuda_utils::kWarpSize
                                   : cuda_utils::kCUDABlockReduceNumThreads;
-  cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
 
   if (B == 1) {
     EMAHiddenInputBatchSize1CUDABwdKernel<T, T_ACC>
@@ -625,37 +617,13 @@ void EMAHiddenCUDABwdImpl(const torch::Tensor& y_grad, const torch::Tensor& x,
   const c10::complex<T_ACC> kAlpha(1);
   const c10::complex<T_ACC> kBeta(0);
 
-  if constexpr (std::is_same<T_ACC, float>::value) {
-    TORCH_CUDABLAS_CHECK(cublasCgemm3mStridedBatched(
-        handle, CUBLAS_OP_N, CUBLAS_OP_N, L, B, N,
-        reinterpret_cast<const cuComplex*>(&kAlpha),
-        reinterpret_cast<const cuComplex*>(v_data), L, N * L,
-        reinterpret_cast<const cuComplex*>(y_grad_conj_data), D * N, N,
-        reinterpret_cast<const cuComplex*>(&kBeta),
-        reinterpret_cast<cuComplex*>(x_grad_c_data), D * L, L, D));
-    TORCH_CUDABLAS_CHECK(cublasCgemm3mStridedBatched(
-        handle, CUBLAS_OP_N, CUBLAS_OP_C, L, N, B,
-        reinterpret_cast<const cuComplex*>(&kAlpha),
-        reinterpret_cast<const cuComplex*>(x_c_data), D * L, L,
-        reinterpret_cast<const cuComplex*>(y_grad_data), D * N, N,
-        reinterpret_cast<const cuComplex*>(&kBeta),
-        reinterpret_cast<cuComplex*>(v_grad_data), L, N * L, D));
-  } else {
-    TORCH_CUDABLAS_CHECK(cublasZgemmStridedBatched(
-        handle, CUBLAS_OP_N, CUBLAS_OP_N, L, B, N,
-        reinterpret_cast<const cuDoubleComplex*>(&kAlpha),
-        reinterpret_cast<const cuDoubleComplex*>(v_data), L, N * L,
-        reinterpret_cast<const cuDoubleComplex*>(y_grad_conj_data), D * N, N,
-        reinterpret_cast<const cuDoubleComplex*>(&kBeta),
-        reinterpret_cast<cuDoubleComplex*>(x_grad_c_data), D * L, L, D));
-    TORCH_CUDABLAS_CHECK(cublasZgemmStridedBatched(
-        handle, CUBLAS_OP_N, CUBLAS_OP_C, L, N, B,
-        reinterpret_cast<const cuDoubleComplex*>(&kAlpha),
-        reinterpret_cast<const cuDoubleComplex*>(x_c_data), D * L, L,
-        reinterpret_cast<const cuDoubleComplex*>(y_grad_data), D * N, N,
-        reinterpret_cast<const cuDoubleComplex*>(&kBeta),
-        reinterpret_cast<cuDoubleComplex*>(v_grad_data), L, N * L, D));
-  }
+  blas::GemmStridedBatchedCUDA<c10::complex<T_ACC>>(
+      handle, blas::TransposeOp::kN, blas::TransposeOp::kN, D, B, L, N, kAlpha,
+      y_grad_conj_data, D * N, N, v_data, L, N * L, kBeta, x_grad_c_data, D * L,
+      L);
+  blas::GemmStridedBatchedCUDA<c10::complex<T_ACC>>(
+      handle, blas::TransposeOp::kC, blas::TransposeOp::kN, D, N, L, B, kAlpha,
+      y_grad_data, D * N, N, x_c_data, D * L, L, kBeta, v_grad_data, L, N * L);
 
   // TODO: Optimize this.
   x_grad = torch::real(x_grad_c).to(x.scalar_type());

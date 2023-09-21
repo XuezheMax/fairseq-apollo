@@ -107,6 +107,7 @@ try:
         cpp_extension.CUDAExtension(
             'fairseq.mega2_extension',
             sources=[
+                "fairseq/csrc/blas.cc",
                 "fairseq/csrc/mega2_extension.cc",
                 "fairseq/csrc/ops/attention_softmax.cc",
                 "fairseq/csrc/ops/attention_softmax_kernel.cu",
