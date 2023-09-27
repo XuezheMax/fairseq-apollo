@@ -52,7 +52,7 @@ class GatedCrossAttention(nn.Module):
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
         if attention_activation == 'softmax':
-            self.attn_softmax = AttentionSoftmax(causal_mask=False, dropout=attention_dropout)
+            self.attn_softmax = AttentionSoftmax(dropout=attention_dropout, use_causal_mask=False)
             self.attention_dropout = None
         else:
             self.attn_softmax = None

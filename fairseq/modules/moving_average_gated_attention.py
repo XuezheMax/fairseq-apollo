@@ -63,7 +63,7 @@ class MovingAverageGatedAttention(nn.Module):
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
         if attention_activation == 'softmax':
-            self.attn_softmax = AttentionSoftmax(causal_mask=not bidirectional, dropout=attention_dropout)
+            self.attn_softmax = AttentionSoftmax(dropout=attention_dropout, use_causal_mask=not bidirectional)
             self.attention_dropout = None
         else:
             self.attn_softmax = None

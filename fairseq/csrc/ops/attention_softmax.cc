@@ -3,15 +3,15 @@
 namespace mega2 {
 namespace ops {
 
-torch::Tensor AttentionSoftmaxFwd(const torch::Tensor& x, bool causal_mask,
-                                  double dropout) {
+torch::Tensor AttentionSoftmaxFwd(const torch::Tensor& x, double dropout,
+                                  bool use_causal_mask) {
   TORCH_CHECK(x.device().type() == torch::kCUDA);
-  return AttentionSoftmaxCUDAFwd(x, causal_mask, dropout);
+  return AttentionSoftmaxCUDAFwd(x, dropout, use_causal_mask);
 }
 
 torch::Tensor AttentionSoftmaxBwd(const torch::Tensor& y_grad,
                                   const torch::Tensor& y, bool causal_mask) {
-  TORCH_CHECK(y_grad.device().type() == torch::kCUDA);
+ TORCH_CHECK(y_grad.device().type() == torch::kCUDA);
   TORCH_CHECK(y.device().type() == torch::kCUDA);
   return AttentionSoftmaxCUDABwd(y_grad, y, causal_mask);
 }

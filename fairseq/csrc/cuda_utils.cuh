@@ -20,6 +20,24 @@ constexpr int64_t kCUDABlockReduceNumThreads = 512;
 constexpr int64_t kColwiseThreshold = 256;
 constexpr int64_t kMaxStaticSharedMemorySize = 49152;
 
+struct __align__(8) BF16x4 {
+  __nv_bfloat16 x0;
+  __nv_bfloat16 x1;
+  __nv_bfloat16 x2;
+  __nv_bfloat16 x3;
+};
+
+struct __align__(16) BF16x8 {
+  __nv_bfloat16 x0;
+  __nv_bfloat16 x1;
+  __nv_bfloat16 x2;
+  __nv_bfloat16 x3;
+  __nv_bfloat16 x4;
+  __nv_bfloat16 x5;
+  __nv_bfloat16 x6;
+  __nv_bfloat16 x7;
+};
+
 template <typename T>
 C10_HOST_DEVICE thrust::pair<T, T> Fast2Sum(T a, T b) {
   const T s = a + b;
