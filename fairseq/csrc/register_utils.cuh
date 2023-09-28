@@ -77,7 +77,14 @@ __inline__ __device__ void LoadBF16x2Impl(const at::BFloat16* __restrict__ src,
 #pragma unroll
   for (int64_t i = 0; i < kElementsPerThread / 2; ++i) {
     const int64_t idx = i * blockDim.x + threadIdx.x;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     const float2 v2 = idx * 2 < size ? __bfloat1622float2(src2[idx]) : default2;
+#else
+    const __nv_bfloat162 x2 = src2[idx];
+    const float2 v2 = idx * 2 < size ? make_float2(__bfloat162float(x2.x),
+                                                   __bfloat162float(x2.y))
+                                     : default2;
+#endif  // defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     dst[i * 2 + 0] = idx * 2 + 0 < size ? v2.x : default_value;
     dst[i * 2 + 1] = idx * 2 + 1 < size ? v2.y : default_value;
   }
@@ -201,7 +208,12 @@ __inline__ __device__ void SaveBF16x2Impl(const float* __restrict__ src,
     const int64_t idx = i * blockDim.x + threadIdx.x;
     const float2 v2 = {src[i * 2 + 0], src[i * 2 + 1]};
     if (idx * 2 < size) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
       dst2[idx] = __float22bfloat162_rn(v2);
+#else
+      dst2[idx] =
+          make_bfloat162(__float2bfloat16(v2.x), __float2bfloat16(v2.y));
+#endif  // defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     }
   }
 }

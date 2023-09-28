@@ -20,6 +20,7 @@ from fairseq.modules.norm_layer.timestep_norm import TimestepNorm
 from fairseq.modules.exponential_moving_average import MultiHeadEMA
 from fairseq.modules.complex_exponential_moving_average import MultiHeadComplexEMA
 from fairseq.modules.attention_softmax import AttentionSoftmax
+from fairseq.modules.efficient_attention import EfficientAttention
 
 
 @with_incremental_state
@@ -62,11 +63,17 @@ class MovingAverageGatedAttention(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
+        if not bidirectional and attention_activation == 'softmax':
+            self.efficient_attn = EfficientAttention(dropout=attention_dropout, use_causal_mask=True, scale=1.0)
+            self.attn_softmax = None
+            self.attention_dropout = None
         if attention_activation == 'softmax':
             self.attn_softmax = AttentionSoftmax(dropout=attention_dropout, use_causal_mask=not bidirectional)
             self.attention_dropout = None
+            self.efficient_attn = None
         else:
             self.attn_softmax = None
+            self.efficient_attn = None
             self.attention_dropout = FairseqDropout(attention_dropout, module_name=self.__class__.__name__)
         self.chunk_size = chunk_size
         self.bidirectional = bidirectional
@@ -232,6 +239,17 @@ class MovingAverageGatedAttention(nn.Module):
         attn_weights = self.attn_softmax(qk)
         return attn_weights
 
+    def efficient_softmax_attention(self, q, k, v):
+        assert isinstance(self.rel_pos_bias, RotaryEmbedding)
+        slen = k.size(1)
+        if slen != q.size(1):
+            assert q.size(1) == 1
+            qidx = slen - 1
+        else:
+            qidx = 0
+        q, k = self.rel_pos_bias(q, k, qidx=qidx)
+        return self.efficient_attn(q, k, v)
+
     def forward(
         self,
         x,
@@ -363,16 +381,18 @@ class MovingAverageGatedAttention(nn.Module):
         if padding_mask is not None and padding_mask.dim() == 0:
             padding_mask = None
 
-        if self.attention_activation == 'softmax':
-            attn_weights = self.softmax_attention(q, k, padding_mask, before_attn_fn)
+        if self.efficient_attn is not None:
+            # B*K x C x E -> B x L x E
+            attn = self.efficient_softmax_attention(q, k, v).view(bsz, seq_len, self.hdim)
+            attn_weights = None
         else:
-            attn_weights = self.element_attention(q, k, padding_mask, attn_mask, before_attn_fn)
+            if self.attention_activation == 'softmax':
+                attn_weights = self.softmax_attention(q, k, padding_mask, before_attn_fn)
+            else:
+                attn_weights = self.element_attention(q, k, padding_mask, attn_mask, before_attn_fn)
+            # B*K x C x E -> B x L x E
+            attn = torch.bmm(attn_weights, v).view(bsz, seq_len, self.hdim)
 
-        if before_attn_fn:
-            return attn_weights, v
-
-        # B*K x C x E -> B x L x E
-        attn = torch.bmm(attn_weights, v).view(bsz, seq_len, self.hdim)
         # B x L x E
         attn = self.hidden_dropout(attn * r)
         # B x L x E -> B x L x D
