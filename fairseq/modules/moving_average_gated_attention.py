@@ -67,7 +67,7 @@ class MovingAverageGatedAttention(nn.Module):
             self.efficient_attn = EfficientAttention(dropout=attention_dropout, use_causal_mask=True, scale=1.0)
             self.attn_softmax = None
             self.attention_dropout = None
-        if attention_activation == 'softmax':
+        elif attention_activation == 'softmax':
             self.attn_softmax = AttentionSoftmax(dropout=attention_dropout, use_causal_mask=not bidirectional)
             self.attention_dropout = None
             self.efficient_attn = None

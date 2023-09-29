@@ -53,7 +53,11 @@ class EfficientAttention(nn.Module):
 
     def forward(self, q: torch.Tensor, k: torch.Tensor,
                 v: torch.Tensor) -> torch.Tensor:
-        return attention(q, k, v, self._scale, self._dropout, self._causal, self.training)
+        q = q.unsqueeze(2)
+        k = k.unsqueeze(2)
+        v = v.unsqueeze(2)
+        out = attention(q, k, v, self._scale, self._dropout, self._causal, self.training)
+        return out.squeeze(2)
 
     def extra_repr(self) -> str:
         return 'causal={}, dropout={}'.format(self._causal, self._dropout)
