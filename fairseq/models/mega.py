@@ -116,6 +116,8 @@ class MegaModel(FairseqEncoderDecoderModel):
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
+        parser.add_argument('--efficient-attention', default=False, action='store_true',
+                            help='use efficient attention')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
         parser.add_argument('--norm-num-groups', type=int, default=None, help='normalization eps')
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
@@ -709,6 +711,7 @@ def base_architecture(args):
 
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.moving_layer = getattr(args, 'moving_layer', 'cema')
+    args.efficient_attention = getattr(args, 'efficient_attention', False)
     args.truncation_length = getattr(args, 'truncation_length', 0)
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)

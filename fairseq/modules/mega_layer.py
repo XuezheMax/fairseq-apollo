@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -38,6 +38,7 @@ class MegaEncoderLayer(nn.Module):
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
+            efficient_attn=args.efficient_attention,
             chunk_size=args.encoder_chunk_size,
             moving_layer=args.moving_layer,
             truncation=args.truncation_length,
@@ -110,6 +111,7 @@ class MegaDecoderLayer(nn.Module):
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
+            efficient_attn=args.efficient_attention,
             chunk_size=args.decoder_chunk_size,
             moving_layer=args.moving_layer,
             truncation=args.truncation_length,
@@ -131,6 +133,7 @@ class MegaDecoderLayer(nn.Module):
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.hidden_dropout,
+            efficient_attn=args.efficient_attention,
             attention_activation=args.attention_activation_fn,
             norm_type=args.norm_type,
             norm_affine=not args.no_affine_norm,

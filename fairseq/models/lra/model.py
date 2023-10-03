@@ -116,6 +116,8 @@ class LRAModel(FairseqEncoderModel):
         parser.add_argument('--max-positions', type=int,
                             help='number of positional embeddings to learn')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='rotary')
+        parser.add_argument('--efficient-attention', default=False, action='store_true',
+                            help='use efficient attention')
 
         # Arguments related to sentence level prediction
         parser.add_argument('--sentence-class-num', type=int, metavar='N',
@@ -302,6 +304,7 @@ class LRAEncoder(FairseqEncoder):
                 dropout=args.dropout,
                 attention_dropout=args.attention_dropout,
                 hidden_dropout=args.act_dropout,
+                efficient_attn=args.efficient_attention,
                 chunk_size=getattr(args, 'chunk_size', -1),
                 moving_layer=args.moving_layer,
                 moving_act=args.moving_act,
@@ -376,6 +379,7 @@ def base_architecture(args):
     args.activation_fn = getattr(args, 'activation_fn', 'gelu')
     args.attention_activation_fn = getattr(args, 'attention_activation_fn', 'softmax')
     args.moving_act = getattr(args, 'moving_act', 'rmsnorm')
+    args.efficient_attention = getattr(args, 'efficient_attention', False)
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)

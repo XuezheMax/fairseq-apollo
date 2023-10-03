@@ -109,6 +109,8 @@ class MegaLanguageModel(FairseqLanguageModel):
         parser.add_argument('--moving-layer', choices=['ema', 'cema'], default='cema')
         parser.add_argument('--truncation-length', type=int, metavar='N', default=0,
                             help='truncation length of moving average layer.')
+        parser.add_argument('--efficient-attention', default=False, action='store_true',
+                            help='use efficient attention')
         parser.add_argument('--norm-type', choices=['layernorm', 'rmsnorm'], default='layernorm')
         parser.add_argument('--norm-num-groups', type=int, default=None, help='normalization eps')
         parser.add_argument('--norm-eps', type=float, default=1e-5, help='normalization eps')
@@ -430,6 +432,7 @@ def base_lm_architecture(args):
     args.dropout = getattr(args, "dropout", 0.1)
 
     args.rel_pos_bias = getattr(args, 'rel_pos_bias', 'rotary')
+    args.efficient_attention = getattr(args, 'efficient_attention', False)
 
     args.adaptive_input = getattr(args, 'adaptive_input', False)
     args.adaptive_input_factor = getattr(args, 'adaptive_input_factor', 4)

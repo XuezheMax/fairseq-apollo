@@ -67,6 +67,8 @@ class SCRawModel(FairseqEncoderModel):
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N', help='encoder embedding dimension')
         parser.add_argument('--max-positions', type=int, help='number of positional embeddings to learn')
         parser.add_argument('--rel-pos-bias', choices=['simple', 'rotary'], default='simple')
+        parser.add_argument('--efficient-attention', default=False, action='store_true',
+                            help='use efficient attention')
 
         # Arguments related to sentence level prediction
         parser.add_argument('--sentence-class-num', type=int, metavar='N', help='number of classes for sentence task')
@@ -131,6 +133,7 @@ class SCRawEncoder(FairseqEncoder):
             dropout=args.dropout,
             attention_dropout=args.attention_dropout,
             hidden_dropout=args.act_dropout,
+            efficient_attn=args.efficient_attention,
             chunk_size=getattr(args, 'chunk_size', -1),
             moving_layer=args.moving_layer,
             truncation=getattr(args, 'truncation_length', None),
@@ -167,6 +170,8 @@ def base_architecture(args):
 
     args.norm_type = getattr(args, 'norm_type', 'layernorm')
     args.no_affine_norm = getattr(args, 'no_affine_norm', False)
+
+    args.efficient_attention = getattr(args, 'efficient_attention', False)
 
     args.sentence_class_num = getattr(args, 'sentence_class_num', 10)
     args.classifier_in_dim = getattr(args, "classifier_in_dim", args.encoder_embed_dim)
