@@ -31,6 +31,7 @@ class GatedCrossAttention(nn.Module):
         dropout=0.0,
         attention_dropout=0.0,
         hidden_dropout=0.0,
+        efficient_attn=False,
         attention_activation='softmax',
         norm_type='layernorm',
         norm_affine=True,
@@ -51,7 +52,8 @@ class GatedCrossAttention(nn.Module):
         self.dropout = FairseqDropout(dropout, module_name=self.__class__.__name__)
         self.hidden_dropout = FairseqDropout(hidden_dropout, module_name=self.__class__.__name__)
         # Attention dropout is standard dropout
-        if attention_activation == 'softmax':
+        if efficient_attn:
+            assert attention_activation == 'softmax'
             self.attn_softmax = AttentionSoftmax(dropout=attention_dropout, use_causal_mask=False)
             self.attention_dropout = None
         else:
@@ -180,7 +182,7 @@ class GatedCrossAttention(nn.Module):
         if inverse_mask is not None:
             attn_weights = attn_weights * inverse_mask.unsqueeze(1)
 
-        self.attention_dropout(attn_weights)
+        attn_weights = self.attention_dropout(attn_weights)
         return attn_weights
 
     def softmax_attention(self, q, k, key_padding_mask, pidx, before_attn_fn):
@@ -220,7 +222,11 @@ class GatedCrossAttention(nn.Module):
         if before_attn_fn:
             return qk
 
-        attn_weights = self.attn_softmax(qk)
+        if self.attn_softmax is None:
+            attn_weights = utils.softmax(qk, dim=-1, onnx_trace=self.onnx_trace).to(qk)
+            attn_weights = self.attention_dropout(attn_weights)
+        else:
+            attn_weights = self.attn_softmax(qk)
         return attn_weights
 
     def forward(
