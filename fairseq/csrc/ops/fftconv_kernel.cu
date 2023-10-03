@@ -3,6 +3,7 @@
 #include <ATen/cuda/Exceptions.h>
 #include <ATen/ops/empty.h>
 #include <c10/core/ScalarType.h>
+#include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 #include <c10/util/Exception.h>
 
@@ -58,6 +59,7 @@ __global__ void FFTConvCUDAFwdKernel(
 
   fft::BlockRFFT<T, T_ACC, kFFTSize, kNumThreads>(
       X_data, L, /*flip=*/false, shared_data, shared_data + kFFTSize);
+  __syncthreads();
 
 #pragma unroll
   for (int i = 0; i < kElementsPerThread; ++i) {
@@ -99,6 +101,7 @@ __global__ void FFTConvCUDABwdKernel(
 
   fft::BlockRFFT<T, T_ACC, kFFTSize, kNumThreads>(
       Y_grad_data, L, /*flip=*/true, shared_data, shared_data + kFFTSize);
+  __syncthreads();
 
 #pragma unroll
   for (int i = 0; i < kElementsPerThread; ++i) {
@@ -173,6 +176,7 @@ void RFFTCUDAImpl(const torch::Tensor& X, bool flip, torch::Tensor& Y) {
   const T* X_data = X.data_ptr<T>();
   c10::complex<T_ACC>* Y_data = Y.data_ptr<c10::complex<T_ACC>>();
 
+  at::cuda::OptionalCUDAGuard guard(at::device_of(X));
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
   const int64_t shared_size = fft_size * sizeof(c10::complex<T_ACC>);
 
@@ -221,6 +225,7 @@ void FFTConvCUDAFwdImpl(const torch::Tensor& X, const torch::Tensor& K_f,
   T* Y_data = Y.data_ptr<T>();
   c10::complex<T_ACC>* X_f_data = X_f.data_ptr<c10::complex<T_ACC>>();
 
+  at::cuda::OptionalCUDAGuard guard(at::device_of(X));
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
   const int64_t shared_size = (fft_size * 2) * sizeof(c10::complex<T_ACC>);
 
@@ -282,6 +287,7 @@ void FFTConvCUDABwdImpl(const torch::Tensor& Y_grad, const torch::Tensor& X_f,
   T* X_grad_data = X_grad.data_ptr<T>();
   c10::complex<T_ACC>* K_grad_f_data = K_grad_f.data_ptr<c10::complex<T_ACC>>();
 
+  at::cuda::OptionalCUDAGuard guard(at::device_of(X_f));
   cudaStream_t cuda_stream = at::cuda::getCurrentCUDAStream();
   const int64_t shared_size = (fft_size * 2) * sizeof(c10::complex<T_ACC>);
 
