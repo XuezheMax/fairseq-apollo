@@ -230,7 +230,8 @@ class MovingAverageGatedAttention(nn.Module):
         else:
             raise ValueError('unknown relative position bias')
 
-        if attn_mask is not None and self.attn_softmax is None:
+        if attn_mask is not None:
+            assert self.attn_softmax is None
             qk = qk + attn_mask
 
         if padding_mask is not None:
@@ -396,7 +397,7 @@ class MovingAverageGatedAttention(nn.Module):
             attn_weights = None
         else:
             if self.attention_activation == 'softmax':
-                attn_weights = self.softmax_attention(q, k, padding_mask, before_attn_fn, before_attn_fn)
+                attn_weights = self.softmax_attention(q, k, padding_mask, attn_mask, before_attn_fn)
             else:
                 attn_weights = self.element_attention(q, k, padding_mask, attn_mask, before_attn_fn)
             # B*K x C x E -> B x L x E
