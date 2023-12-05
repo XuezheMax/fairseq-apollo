@@ -41,6 +41,7 @@ try:
     class FusedRMSNorm(_FusedRMSNorm):
         def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
             super().__init__(normalized_shape, eps, elementwise_affine)
+            self.reset_parameters()
 
         def reset_parameters(self):
             if self.elementwise_affine:
