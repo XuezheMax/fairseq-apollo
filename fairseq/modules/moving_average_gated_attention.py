@@ -99,7 +99,7 @@ class MovingAverageGatedAttention(nn.Module):
             self.move_act = nn.SiLU()
 
         self.v_proj = nn.Linear(embed_dim, hdim, bias=True)
-        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + 2 * embed_dim, bias=True)
+        self.mx_proj = nn.Linear(embed_dim, zdim + hdim + embed_dim, bias=True)
         self.h_proj = nn.Linear(hdim, embed_dim, bias=False)
         self.gamma = Parameter(torch.Tensor(2, zdim))
         self.beta = Parameter(torch.Tensor(2, zdim))
@@ -317,9 +317,7 @@ class MovingAverageGatedAttention(nn.Module):
 
         # B x L x D -> B x L x (D+S+E+D)
         base = self.mx_proj(mx)
-        u, z, r, hx = torch.split(base, [self.embed_dim, self.zdim, self.hdim, self.embed_dim], dim=-1)
-        # B x L x D
-        u = torch.sigmoid(u)
+        z, r, hx = torch.split(base, [self.zdim, self.hdim, self.embed_dim], dim=-1)
         # B x L x S
         z = F.normalize(z, p=2, dim=-1, eps=1e-5)
         # B x L x S -> B x L x 1 x S -> B x L x 2 x S
@@ -406,10 +404,10 @@ class MovingAverageGatedAttention(nn.Module):
         # B x L x E
         attn = self.hidden_dropout(attn * r)
         # B x L x E -> B x L x D
-        h = F.silu(hx + self.h_proj(attn))
+        h = hx + self.h_proj(attn)
         h = self.dropout(h)
         # B x L x D
-        out = torch.addcmul(residual, u, h - residual)
+        out = h + residual
 
         if need_weights:
             return out, attn_weights

@@ -75,11 +75,11 @@ class MegaEncoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        x, _ = self.mega_layer(x, encoder_padding_mask)
+        y, _ = self.mega_layer(x, encoder_padding_mask)
         if self.nffn is not None:
-            x = self.nffn(x)
+            y = self.nffn(y, residual=x)
 
-        return x
+        return y
 
 
 class MegaDecoderLayer(nn.Module):
@@ -182,21 +182,22 @@ class MegaDecoderLayer(nn.Module):
         Returns:
             encoded output of shape `(seq_len, batch, embed_dim)`
         """
-        x, attn = self.mega_layer(x=x, padding_mask=decoder_padding_mask,
+        y, attn = self.mega_layer(x, padding_mask=decoder_padding_mask,
                                   incremental_state=incremental_state,
                                   need_weights=False, attn_mask=attn_mask)
 
         if self.cross_attn is not None:
-            x, attn = self.cross_attn(query=x, key=encoder_out, value=encoder_out,
+            y, attn = self.cross_attn(query=y, residual=x,
+                                      key=encoder_out, value=encoder_out,
                                       padding_mask=decoder_padding_mask,
                                       key_padding_mask=encoder_padding_mask,
                                       incremental_state=incremental_state,
                                       static_kv=True, need_weights=need_attn)
 
         if self.nffn is not None:
-            x = self.nffn(x)
+            y = self.nffn(y, residual=x)
 
-        return x, attn, None
+        return y, attn, None
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):
         self.need_attn = need_attn

@@ -96,9 +96,9 @@ class MegaSentenceEncoderLayer(nn.Module):
         if self.chunk_size > 0:
             info = 'the input sequence length {} cannot be divided by chunk size {}'.format(seq_len, self.chunk_size)
             assert seq_len < self.chunk_size or seq_len % self.chunk_size == 0, info
-        x, attn = self.mega_layer(x, x_padding_mask)
+        y, attn = self.mega_layer(x, x_padding_mask)
 
         if self.nffn is not None:
-            x = self.nffn(x)
+            y = self.nffn(y, residual=x)
 
-        return x, attn
+        return y, attn
