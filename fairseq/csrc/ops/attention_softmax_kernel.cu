@@ -11,6 +11,7 @@
 
 #include "cuda_utils.cuh"
 #include "ops/attention_softmax.h"
+#include "random_utils.cuh"
 #include "softmax.cuh"
 #include "utils.h"
 
@@ -46,7 +47,7 @@ void AttentionSoftmaxCUDAFwdImpl(const torch::Tensor& x, double dropout,
   } else {
     const int64_t random_capacity =
         std::max(int64_t(1) << utils::CeilLog2(inner_size),
-                 cuda_utils::kWarpSize * softmax::kUnroll);
+                 cuda_utils::kWarpSize * random_utils::kRandomUnroll);
 
     auto* gen = at::get_generator_or_default<at::CUDAGeneratorImpl>(
         c10::nullopt, at::cuda::detail::getDefaultCUDAGenerator());

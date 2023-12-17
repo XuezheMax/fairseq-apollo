@@ -8,11 +8,38 @@
 namespace mega2 {
 namespace blas {
 
+// https://github.com/pytorch/pytorch/issues/73328
+constexpr int64_t kWorkspaceSize = (1 << 20);
+
 enum class TransposeOp {
   kN = 0,
   kT = 1,
   kC = 2,
 };
+
+template <typename T>
+void GemmCUDA(cublasHandle_t handle, TransposeOp transa, TransposeOp transb,
+              int64_t m, int64_t n, int64_t k, at::opmath_type<T> alpha,
+              const T* a, int64_t lda, const T* b, int64_t ldb,
+              at::opmath_type<T> beta, T* c, int64_t ldc);
+
+// C = alpha*(A*B) + beta*C + bias
+template <typename T>
+void GemmAndBiasCUDA(cublasHandle_t handle, cudaStream_t cuda_stream,
+                     TransposeOp transa, TransposeOp transb, int64_t m,
+                     int64_t n, int64_t k, at::opmath_type<T> alpha, const T* a,
+                     int64_t lda, const T* b, int64_t ldb, const T* bias,
+                     at::opmath_type<T> beta, T* c, int64_t ldc);
+
+// C = alpha*(A*B) + beta*C
+// bias_grad = Sum(A)
+template <typename T>
+void GemmAndBiasGradCUDA(cublasHandle_t handle, cudaStream_t cuda_stream,
+                         TransposeOp transa, TransposeOp transb, int64_t m,
+                         int64_t n, int64_t k, at::opmath_type<T> alpha,
+                         const T* a, int64_t lda, const T* b, int64_t ldb,
+                         at::opmath_type<T> beta, T* c, int64_t ldc,
+                         T* bias_grad);
 
 template <typename T>
 void GemmBatchedCUDA(cublasHandle_t handle, TransposeOp transa,

@@ -1,27 +1,22 @@
 #pragma once
 
-#include <ATen/cuda/CUDAGeneratorImpl.h>
 #include <c10/cuda/CUDAMathCompat.h>
-#include <curand.h>
-#include <curand_kernel.h>
-#include <curand_philox4x32_x.h>
 #include <thrust/pair.h>
 
 #include <ATen/cuda/DeviceUtils.cuh>
-#include <ATen/cuda/detail/UnpackRaw.cuh>
 #include <ATen/native/cuda/block_reduce.cuh>
 #include <cmath>
 #include <limits>
 #include <type_traits>
 
 #include "cuda_utils.cuh"
+#include "random_utils.cuh"
 #include "register_utils.cuh"
 
 namespace mega2 {
 namespace softmax {
 
 constexpr int64_t kMaxSoftmaxSize = 8192;
-constexpr int64_t kUnroll = 4;
 
 template <typename T, int64_t kElementsPerThread>
 __inline__ __device__ void BlockFillImpl(int64_t size, T val, T* data) {
@@ -157,7 +152,8 @@ __global__ void AttentionDropKeySoftmaxFwdKernel(
     at::PhiloxCudaState philox_args, int64_t outer_size, int64_t inner_size,
     T_ACC dropout, bool use_causal_mask, const T* x, T* y) {
   constexpr int64_t kElementsPerThread = kCapacity / kNumThreads;
-  constexpr int64_t kCapacityPerThread = std::max(kElementsPerThread, kUnroll);
+  constexpr int64_t kCapacityPerThread =
+      std::max(kElementsPerThread, random_utils::kRandomUnroll);
   constexpr T_ACC kInf = std::numeric_limits<T_ACC>::infinity();
 
   __shared__ T_ACC shm[cuda_utils::kWarpSize];
@@ -177,7 +173,8 @@ __global__ void AttentionDropKeySoftmaxFwdKernel(
   curandStatePhilox4_32_10_t state;
   curand_init(seed, i * blockDim.x + threadIdx.x, offset, &state);
 #pragma unroll
-  for (int64_t j = 0; j < kCapacityPerThread; j += kUnroll) {
+  for (int64_t j = 0; j < kCapacityPerThread;
+       j += random_utils::kRandomUnroll) {
     const float4 rand4 = curand_uniform4(&state);
     x_acc[j + 0] = rand4.x < dropout ? -kInf : x_acc[j + 0];
     x_acc[j + 1] = rand4.y < dropout ? -kInf : x_acc[j + 1];

@@ -4,8 +4,10 @@
 #include "ops/attention_softmax.h"
 #include "ops/ema_hidden.h"
 #include "ops/ema_parameters.h"
+#include "ops/ffn_swiglu.h"
 #include "ops/fftconv.h"
 #include "ops/sequence_norm.h"
+#include "ops/swiglu.h"
 #include "ops/timestep_norm.h"
 #include "utils.h"
 
@@ -18,8 +20,10 @@ PYBIND11_MODULE(mega2_extension, m) {
   ops::DefineAttentionSoftmaxOp(m_ops);
   ops::DefineEMAHiddenOp(m_ops);
   ops::DefineEMAParametersOp(m_ops);
+  ops::DefineFFNSwiGLUOp(m_ops);
   ops::DefineFFTConvOp(m_ops);
   ops::DefineSequenceNormOp(m_ops);
+  ops::DefineSwiGLUOp(m_ops);
   ops::DefineTimestepNormOp(m_ops);
 }
 

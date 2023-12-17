@@ -123,6 +123,10 @@ try:
                 "fairseq/csrc/ops/sequence_norm_kernel.cu",
                 "fairseq/csrc/ops/timestep_norm.cc",
                 "fairseq/csrc/ops/timestep_norm_kernel.cu",
+                "fairseq/csrc/ops/ffn_swiglu.cc",
+                "fairseq/csrc/ops/ffn_swiglu_kernel.cu",
+                "fairseq/csrc/ops/swiglu.cc",
+                "fairseq/csrc/ops/swiglu_kernel.cu",
             ],
             include_dirs=[
                 "fairseq/csrc",
